@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>쩔다지갑 Live</title>
+  <link rel="stylesheet" href="css/zz_live.css" />
+</head>
+<body>
+  <header class="wrap">
+    <h1>🚀 쩔다지갑 Live</h1>
+    <p class="sub">기존 기능은 그대로 두고, 실시간 시세/리스크 모듈만 추가한 병합 버전</p>
+    <nav>
+      <a href="/test_vercel.html">배포체크</a>
+      <!-- 기존 페이지 링크가 있다면 여기에 추가 (예: /index.html) -->
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>코인 시세</h2>
+      <div class="row">
+        <label for="symbol">심볼</label>
+        <input id="symbol" placeholder="예: btc, eth, sol" />
+        <button id="btnFetch">가져오기</button>
+      </div>
+
+      <div id="priceArea" class="price"></div>
+      <div id="riskArea" class="risk"></div>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>자동 새로고침</h2>
+      <p>15초마다 자동 갱신됨 (요청 중복 방지/오류 자동복구 포함)</p>
+      <label class="switch">
+        <input id="autoToggle" type="checkbox" checked />
+        <span>켜기</span>
+      </label>
+    </section>
+  </main>
+
+  <script src="js/zz_live.js"></script>
+</body>
+</html>
