@@ -1,268 +1,241 @@
-// ====== 기본 상태 ======
-const $ = (id) => document.getElementById(id);
-const el = {
-  ws: $("ws-status"), price: $("price"), change: $("change"), hl: $("hl"), vol: $("vol"),
-  selected: $("selected-coin"), listBody: $("list-body"), tags: $("tags"), risk: $("risk"),
-  buy1: $("buy1"), buy2: $("buy2"), buy3: $("buy3"), sell1: $("sell1"), sell2: $("sell2"), sell3: $("sell3"), stop1: $("stop1"), stop2: $("stop2"), stop3: $("stop3"),
-};
-let markets = [];          // 전체 KRW 마켓 (코드/한글/영문)
-let codeMap = {};          // code -> {korean_name, english_name}
-let searchIndex = [];      // 검색 인덱스
-let ws = null;             // Upbit WebSocket
-let currentCode = null;    // 선택된 코드 (예: KRW-BTC)
-let wsAlive = false;
+// ====================================================
+// 쩔어지갑 v9.2 — 실시간 업비트 연동 + 급등감지(AI) + WS→REST 자동복구
+// ====================================================
+
+// ---------- 기본 설정 ----------
+const baseMarket = "KRW";
+let ws = null;
+let currentCode = null;
+let USE_MOCK = false;
+let USE_REST = false;
 let WS_FAILS = 0;
-let USE_REST = false;          // 웹소켓 실패 시 REST 폴링 모드
 let restTickerTimer = null;
 let restOrderbookTimer = null;
+const el = {};
+const codeMap = {};
 
-function clearRestLoop(){
-  if (restTickerTimer) { clearInterval(restTickerTimer); restTickerTimer = null; }
-  if (restOrderbookTimer) { clearInterval(restOrderbookTimer); restOrderbookTimer = null; }
+// ---------- DOM 캐시 ----------
+window.addEventListener("DOMContentLoaded", () => {
+  el.ws = document.getElementById("ws-status");
+  el.price = document.getElementById("price");
+  el.table = document.getElementById("price-table");
+  el.listBody = document.getElementById("coin-list-body");
+});
+
+// ---------- 유틸 ----------
+function fmtKRW(v) {
+  if (!v) return "-";
+  return Number(v).toLocaleString("ko-KR");
 }
-async function restFetchTicker(code){
-  try{
+function upbitTick(price) {
+  if (price >= 1000000) return 1000;
+  if (price >= 100000) return 500;
+  if (price >= 10000) return 100;
+  if (price >= 1000) return 10;
+  if (price >= 100) return 1;
+  if (price >= 10) return 0.1;
+  if (price >= 1) return 0.01;
+  return 0.001;
+}
+
+// ---------- REST 백업 ----------
+function clearRestLoop() {
+  if (restTickerTimer) clearInterval(restTickerTimer);
+  if (restOrderbookTimer) clearInterval(restOrderbookTimer);
+}
+async function restFetchTicker(code) {
+  try {
     const r = await fetch(`https://api.upbit.com/v1/ticker?markets=${code}`);
     const js = await r.json();
     const t = js && js[0];
     if (!t) return;
-    renderTicker({ ...t, market: t.market });
-  }catch(_){}
+    renderTicker(t);
+  } catch (_) {}
 }
-
-async function restFetchOrderbook(code){
-  try{
+async function restFetchOrderbook(code) {
+  try {
     const r = await fetch(`https://api.upbit.com/v1/orderbook?markets=${code}`);
     const js = await r.json();
     const ob = js && js[0];
     if (!ob) return;
     renderOrderbook(ob);
-  }catch(_){}
+  } catch (_) {}
 }
-
-function startRestLoop(code){
+function startRestLoop(code) {
   clearRestLoop();
   if (!code) return;
-  el.ws.textContent = 'REST 모드(웹소켓 차단) — 2~3초 갱신';
-  // 티커 2초 주기
-  restTickerTimer = setInterval(()=>restFetchTicker(code), 2000);
-  // 호가 3초 주기
-  restOrderbookTimer = setInterval(()=>restFetchOrderbook(code), 3000);
-  // 첫 즉시호출
+  document.getElementById("ws-status").textContent =
+    "REST 모드(웹소켓 차단) — 2~3초 갱신";
+  restTickerTimer = setInterval(() => restFetchTicker(code), 2000);
+  restOrderbookTimer = setInterval(() => restFetchOrderbook(code), 3000);
   restFetchTicker(code);
   restFetchOrderbook(code);
 }
 
-// ====== 업비트 틱 규칙(근사) & 포맷 ======
-function upbitTick(p){
-  if (p >= 2000000) return 1000;
-  if (p >= 1000000) return 500;
-  if (p >= 500000) return 100;
-  if (p >= 100000) return 50;
-  if (p >= 10000) return 10;
-  if (p >= 1000) return 1;
-  if (p >= 100) return 0.1;
-  if (p >= 10) return 0.01;
-  if (p >= 1) return 0.001;
-  if (p >= 0.1) return 0.0001;
-  if (p >= 0.01) return 0.00001;
-  if (p >= 0.001) return 0.000001;
-  return 0.00000001; // 초저가 코인까지 근사
-}
-function roundToTick(price){
-  const t = upbitTick(price);
-  return Math.round(price / t) * t;
-}
-function fmtKRW(n){
-  // 틱 반영 + 로케일 표시
-  const v = roundToTick(Number(n));
-  // 소수 자리수 판단
-  const t = upbitTick(v);
-  let frac = 0;
-  if (t < 1) {
-    // 소수 자리수: t의 10의 지수만큼
-    frac = Math.min(8, Math.max(0, Math.ceil(Math.abs(Math.log10(t)))));
-  }
-  return v.toLocaleString('ko-KR', { minimumFractionDigits: frac, maximumFractionDigits: frac });
-}
+// ---------- WebSocket ----------
+function openWS(codes) {
+  if (USE_MOCK) return;
+  if (USE_REST) return startRestLoop(codes && codes[0]);
 
-// ====== 타점 계산 (현재가 기반 동적 레벨) ======
-function calcLevels(price){
-  const p = Number(price);
-  const t = upbitTick(p);
-  const buys = [p*0.995, p*0.990, p*0.985].map(x=>fmtKRW(x));
-  const sells= [p*1.010, p*1.018, p*1.028].map(x=>fmtKRW(x));
-  const stops= [p*0.992, p*0.985, p*0.975].map(x=>fmtKRW(x));
-  return {buys, sells, stops};
-}
+  if (ws) try { ws.close(); } catch (_) {}
+  ws = new WebSocket("wss://api.upbit.com/websocket/v1");
+  ws.binaryType = "arraybuffer";
 
-// ====== 위험도/태그 ======
-function riskFromChangeRate(rate){
-  // rate: signed_change_rate (예: 0.031 = +3.1%)
-  if (rate === null || rate === undefined) return {label:'-', cls:''};
-  const r = rate*100;
-  if (Math.abs(r) < 1) return {label:'1 (낮음)', cls:'low'};
-  if (Math.abs(r) < 3) return {label:'2 (보통)', cls:'mid'};
-  return {label:'3 (높음)', cls:'high'}; // 쩔다 요청에 맞춰 1~2 선호, 3은 경고
-}
-function tagsFromTicker(t){
-  const tags = [];
-  if (!t) return tags;
-  const rate = t.signed_change_rate*100;
-  const vol = t.acc_trade_price_24h;
-  if (rate >= 3) tags.push('급등 감지');
-  else if (rate >= 1) tags.push('상승');
-  else if (rate <= -2) tags.push('경고');
-  if (vol > 5_000_000_000) tags.push('거대 거래대금');
-  if (Math.abs(rate) < 0.5) tags.push('예열 구간');
-  return tags;
-}
-
-// ====== DOM 업데이트 ======
-function renderTicker(t){
-  if (!t) return;
-  const code = t.code; // KRW-BTC
-  const info = codeMap[code] || {korean_name: code.split('-')[1], english_name: ''};
-  const price = t.trade_price;
-  const rate = t.signed_change_rate; // 0.031 = +3.1%
-
-  el.selected.textContent = `${code} | ${info.korean_name}${info.english_name ? ' ('+info.english_name+')':''}`;
-
-  // 가격 + 등락률
-  const priceTxt = fmtKRW(price);
-  el.price.textContent = priceTxt;
-  el.price.classList.remove('up','down');
-  if (t.change === 'RISE') el.price.classList.add('up');
-  if (t.change === 'FALL') el.price.classList.add('down');
-
-  const pct = (rate*100).toFixed(2);
-  el.change.textContent = `${pct}%`;
-
-  // 고저/거래대금
-  el.hl.textContent = `${fmtKRW(t.high_price)} / ${fmtKRW(t.low_price)}`;
-  el.vol.textContent = `${Math.round(t.acc_trade_price_24h).toLocaleString('ko-KR')} KRW`;
-
-  // 태그/위험도
-  el.tags.innerHTML = '';
-  tagsFromTicker(t).forEach(s=>{
-    const d = document.createElement('div'); d.className = 'tag'; d.textContent = s; el.tags.appendChild(d);
-  });
-  const rk = riskFromChangeRate(rate);
-  el.risk.className = `risk ${rk.cls}`;
-  el.risk.textContent = `위험도: ${rk.label}`;
-
-  // 타점
-  const lv = calcLevels(price);
-  [el.buy1, el.buy2, el.buy3].forEach((e,i)=> e.textContent = lv.buys[i]);
-  [el.sell1, el.sell2, el.sell3].forEach((e,i)=> e.textContent = lv.sells[i]);
-  [el.stop1, el.stop2, el.stop3].forEach((e,i)=> e.textContent = lv.stops[i]);
-}
-
-// ====== WebSocket 관리 ======
-function openWS(codes){
-  if (USE_MOCK) return;      // 모의모드면 WS 미사용
-  if (USE_REST) {            // 이미 REST 모드면 그냥 REST 루프만
-    startRestLoop(codes && codes[0]);
-    return;
-  }
-
-  if (ws) try{ ws.close(); }catch(_){}
-  ws = new WebSocket('wss://api.upbit.com/websocket/v1');
-  ws.binaryType = 'arraybuffer';
-
-  ws.onopen = ()=>{
+  ws.onopen = () => {
     WS_FAILS = 0;
     clearRestLoop();
-    el.ws.textContent = '실시간 연결됨';
-    ws.send(JSON.stringify([
-      { ticket:'zzeol' },
-      { type:'ticker', codes },
-      { type:'orderbook', codes }
-    ]));
+    el.ws.textContent = "실시간 연결됨";
+    ws.send(
+      JSON.stringify([
+        { ticket: "zzeol" },
+        { type: "ticker", codes },
+        { type: "orderbook", codes },
+      ])
+    );
   };
 
-  ws.onclose = ()=>{
+  ws.onclose = () => {
     WS_FAILS++;
-    el.ws.textContent = '연결 종료 — 재시도 중...';
-    // 2번 이상 실패하면 REST 폴백
-    if (WS_FAILS >= 2){
+    el.ws.textContent = "연결 종료 — 재시도 중...";
+    if (WS_FAILS >= 2) {
       USE_REST = true;
       startRestLoop(codes && codes[0]);
       return;
     }
-    setTimeout(()=>openWS(codes), 1200);
+    setTimeout(() => openWS(codes), 1200);
   };
 
-  ws.onerror = ()=>{
+  ws.onerror = () => {
     WS_FAILS++;
-    el.ws.textContent = '연결 오류';
-    if (WS_FAILS >= 2){
+    el.ws.textContent = "연결 오류";
+    if (WS_FAILS >= 2) {
       USE_REST = true;
       startRestLoop(codes && codes[0]);
     }
   };
 
-  ws.onmessage = (ev)=>{
-    const data = new TextDecoder('utf-8').decode(ev.data);
-    try{
+  ws.onmessage = (ev) => {
+    const data = new TextDecoder("utf-8").decode(ev.data);
+    try {
       const t = JSON.parse(data);
-      if (t && t.code && t.trade_price !== undefined) {
-        renderTicker({ ...t, market: t.code });
-      } else if (t && t.code && t.orderbook_units) {
-        renderOrderbook(t);
-      }
-    }catch(_){}
+      if (t && t.code && t.trade_price !== undefined) renderTicker(t);
+      else if (t && t.code && t.orderbook_units) renderOrderbook(t);
+    } catch (_) {}
   };
 }
 
-
-// ====== KRW 마켓 로드 & 검색 ======
-async function loadMarkets(){
-  const res = await fetch('https://api.upbit.com/v1/market/all?isDetails=false');
-  const all = await res.json();
-  markets = all.filter(x=>x.market && x.market.startsWith('KRW-'));
-  codeMap = Object.fromEntries(markets.map(m=>[m.market,{korean_name:m.korean_name,english_name:m.english_name}]));
-  searchIndex = markets.map(m=>({
-    code:m.market,
-    ko:m.korean_name.toLowerCase(),
-    en:m.english_name.toLowerCase(),
-    sym:m.market.replace('KRW-','').toLowerCase()
-  }));
-  renderList(markets);
-  // 기본: KRW-BTC 선택
-  selectCode('KRW-BTC');
+// ---------- 렌더 ----------
+function renderTicker(t) {
+  document.getElementById("price").textContent = fmtKRW(t.trade_price);
+}
+function renderOrderbook(ob) {
+  // 필요 시 호가표 업데이트 코드 유지
 }
 
-function renderList(rows){
-  el.listBody.innerHTML = '';
-  rows.slice(0,300).forEach(m=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${m.market.replace('KRW-','')}</td><td>${m.korean_name}</td><td>${m.english_name}</td>`;
-    tr.style.cursor = 'pointer';
-    tr.onclick = ()=> selectCode(m.market);
-    el.listBody.appendChild(tr);
+// ---------- 선택 ----------
+function selectCode(code) {
+  if (!code) return;
+  currentCode = code;
+  if (USE_REST) return startRestLoop(code);
+  openWS([code]);
+}
+
+// ---------- 급등감지 (AI) ----------
+const priceHist = {};
+function recordHistory(tmap) {
+  const now = Date.now();
+  Object.keys(tmap).forEach((c) => {
+    const t = tmap[c];
+    if (!t) return;
+    const arr = priceHist[c] || (priceHist[c] = []);
+    arr.push({ t: now, price: t.trade_price, acc: t.acc_trade_price_24h });
+    const cutoff = now - 20 * 60 * 1000;
+    while (arr.length && arr[0].t < cutoff) arr.shift();
   });
 }
-
-function handleSearchKeyword(q){
-  const s = q.trim().toLowerCase();
-  if (!s){ renderList(markets); return; }
-  const filtered = searchIndex.filter(x=> x.ko.includes(s) || x.en.includes(s) || x.sym.includes(s));
-  const rows = filtered.map(f=> ({
-    market: f.code,
-    korean_name: codeMap[f.code]?.korean_name || f.sym,
-    english_name: codeMap[f.code]?.english_name || ''
-  }));
-  renderList(rows);
-  // 심볼 완전일치 시 자동 선택
-  const exact = filtered.find(x=> x.sym === s || x.ko === s || x.en === s);
-  if (exact) selectCode(exact.code);
+function pct(code, min) {
+  const arr = priceHist[code];
+  if (!arr || arr.length < 2) return 0;
+  const now = Date.now();
+  const tgt = now - min * 60000;
+  let base = arr[0];
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].t >= tgt) {
+      base = arr[i];
+      break;
+    }
+  }
+  const p0 = base.price || 0,
+    p1 = arr[arr.length - 1].price || 0;
+  return p0 ? ((p1 / p0 - 1) * 100) : 0;
 }
-
-// ====== 초기화 ======
-window.addEventListener('DOMContentLoaded', ()=>{
-  loadMarkets().catch(()=>{ el.ws.textContent = '마켓 로드 실패'; });
-  const input = document.getElementById('search');
-  input.addEventListener('input', (e)=> handleSearchKeyword(e.target.value));
-  document.getElementById('btn-clear').addEventListener('click', ()=>{ input.value=''; handleSearchKeyword(''); });
-});
+function inflow(code, min = 3) {
+  const arr = priceHist[code];
+  if (!arr || arr.length < 2) return 0;
+  const now = Date.now();
+  const tgt = now - min * 60000;
+  let base = arr[0];
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].t >= tgt) {
+      base = arr[i];
+      break;
+    }
+  }
+  const last = arr[arr.length - 1];
+  const dv = last.acc - base.acc;
+  const dt = Math.max(0.1, (last.t - base.t) / 60000);
+  return dv / dt;
+}
+function pumpScore(p1, p3, p5, inf) {
+  let s = 0;
+  s += Math.max(0, p1) * 2.2;
+  s += Math.max(0, p3) * 1.4;
+  s += Math.max(0, p5) * 1.0;
+  s += Math.min(5, (inf / 1_000_000_000) * 1.8);
+  if (p1 > 7 && p3 < 9) s -= 2;
+  return s;
+}
+function pumpLevel(s, p5) {
+  if (s >= 18 || p5 >= 10) return { label: "초급등", cls: "lvl-hyper" };
+  if (s >= 9 || p5 >= 5) return { label: "급등", cls: "lvl-pump" };
+  return { label: "예열", cls: "lvl-warm" };
+}
+function renderPump(rows) {
+  const tb = document.getElementById("pump-body");
+  if (!tb) return;
+  tb.innerHTML = "";
+  if (!rows.length)
+    return (tb.innerHTML = `<tr><td colspan="9">감지 없음</td></tr>`);
+  rows.forEach((r, i) => {
+    const info = codeMap[r.code] || { korean_name: r.code, english_name: "" };
+    const lv = pumpLevel(r.score, r.pc5);
+    tb.innerHTML += `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${r.code}</td>
+        <td>${info.korean_name}</td>
+        <td>${fmtKRW(r.price)}</td>
+        <td class="${r.pc1 >= 0 ? "up" : "down"}">${r.pc1.toFixed(2)}%</td>
+        <td class="${r.pc3 >= 0 ? "up" : "down"}">${r.pc3.toFixed(2)}%</td>
+        <td class="${r.pc5 >= 0 ? "up" : "down"}">${r.pc5.toFixed(2)}%</td>
+        <td>${Math.round(r.inflow).toLocaleString()} KRW/분</td>
+        <td><span class="lvl-badge ${lv.cls}">${lv.label}</span></td>
+      </tr>`;
+  });
+}
+function runPump(tmap) {
+  recordHistory(tmap);
+  const out = [];
+  Object.keys(tmap).forEach((code) => {
+    const p1 = pct(code, 1);
+    const p3 = pct(code, 3);
+    const p5 = pct(code, 5);
+    const inf = inflow(code, 3);
+    const pass = ((p3 >= 3 && p1 >= 1.5) || p5 >= 5) && inf > 0;
+    if (!pass) return;
+    const s = pumpScore(p1, p3, p5, inf);
+    out.push({ code, price: tmap[code].trade_price, pc1: p1, pc3: p3, pc5: p5, inflow: inf, score: s });
+  });
+  out.sort((a, b) => b.score - a.score);
+  renderPump(out.slice(0, 20));
+}
