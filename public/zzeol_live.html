@@ -2,85 +2,268 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 🔥 풀세트 9.2 Live</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>쩔어지갑 Live 실시간 코인현황</title>
   <style>
-    body{background:#000;color:#eee;font-family:'Pretendard','Malgun Gothic',sans-serif;text-align:center}
-    h1{color:#0f0;margin-top:40px}
-    table{width:90%;margin:30px auto;border-collapse:collapse}
-    th,td{border:1px solid #222;padding:8px}
-    th{background:#111;color:#0f0}
-    td{background:#0b0b0b}
-    input{padding:6px 10px;border:1px solid #333;background:#111;color:#fff;border-radius:6px}
-    .risk1{color:#0f0}.risk2{color:#8f8}.risk3{color:#ff0}.risk4{color:#f80}.risk5{color:#f00}
+    :root { --bg:#0c0c0c; --panel:#121212; --txt:#e7fce7; --muted:#9ad39a; --accent:#27e627; --danger:#ff4d4d; --warn:#f4d35e; --line:#223222; }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 Pretendard,system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Apple Color Emoji,Segoe UI Emoji}
+    .wrap{max-width:1100px;margin:28px auto;padding:0 14px}
+    h1{font-size:28px;margin:0 0 10px;font-weight:800;color:#79ff79; text-align:center}
+    .subtitle{color:var(--muted); text-align:center; margin-bottom:18px}
+    .bar{display:flex;gap:10px; justify-content:center; margin:12px 0 18px}
+    input,button{border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:10px 12px}
+    input{min-width:280px}
+    button{cursor:pointer}
+    table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);overflow:hidden;border-radius:14px}
+    th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+    thead th{position:sticky;top:0;background:#111c11;z-index:1}
+    tr:last-child td{border-bottom:none}
+    .up{color:#72ff72;font-weight:700}
+    .down{color:#ff6a6a;font-weight:700}
+    .chip{padding:4px 8px;border-radius:999px;font-weight:700;font-size:12px;display:inline-block}
+    .risk1{background:#163a16;color:#9aff9a;border:1px solid #245b24}
+    .risk2{background:#273a16;color:#e4ff9a;border:1px solid #556b24}
+    .risk3{background:#3a3516;color:#ffd59a;border:1px solid #6b5b24}
+    .risk4{background:#3a2816;color:#ffc09a;border:1px solid #6b3f24}
+    .risk5{background:#3a1616;color:#ff9a9a;border:1px solid #6b2424}
+    .flash{animation:flash 0.3s}
+    @keyframes flash{from{background:rgba(39,230,39,.25)}to{background:transparent}}
+    .muted{color:#a6c9a6}
+    .note{font-size:12px;color:#96c696;margin-top:10px;text-align:center}
+    .foot{margin-top:14px;text-align:center}
+    a.btn{display:inline-block;padding:10px 14px;background:#0d220d;border:1px solid var(--line);border-radius:10px;color:#9aff9a;text-decoration:none}
+    .scroll{overflow:auto;max-height:70vh}
   </style>
 </head>
 <body>
-  <h1>🚀 쩔어지갑 Live 실시간 코인현황</h1>
+  <div class="wrap">
+    <h1>🚀 쩔어지갑 <span class="muted">Live</span> 실시간 코인현황</h1>
+    <div class="subtitle">이 화면은 Vercel ↔ GitHub ↔ Upbit WebSocket 연동으로 실시간 갱신됩니다.</div>
 
-  <div>
-    <input type="text" id="search" placeholder="코인명(한글/영문)" onkeyup="filterTable()" />
+    <div class="bar">
+      <input id="search" placeholder="코인명(한글/영문)" />
+      <button id="refresh">🔄 수동 새로고침</button>
+    </div>
+
+    <div class="scroll">
+      <table id="board">
+        <thead>
+          <tr>
+            <th>코인명</th>
+            <th>심볼</th>
+            <th>현재가</th>
+            <th>매수</th>
+            <th>손절</th>
+            <th>TP1</th><th>TP2</th><th>TP3</th>
+            <th>상태</th>
+            <th>급등락</th>
+            <th>위험도</th>
+            <th>쩔어한마디</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <!-- 기본 5종 (필요시 아래 목록/JS의 MARKETS 에만 추가하면 자동 반영) -->
+          <tr data-row data-coin="XRP">
+            <td>리플</td><td>XRP</td>
+            <td data-col="price">-</td>
+            <td data-col="bid">-</td>
+            <td data-col="stop">-</td>
+            <td data-col="tp1">-</td><td data-col="tp2">-</td><td data-col="tp3">-</td>
+            <td data-col="status" class="muted">-</td>
+            <td data-col="spike" class="muted">-</td>
+            <td data-col="risk"><span class="chip risk3">Risk 3</span></td>
+            <td data-col="say" class="muted">-</td>
+          </tr>
+          <tr data-row data-coin="DOGE">
+            <td>도지코인</td><td>DOGE</td>
+            <td data-col="price">-</td><td data-col="bid">-</td><td data-col="stop">-</td>
+            <td data-col="tp1">-</td><td data-col="tp2">-</td><td data-col="tp3">-</td>
+            <td data-col="status" class="muted">-</td><td data-col="spike" class="muted">-</td>
+            <td data-col="risk"><span class="chip risk3">Risk 3</span></td>
+            <td data-col="say" class="muted">-</td>
+          </tr>
+          <tr data-row data-coin="BTC">
+            <td>비트코인</td><td>BTC</td>
+            <td data-col="price">-</td><td data-col="bid">-</td><td data-col="stop">-</td>
+            <td data-col="tp1">-</td><td data-col="tp2">-</td><td data-col="tp3">-</td>
+            <td data-col="status" class="muted">-</td><td data-col="spike" class="muted">-</td>
+            <td data-col="risk"><span class="chip risk3">Risk 3</span></td>
+            <td data-col="say" class="muted">-</td>
+          </tr>
+          <tr data-row data-coin="ETH">
+            <td>이더리움</td><td>ETH</td>
+            <td data-col="price">-</td><td data-col="bid">-</td><td data-col="stop">-</td>
+            <td data-col="tp1">-</td><td data-col="tp2">-</td><td data-col="tp3">-</td>
+            <td data-col="status" class="muted">-</td><td data-col="spike" class="muted">-</td>
+            <td data-col="risk"><span class="chip risk3">Risk 3</span></td>
+            <td data-col="say" class="muted">-</td>
+          </tr>
+          <tr data-row data-coin="CHZ">
+            <td>칠리즈</td><td>CHZ</td>
+            <td data-col="price">-</td><td data-col="bid">-</td><td data-col="stop">-</td>
+            <td data-col="tp1">-</td><td data-col="tp2">-</td><td data-col="tp3">-</td>
+            <td data-col="status" class="muted">-</td><td data-col="spike" class="muted">-</td>
+            <td data-col="risk"><span class="chip risk3">Risk 3</span></td>
+            <td data-col="say" class="muted">-</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">※ 기본값은 자리표시자입니다. 실시간 수신 즉시 값이 채워지고, 칩/상태/한마디도 자동으로 바뀝니다.</div>
+
+    <div class="foot">
+      <a href="/test_vercel.html" class="btn">테스트 페이지 열기</a>
+    </div>
   </div>
 
-  <table id="coinTable">
-    <thead>
-      <tr>
-        <th>코인명</th>
-        <th>심볼</th>
-        <th>현재가</th>
-        <th>매수</th>
-        <th>손절</th>
-        <th>TP1</th>
-        <th>TP2</th>
-        <th>TP3</th>
-        <th>상태</th>
-        <th>급등락</th>
-        <th>위험도</th>
-        <th>쩔어 한마디</th>
-      </tr>
-    </thead>
-    <tbody id="coinBody"></tbody>
-  </table>
-
   <script>
-    const data = [
-      {name:'리플',symbol:'XRP',price:630,buy:620,cut:610,tp1:650,tp2:670,tp3:690,state:'중립',move:'급등',risk:3,comment:'관망'},
-      {name:'도지코인',symbol:'DOGE',price:210,buy:190,cut:180,tp1:220,tp2:230,tp3:240,state:'상승',move:'급등',risk:2,comment:'단타매수'},
-      {name:'비트코인',symbol:'BTC',price:116500,buy:115000,cut:113000,tp1:118000,tp2:120000,tp3:122000,state:'불장',move:'급등',risk:1,comment:'강세 유지'},
-      {name:'이더리움',symbol:'ETH',price:3800,buy:3700,cut:3600,tp1:3950,tp2:4100,tp3:4300,state:'하락',move:'급락',risk:4,comment:'관망 필요'},
-      {name:'칠리즈',symbol:'CHZ',price:64,buy:62,cut:60,tp1:67,tp2:70,tp3:74,state:'중립',move:'급등',risk:2,comment:'매집 중'}
+    // === 1) 설정 =========================
+    const MARKETS = [
+      { market: 'KRW-XRP', sym: 'XRP' },
+      { market: 'KRW-DOGE', sym: 'DOGE' },
+      { market: 'KRW-BTC', sym: 'BTC' },
+      { market: 'KRW-ETH', sym: 'ETH' },
+      { market: 'KRW-CHZ', sym: 'CHZ' },
+      // 필요하면 여기에 계속 추가
     ];
+    const PRICE_MEMO = {};   // 최근 n개 가격 저장(변동성/급등락 감지용)
+    const MEMO_LEN   = 30;   // 메시지 버퍼 길이
+    const fmt = new Intl.NumberFormat('ko-KR');
 
-    function render() {
-      const body = document.getElementById('coinBody');
-      body.innerHTML = data.map(c => `
-        <tr>
-          <td>${c.name}</td>
-          <td>${c.symbol}</td>
-          <td>${c.price.toLocaleString()}원</td>
-          <td>${c.buy.toLocaleString()}원</td>
-          <td>${c.cut.toLocaleString()}원</td>
-          <td>${c.tp1.toLocaleString()}</td>
-          <td>${c.tp2.toLocaleString()}</td>
-          <td>${c.tp3.toLocaleString()}</td>
-          <td>${c.state}</td>
-          <td>${c.move}</td>
-          <td class="risk${c.risk}">Risk ${c.risk}</td>
-          <td>${c.comment}</td>
-        </tr>
-      `).join('');
+    // === 2) 도우미 =======================
+    function qCoin(sym, field){
+      return document.querySelector(`[data-row][data-coin="${sym}"] [data-col="${field}"]`);
+    }
+    function flash(el){
+      if(!el) return; el.classList.add('flash'); setTimeout(()=> el.classList.remove('flash'), 250);
+    }
+    function setText(sym, field, val, isKRW=false){
+      const td = qCoin(sym, field);
+      if(!td) return;
+      td.textContent = isKRW && typeof val==='number' ? fmt.format(val)+'원' : val;
+      flash(td);
+    }
+    function setRisk(sym, score){ // 1(낮음)~5(높음)
+      const td = qCoin(sym,'risk'); if(!td) return;
+      const span = td.querySelector('.chip') || document.createElement('span');
+      span.className = 'chip '+('risk'+score);
+      span.textContent = 'Risk '+score;
+      td.innerHTML = ''; td.appendChild(span); flash(td);
+    }
+    function setSay(sym, text){
+      setText(sym,'say', text);
     }
 
-    function filterTable(){
-      const keyword=document.getElementById('search').value.toLowerCase();
-      const rows=document.querySelectorAll('#coinBody tr');
-      rows.forEach(r=>{
-        const text=r.textContent.toLowerCase();
-        r.style.display=text.includes(keyword)?'':'none';
+    // 간단 상태/위험도 로직
+    function analyze(sym){
+      const arr = PRICE_MEMO[sym]||[];
+      if(arr.length<5) return { status:'대기', risk:3, spike:'-' };
+
+      const last = arr[arr.length-1];
+      const prev = arr[arr.length-2]||last;
+      const m5   = arr[Math.max(0, arr.length-6)]; // 대략 최근 5틱 이전
+      const ch1  = (last-prev)/prev*100;
+      const ch5  = (last-m5)/m5*100;
+
+      let status = '보합';
+      if (ch1>0) status='상승';
+      if (ch1<0) status='하락';
+
+      let riskScore = 3;
+      const vol = Math.abs(ch5);
+      if (vol < 0.3) riskScore = 1;
+      else if (vol < 0.8) riskScore = 2;
+      else if (vol < 1.5) riskScore = 3;
+      else if (vol < 3.0) riskScore = 4;
+      else riskScore = 5;
+
+      let spike = '-';
+      if (Math.abs(ch1) > 0.6) spike = ch1>0 ? '급등' : '급락';
+
+      return { status, risk:riskScore, spike };
+    }
+
+    function sayFor(sym, status, risk){
+      if (status==='상승' && risk<=2) return '관망 → 저점 모니터';
+      if (status==='상승' && risk>=4) return '단타 매수 주의';
+      if (status==='하락' && risk>=4) return '관망 필요';
+      if (risk===1) return '안정적';
+      if (risk===5) return '변동성 큼';
+      return '보통';
+    }
+
+    // === 3) WebSocket ====================
+    let ws, retry=0;
+    function connectWS(){
+      ws = new WebSocket('wss://api.upbit.com/websocket/v1');
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        retry=0;
+        const ticket = [{ticket:'zzeol_live'}];
+        const req    = [{type:'ticker', codes:MARKETS.map(m=>m.market), isOnlyRealtime:true}];
+        ws.send(new TextEncoder().encode(JSON.stringify(ticket)));
+        ws.send(new TextEncoder().encode(JSON.stringify(req)));
+      };
+
+      ws.onmessage = (e) => {
+        const text = new TextDecoder('utf-8').decode(e.data);
+        const msg  = JSON.parse(text);
+        const map  = MARKETS.find(m=>m.market===msg.market);
+        if(!map) return;
+
+        const sym   = map.sym;
+        const price = msg.tp ?? msg.trade_price;
+        const bid   = msg.bp ?? msg.bid_price ?? msg.best_bid;
+        const chg   = msg.ch ?? msg.change; // RISE/FALL/EVEN
+
+        if(!PRICE_MEMO[sym]) PRICE_MEMO[sym]=[];
+        PRICE_MEMO[sym].push(price);
+        if(PRICE_MEMO[sym].length>MEMO_LEN) PRICE_MEMO[sym].shift();
+
+        // 표 갱신
+        setText(sym,'price', price, true);
+        if(bid) setText(sym,'bid', bid, true);
+
+        // 간단 손절/TP 자동 제안 (원래 값 유지 원하면 주석)
+        const stop = Math.round(price*0.97);
+        const tp1  = Math.round(price*1.05);
+        const tp2  = Math.round(price*1.08);
+        const tp3  = Math.round(price*1.12);
+        setText(sym,'stop', stop, true);
+        setText(sym,'tp1', tp1);
+        setText(sym,'tp2', tp2);
+        setText(sym,'tp3', tp3);
+
+        // 상태/위험도/급등락/한마디
+        const {status, risk, spike} = analyze(sym);
+        setText(sym,'status', status);
+        setText(sym,'spike',  spike);
+        setRisk(sym, risk);
+        setSay(sym, sayFor(sym, status, risk));
+      };
+
+      ws.onerror = () => { try{ws.close()}catch{} };
+      ws.onclose = () => {
+        if (++retry <= 10) setTimeout(connectWS, Math.min(30000, 500*Math.pow(2,retry)));
+      };
+    }
+    connectWS();
+
+    // === 4) 검색/수동 새로고침 ===========
+    const search = document.getElementById('search');
+    search.addEventListener('input', () => {
+      const v = search.value.trim().toLowerCase();
+      document.querySelectorAll('[data-row]').forEach(tr=>{
+        const txt = tr.innerText.toLowerCase();
+        tr.style.display = txt.includes(v) ? '' : 'none';
       });
-    }
-
-    render();
+    });
+    document.getElementById('refresh').addEventListener('click', () => {
+      location.reload();
+    });
   </script>
 </body>
 </html>
