@@ -1,13 +1,6 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
-  "redirects": [
-    {
-      "source": "/zzeol_live",
-      "destination": "/zzeol_live.html",
-      "permanent": false
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)\\.(js|css|json)",
