@@ -1,23 +1,86 @@
+<!-- public/zzeol_live.html -->
 <!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>쩔어지갑 Live</title>
+  <title>쩔다지갑 Live</title>
+
+  <!-- 기존 CSS 유지: 파일명이 다르면 맞게 바꿔주세요 -->
+  <link rel="stylesheet" href="/css/reset.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+
   <style>
-    html,body{height:100%;margin:0;background:#000;color:#0f0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,sans-serif}
-    .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
-    h1{font-size:44px;margin:0 0 12px}
-    p{font-size:20px;margin:0 0 24px;color:#9f9}
-    .btn{display:inline-block;padding:12px 18px;border:1px solid #0f0;border-radius:8px;color:#0f0;text-decoration:none}
-    .btn:hover{background:#0f0;color:#000}
+    body{background:#000;color:#e5ffe5;font-family:system-ui,apple sd gothic neo,malgun gothic,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px}
+    h1{font-size:28px;margin:0 0 8px}
+    .muted{color:#9be29b}
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(12,1fr)}
+    .card{grid-column:span 12;background:#0b140b;border:1px solid #144d14;border-radius:12px;padding:16px}
+    @media(min-width:960px){
+      .card.span6{grid-column:span 6}
+      .card.span4{grid-column:span 4}
+    }
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .btn{background:#0b2; color:#fff; border:0; border-radius:8px; padding:8px 12px; cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:default}
+    .chip{background:#132; color:#6f9; padding:4px 8px; border-radius:999px; font-size:12px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border-bottom:1px solid #123;padding:8px;text-align:left}
+    .pos{color:#7df77d}.neg{color:#ff8686}
   </style>
 </head>
 <body>
-  <main class="wrap">
-    <h1>🚀 자동배포 성공! – 쩔다지갑 Live</h1>
-    <p>이 화면이 보이면 <strong>Vercel ↔ GitHub</strong> 연결이 정상입니다.</p>
-    <a class="btn" href="/test_vercel.html">테스트 페이지 열기</a>
-  </main>
+  <div class="wrap">
+    <h1>🚀 자동배포 통합 – <span class="muted">쩔다지갑 Live</span></h1>
+    <div class="row" style="margin-bottom:12px">
+      <button id="btn-refresh" class="btn">전체 새로고침</button>
+      <span id="last-updated" class="chip">업데이트 대기…</span>
+      <span class="chip">Vercel ↔ GitHub 자동배포</span>
+    </div>
+
+    <div class="grid">
+      <!-- 예열 코인 -->
+      <section class="card span6">
+        <div class="row">
+          <h2 style="margin:0">🔥 예열 코인</h2>
+          <span id="warm-count" class="chip">0 종목</span>
+        </div>
+        <div id="warmup-box"></div>
+      </section>
+
+      <!-- 급등 코인 -->
+      <section class="card span6">
+        <div class="row">
+          <h2 style="margin:0">⚡ 급등 코인</h2>
+          <span id="surge-count" class="chip">0 종목</span>
+        </div>
+        <div id="surge-box"></div>
+      </section>
+
+      <!-- 매수/매도 타점 -->
+      <section class="card span12">
+        <div class="row">
+          <h2 style="margin:0">🎯 매수/매도 타점</h2>
+          <span id="signal-count" class="chip">0 신호</span>
+        </div>
+        <div id="signal-box"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- 기존 전역 유틸/데이터 로더가 있으면 먼저 로드 -->
+  <!-- 예: /js/utils.js, /js/api.js 등이 있다면 아래처럼 추가 -->
+  <!-- <script src="/js/utils.js"></script>
+  <script src="/js/api.js"></script> -->
+
+  <!-- 기존 메인 로직(JS) 파일들 유지: 파일명/경로 맞게 바꿔주세요 -->
+  <!-- 아래의 함수 이름들은 기존 코드에 맞춰 entry에서 호출합니다. -->
+  <script src="/js/warmup.js"></script>   <!-- window.renderWarmup(data) -->
+  <script src="/js/surge.js"></script>    <!-- window.renderSurge(data) -->
+  <script src="/js/signals.js"></script>  <!-- window.renderSignals(data) -->
+
+  <!-- 새 엔트리(접착) 스크립트 -->
+  <script src="/js/entry.zzeol_live.js"></script>
 </body>
 </html>
