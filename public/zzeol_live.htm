@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>쩔어지갑 v9.2 — 실시간 업비트 풀세트</title>
+  <link rel="stylesheet" href="./css/zzeol.css"/>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">쩔어지갑 <span class="ver">v9.2</span></div>
+    <div id="ws-status" class="status">연결중...</div>
+  </header>
+
+  <main class="container">
+    <!-- 검색 + 자동완성 + 초기화 -->
+    <section class="search-box">
+      <div class="search-wrap">
+        <input id="search" placeholder="코인 검색 (예: 시바이누, shib, BTC, 비트코인)"/>
+        <ul id="auto-list" class="auto-list"></ul>
+      </div>
+      <button id="btn-clear">초기화</button>
+      <div class="hint">한글/영문/심볼 모두 검색 가능 · ↑/↓ 이동, Enter 선택</div>
+    </section>
+
+    <!-- 마켓 전환 -->
+    <section class="mkt-toggle">
+      <label>마켓:</label>
+      <select id="base-market">
+        <option value="KRW" selected>KRW</option>
+        <option value="USDT">USDT</option>
+        <option value="BTC">BTC</option>
+      </select>
+      <span class="hint">업비트 기준 마켓 필터</span>
+    </section>
+
+    <!-- 상단 카드 + 쩔어 한마디 -->
+    <section class="info-cards">
+      <div class="card card-one">
+        <div class="card-title">쩔어 한마디</div>
+        <div id="one-liner">시장을 불러오는 중...</div>
+      </div>
+      <div class="card">
+        <div class="card-title">선택 코인</div>
+        <div id="selected-coin">-</div>
+      </div>
+      <div class="card">
+        <div class="card-title">현재가</div>
+        <div id="price">-</div>
+      </div>
+      <div class="card">
+        <div class="card-title">등락률 (24h)</div>
+        <div id="change">-</div>
+      </div>
+      <div class="card">
+        <div class="card-title">고가 / 저가 (24h)</div>
+        <div id="hl">-</div>
+      </div>
+      <div class="card">
+        <div class="card-title">거래대금(24h)</div>
+        <div id="vol">-</div>
+      </div>
+      <div class="card">
+        <div class="card-title">상태</div>
+        <div id="tags" class="tags"></div>
+      </div>
+    </section>
+
+    <!-- 타점 -->
+    <section class="levels">
+      <h2>매수 · 매도 · 손절 타점</h2>
+      <div id="risk" class="risk">위험도: -</div>
+      <table class="table">
+        <thead><tr><th>구분</th><th>1차</th><th>2차</th><th>3차</th></tr></thead>
+        <tbody>
+          <tr><td>매수</td><td id="buy1">-</td><td id="buy2">-</td><td id="buy3">-</td></tr>
+          <tr><td>매도</td><td id="sell1">-</td><td id="sell2">-</td><td id="sell3">-</td></tr>
+          <tr><td>손절</td><td id="stop1">-</td><td id="stop2">-</td><td id="stop3">-</td></tr>
+        </tbody>
+      </table>
+      <div class="hint">ATR(5분·14) 기반 동적 계산 + 업비트 호가 근사 반영.</div>
+    </section>
+
+    <!-- 호가창 -->
+    <section class="orderbook">
+      <h2>호가창 (실시간)</h2>
+      <div class="ob-grid">
+        <div class="ob-side">
+          <div class="ob-title">매도호가 (ASK)</div>
+          <table class="table" id="ask-table">
+            <thead><tr><th>가격</th><th>수량</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="ob-side">
+          <div class="ob-title">매수호가 (BID)</div>
+          <table class="table" id="bid-table">
+            <thead><tr><th>가격</th><th>수량</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 급등 TOP10 -->
+    <section id="top-gainers">
+      <h2>급등 코인 (24h, TOP 10)</h2>
+      <table class="table">
+        <thead><tr><th>#</th><th>심볼</th><th>한글명</th><th>현재가</th><th>등락률</th><th>거래대금(24h)</th></tr></thead>
+        <tbody id="gainers-body"><tr><td colspan="6">불러오는 중...</td></tr></tbody>
+      </table>
+    </section>
+
+    <!-- 목록 -->
+    <section>
+      <h2>코인 목록</h2>
+      <table class="table">
+        <thead><tr><th>심볼</th><th>코인명(한글)</th><th>영문</th><th>현재가</th><th>등락률(24h)</th><th>거래대금(24h)</th></tr></thead>
+        <tbody id="list-body"></tbody>
+      </table>
+      <div class="hint">목록은 거래대금(24h) 내림차순 정렬 · 5초마다 갱신.</div>
+    </section>
+  </main>
+
+  <footer class="footer">© 2025 쩔어지갑 — Upbit Realtime</footer>
+  <script src="./js/zzeol_app.js"></script>
+</body>
+</html>
