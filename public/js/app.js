@@ -180,3 +180,128 @@ function applyPolling() {
   refreshOnce();
   applyPolling();
 })();
+/***** 실시간 급상승 감지 (AI) *****
+ * - refreshListPrices()에서 수집한 tmap으로 기록/계산/렌더
+ * - 1/3/5분 수익률 + 거래대금 유입률 기반 점수화
+ ******************************************/
+
+// 가격/거래대금 히스토리 (최대 20분 유지)
+const priceHist = {}; // { code: [{t, price, acc}, ...] }
+
+function recordHistoryFromTickerMap(tmap){
+  const now = Date.now();
+  Object.keys(tmap).forEach(code=>{
+    const t = tmap[code];
+    if(!t) return;
+    const arr = priceHist[code] || (priceHist[code] = []);
+    arr.push({ t: now, price: t.trade_price, acc: t.acc_trade_price_24h||0 });
+    // 20분 초과 데이터 제거
+    const cutoff = now - 20*60*1000;
+    while(arr.length && arr[0].t < cutoff) arr.shift();
+  });
+}
+
+// 분 단위 변화율 계산 (없으면 0)
+function percentChange(code, minutes){
+  const arr = priceHist[code]; if(!arr || arr.length < 2) return 0;
+  const now = Date.now(); const target = now - minutes*60*1000;
+  // target 시점과 가장 가까운 과거 포인트
+  let base = arr[0];
+  for(let i=0;i<arr.length;i++){ if(arr[i].t >= target){ base = arr[i]; break; } }
+  const last = arr[arr.length-1];
+  const p0 = base.price || 0, p1 = last.price || 0;
+  if(!p0 || !p1) return 0;
+  return (p1/p0 - 1) * 100;
+}
+
+// 거래대금 유입률(분당 KRW) 근사치
+function inflowRate(code, minutes=3){
+  const arr = priceHist[code]; if(!arr || arr.length < 2) return 0;
+  const now = Date.now(); const target = now - minutes*60*1000;
+  let base = arr[0]; for(let i=0;i<arr.length;i++){ if(arr[i].t >= target){ base = arr[i]; break; } }
+  const last = arr[arr.length-1];
+  const dv = (last.acc - base.acc); // 24h 누적의 증가분
+  const dtMin = Math.max(0.1, (last.t - base.t)/60000);
+  return dv / dtMin; // KRW per minute
+}
+
+// 간단한 AI 점수(휴리스틱)
+function pumpScore(pc1, pc3, pc5, inflow){
+  let s = 0;
+  // 속도 가점
+  s += Math.max(0, pc1) * 2.2;
+  s += Math.max(0, pc3) * 1.4;
+  s += Math.max(0, pc5) * 1.0;
+  // 거래대금 유입 가점 (규모 정규화)
+  const inflowBn = inflow / 1_000_000_000; // 억/십억 단위 보정
+  s += Math.min(5, inflowBn * 1.8);
+  // 과도 급등 페널티(휘발성)
+  if (pc1 > 7 && pc3 < 9) s -= 2.0;
+  return s;
+}
+
+function pumpLevel(score, pc5){
+  if (score >= 18 || pc5 >= 10) return {label:'초급등', cls:'lvl-hyper'};
+  if (score >= 9  || pc5 >= 5 ) return {label:'급등',   cls:'lvl-pump'};
+  return {label:'예열', cls:'lvl-warm'};
+}
+
+// 렌더
+function renderPumpTable(rows){
+  const tbody = document.getElementById('pump-body'); if(!tbody) return;
+  if (!rows.length){ tbody.innerHTML = `<tr><td colspan="9">감지 없음</td></tr>`; return; }
+  tbody.innerHTML = '';
+  rows.forEach((r,idx)=>{
+    const info = codeMap[r.code] || {korean_name:r.code.split('-')[1], english_name:''};
+    const lv = pumpLevel(r.score, r.pc5);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${idx+1}</td>
+      <td>${r.code.replace(baseMarket+'-','')}</td>
+      <td>${info.korean_name}</td>
+      <td>${fmtKRW(r.price)}</td>
+      <td class="${r.pc1>=0?'up':'down'}">${r.pc1.toFixed(2)}%</td>
+      <td class="${r.pc3>=0?'up':'down'}">${r.pc3.toFixed(2)}%</td>
+      <td class="${r.pc5>=0?'up':'down'}">${r.pc5.toFixed(2)}%</td>
+      <td>${Math.round(r.inflow).toLocaleString('ko-KR')} KRW/분</td>
+      <td><span class="lvl-badge ${lv.cls}">${lv.label}</span></td>
+    `;
+    tr.style.cursor='pointer';
+    tr.onclick = ()=> selectCode(r.code);
+    tbody.appendChild(tr);
+  });
+}
+
+// 메인 스캐너 (5초마다 호출)
+function runPumpScanner(tmap){
+  // 1) 히스토리 기록
+  recordHistoryFromTickerMap(tmap);
+
+  // 2) 후보 계산
+  const now = Date.now();
+  const out = [];
+  Object.keys(tmap).forEach(code=>{
+    // 최신 지표
+    const price = tmap[code].trade_price;
+    const pc1 = percentChange(code, 1);
+    const pc3 = percentChange(code, 3);
+    const pc5 = percentChange(code, 5);
+    const inflow = inflowRate(code, 3);
+
+    // 3) 필터: (3분≥3% & 1분≥1.5%) 또는 5분≥5%, + 거래대금 유입 양수
+    const pass = ((pc3>=3 && pc1>=1.5) || pc5>=5) && inflow > 0;
+    if (!pass) return;
+
+    const score = pumpScore(pc1, pc3, pc5, inflow);
+    out.push({ code, price, pc1, pc3, pc5, inflow, score });
+  });
+
+  // 4) 정렬 및 상위 노출
+  out.sort((a,b)=>{
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.pc3   !== a.pc3  ) return b.pc3   - a.pc3;
+    return b.inflow - a.inflow;
+  });
+
+  renderPumpTable(out.slice(0, 20));
+}
