@@ -1,4 +1,66 @@
-// ====================================================
+// ===== 업비트 실시간 WebSocket + REST 자동 복원 =====
+const UPBIT_WS_URL = "wss://api.upbit.com/websocket/v1";
+const UPBIT_REST_URL = "https://api.upbit.com/v1/ticker?markets=";
+let ws;
+
+// 실시간 연결 함수
+function connectWS() {
+  try {
+    ws = new WebSocket(UPBIT_WS_URL);
+    ws.onopen = () => {
+      console.log("✅ 업비트 실시간 연결 성공");
+      ws.send(JSON.stringify([{ ticket: "zzeolwallet" }, { type: "ticker", codes: ["KRW-BTC", "KRW-ETH", "KRW-SHIB"] }]));
+      document.getElementById("ws-status").textContent = "연결됨 (Upbit WS)";
+    };
+    ws.onmessage = (event) => {
+      const data = JSON.parse(new TextDecoder().decode(event.data));
+      updateTicker(data);
+    };
+    ws.onerror = (err) => {
+      console.warn("⚠️ WebSocket 오류", err);
+      retryWS();
+    };
+    ws.onclose = () => {
+      console.warn("⛔ WebSocket 닫힘 - 재연결 중...");
+      retryWS();
+    };
+  } catch (err) {
+    console.error("WebSocket 연결 실패:", err);
+    retryWS();
+  }
+}
+
+// 실패 시 재연결
+function retryWS() {
+  document.getElementById("ws-status").textContent = "재연결 중...";
+  setTimeout(connectWS, 3000);
+}
+
+// REST 백업 (실시간 실패 시)
+async function loadRestData(market = "KRW-BTC") {
+  try {
+    const res = await fetch(UPBIT_REST_URL + market);
+    const data = await res.json();
+    updateTicker(data[0]);
+  } catch (err) {
+    console.error("REST 실패:", err);
+  }
+}
+
+// 실시간 데이터 반영
+function updateTicker(data) {
+  const price = data.trade_price || data.tp || 0;
+  const changeRate = (data.signed_change_rate * 100).toFixed(2) + "%";
+  document.getElementById("price").textContent = price.toLocaleString("ko-KR") + " KRW";
+  document.getElementById("change").textContent = changeRate;
+  if (data.code) document.getElementById("selected-coin").textContent = data.code;
+}
+
+// 시작 시 자동 실행
+connectWS();
+loadRestData();
+
+/ ====================================================
 // zzeol_app.js — Upbit KRW 실시간(REST 강제) + 급등감지(AI) + 자동완성 + 타점/호가
 // 연결 막히면 자동 모의데이터 전환(대체모드), 느림 개선(1~3초 폴링)
 // ====================================================
