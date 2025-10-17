@@ -4,6 +4,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>쩔어지갑 v9.2 — Upbit KRW 실시간</title>
+  <!-- 404 방지용 파비콘(데이터URL) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%2315c66a'/%3E%3Ctext x='50' y='62' font-size='62' text-anchor='middle' fill='white'%3E₩%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="./css/zzeol.css"/>
 </head>
 <body>
@@ -13,10 +15,10 @@
   </header>
 
   <main class="container">
-    <!-- 검색 + 자동완성 + 초기화 -->
+    <!-- 검색 + 자동완성 -->
     <section class="search-box">
       <div class="search-wrap">
-        <input id="search" placeholder="코인 검색 (예: 시바이누, shib, BTC, 비트코인)"/>
+        <input id="search" placeholder="코인 검색 (예: 비트코인, shib, XRP)"/>
         <ul id="auto-list" class="auto-list"></ul>
       </div>
       <button id="btn-clear">초기화</button>
@@ -68,7 +70,7 @@
 
     <!-- 타점 -->
     <section class="levels">
-      <h2>매수 · 매도 · 손절 타점</h2>
+      <h2>매수 · 매도 · 손절 타점 (업비트 호가 반영)</h2>
       <div id="risk" class="risk">위험도: -</div>
       <table class="table">
         <thead><tr><th>구분</th><th>1차</th><th>2차</th><th>3차</th></tr></thead>
@@ -78,7 +80,7 @@
           <tr><td>손절</td><td id="stop1">-</td><td id="stop2">-</td><td id="stop3">-</td></tr>
         </tbody>
       </table>
-      <div class="hint">ATR(5분·14) 기반 동적 계산 + 업비트 호가 근사 반영.</div>
+      <div class="hint">ATR(5분·14) 기반 동적 계산.</div>
     </section>
 
     <!-- 호가창 -->
@@ -117,7 +119,7 @@
         </thead>
         <tbody id="pump-body"><tr><td colspan="9">감지 대기중...</td></tr></tbody>
       </table>
-      <div class="hint">기본 필터: (3분 ≥ 3% & 1분 ≥ 1.5%) 또는 5분 ≥ 5% + 거래대금 유입 양수. 5초마다 스캔.</div>
+      <div class="hint">필터: (3분 ≥ 3% & 1분 ≥ 1.5%) 또는 5분 ≥ 5% + 거래대금 유입 양수. 5초마다 스캔.</div>
     </section>
 
     <!-- 목록 -->
@@ -127,7 +129,7 @@
         <thead><tr><th>심볼</th><th>코인명(한글)</th><th>영문</th><th>현재가</th><th>등락률(24h)</th><th>거래대금(24h)</th></tr></thead>
         <tbody id="list-body"></tbody>
       </table>
-      <div class="hint">목록은 거래대금(24h) 내림차순 정렬 · 5초마다 갱신.</div>
+      <div class="hint">목록은 거래대금(24h) 내림차순 · 3~5초 갱신.</div>
     </section>
   </main>
 
