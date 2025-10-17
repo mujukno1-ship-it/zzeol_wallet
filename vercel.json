@@ -1,13 +1,13 @@
-// vercel.json
 {
   "cleanUrls": true,
   "trailingSlash": false,
   "redirects": [
-    { "source": "/", "destination": "/zzeol_live" }
+    { "source": "/", "destination": "/zzeol_live" },
+    { "source": "/zzeol_live", "destination": "/zzeol_live.html", "permanent": false }
   ],
   "headers": [
     {
-      "source": "/(.*).(js|css|json)",
+      "source": "/(.*)\\.(js|css|json)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=60, must-revalidate" }
       ]
