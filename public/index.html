@@ -20,30 +20,12 @@
     </section>
 
     <section class="info-cards">
-      <div class="card">
-        <div class="card-title">선택 코인</div>
-        <div id="selected-coin">-</div>
-      </div>
-      <div class="card">
-        <div class="card-title">현재가 (KRW)</div>
-        <div id="price">-</div>
-      </div>
-      <div class="card">
-        <div class="card-title">등락률 (24h)</div>
-        <div id="change">-</div>
-      </div>
-      <div class="card">
-        <div class="card-title">고가 / 저가 (24h)</div>
-        <div id="hl">-</div>
-      </div>
-      <div class="card">
-        <div class="card-title">거래대금(24h)</div>
-        <div id="vol">-</div>
-      </div>
-      <div class="card">
-        <div class="card-title">상태</div>
-        <div id="tags" class="tags"></div>
-      </div>
+      <div class="card"><div class="card-title">선택 코인</div><div id="selected-coin">-</div></div>
+      <div class="card"><div class="card-title">현재가 (KRW)</div><div id="price">-</div></div>
+      <div class="card"><div class="card-title">등락률 (24h)</div><div id="change">-</div></div>
+      <div class="card"><div class="card-title">고가 / 저가 (24h)</div><div id="hl">-</div></div>
+      <div class="card"><div class="card-title">거래대금(24h)</div><div id="vol">-</div></div>
+      <div class="card"><div class="card-title">상태</div><div id="tags" class="tags"></div></div>
     </section>
 
     <section class="levels">
@@ -51,46 +33,22 @@
       <div class="risk" id="risk">위험도: -</div>
       <table class="table">
         <thead>
-          <tr>
-            <th>구분</th>
-            <th>1차</th>
-            <th>2차</th>
-            <th>3차</th>
-          </tr>
+          <tr><th>구분</th><th>1차</th><th>2차</th><th>3차</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td>매수</td>
-            <td id="buy1">-</td>
-            <td id="buy2">-</td>
-            <td id="buy3">-</td>
-          </tr>
-          <tr>
-            <td>매도</td>
-            <td id="sell1">-</td>
-            <td id="sell2">-</td>
-            <td id="sell3">-</td>
-          </tr>
-          <tr>
-            <td>손절</td>
-            <td id="stop1">-</td>
-            <td id="stop2">-</td>
-            <td id="stop3">-</td>
-          </tr>
+          <tr><td>매수</td><td id="buy1">-</td><td id="buy2">-</td><td id="buy3">-</td></tr>
+          <tr><td>매도</td><td id="sell1">-</td><td id="sell2">-</td><td id="sell3">-</td></tr>
+          <tr><td>손절</td><td id="stop1">-</td><td id="stop2">-</td><td id="stop3">-</td></tr>
         </tbody>
       </table>
-      <div class="note">※ 타점은 현재가 기준 <b>동적 계산</b> + <b>업비트 틱단위 반영</b>. (추후 심화 로직 연결 가능)</div>
+      <div class="note">※ 타점은 현재가 기준 <b>동적 계산</b> + <b>업비트 틱단위 반영</b>.</div>
     </section>
 
     <section>
       <h2>KRW 코인 목록</h2>
       <table class="table">
         <thead>
-          <tr>
-            <th>심볼</th>
-            <th>코인명(한글)</th>
-            <th>영문</th>
-          </tr>
+          <tr><th>심볼</th><th>코인명(한글)</th><th>영문</th></tr>
         </thead>
         <tbody id="list-body"></tbody>
       </table>
@@ -98,7 +56,6 @@
   </main>
 
   <footer class="footer">© 2025 쩔어지갑 — Upbit KRW 실시간</footer>
-
   <script src="./js/zzeol_app.js"></script>
 </body>
 </html>
