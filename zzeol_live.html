@@ -2,48 +2,38 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>쩔다지갑 Live</title>
-  <link rel="stylesheet" href="css/zz_live.css" />
+  <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
-  <header class="wrap">
-    <h1>🚀 쩔다지갑 Live</h1>
-    <p class="sub">기존 기능은 그대로 두고, 실시간 시세/리스크 모듈만 추가한 병합 버전</p>
-    <nav>
-      <a href="/test_vercel.html">배포체크</a>
-      <!-- 기존 페이지 링크가 있다면 여기에 추가 (예: /index.html) -->
-    </nav>
-  </header>
-
   <main class="wrap">
-    <section class="card">
-      <h2>코인 시세</h2>
-      <div class="row">
-        <label for="symbol">심볼</label>
-        <input id="symbol" placeholder="예: btc, eth, sol" />
-        <button id="btnFetch">가져오기</button>
-      </div>
+    <h1>🚀 자동배포 성공! — <b>쩔다지갑 Live</b></h1>
+    <p class="ok">이 화면이 보이면 <b>Vercel ↔ GitHub</b> 연결이 정상입니다. ✅</p>
 
-      <div id="priceArea" class="price"></div>
-      <div id="riskArea" class="risk"></div>
-      <div id="status" class="status"></div>
+    <section class="panel">
+      <h2>배포 상태</h2>
+      <ul class="list">
+        <li>현재 시각: <span id="now">--:--:--</span></li>
+        <li>빌드 버전: <code id="buildver">v1760664244</code></li>
+      </ul>
+      <div class="actions">
+        <a class="btn" href="test_vercel.html">테스트 페이지 열기</a>
+        <button class="btn ghost" id="reload">페이지 새로고침</button>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>자동 새로고침</h2>
-      <p>15초마다 자동 갱신됨 (요청 중복 방지/오류 자동복구 포함)</p>
-      <label class="switch">
-        <input id="autoToggle" type="checkbox" checked />
-        <span>켜기</span>
-      </label>
+    <section class="panel">
+      <h2>다음 단계</h2>
+      <ol class="list">
+        <li><b>GitHub</b>에 이 폴더의 파일들을 업로드 (루트에 그대로).</li>
+        <li>커밋 메시지 예시: <code>feat: add zzeol_live.html</code></li>
+        <li>Vercel에서 자동 배포 완료되면 주소는<br />
+            <code>https://zzeolwallet.vercel.app/zzeol_live.html</code> 입니다.</li>
+      </ol>
     </section>
   </main>
 
-    <!-- 기존: <script src="js/zz_live.js"></script> -->
-  <script src="js/zz_live_upbit.js"></script>
-</body>
-</html>
-
+  <script src="js/app.js"></script>
 </body>
 </html>
