@@ -1,5 +1,16 @@
+// vercel.json
 {
-  "routes": [
-    { "src": "/", "dest": "/index.html" }
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "redirects": [
+    { "source": "/", "destination": "/zzeol_live" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*).(js|css|json)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=60, must-revalidate" }
+      ]
+    }
   ]
 }
