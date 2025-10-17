@@ -246,3 +246,9 @@ window.addEventListener('DOMContentLoaded', ()=>{
   setInterval(()=>{ refreshListPrices().catch(()=>{}); }, 5000);
   setInterval(()=>{ refreshTopGainers().catch(()=>{}); }, 20000);
 });
+/* Pump Scanner */
+#pump-scanner .lvl-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700}
+#pump-scanner .lvl-warm{background:#2a2f3a;color:#ffd36e;border:1px solid #3b3f49}
+#pump-scanner .lvl-pump{background:#12281b;color:#17c06a;border:1px solid #1d3b29}
+#pump-scanner .lvl-hyper{background:#3b1b1b;color:#ff6e6e;border:1px solid #5a2c2c}
+#pump-scanner .up{color:#15c66a} .down{color:#ff4d4d}
