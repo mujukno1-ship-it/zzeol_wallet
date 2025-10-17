@@ -223,19 +223,32 @@ function renderPump(rows) {
       </tr>`;
   });
 }
-function runPump(tmap) {
-  recordHistory(tmap);
-  const out = [];
-  Object.keys(tmap).forEach((code) => {
-    const p1 = pct(code, 1);
-    const p3 = pct(code, 3);
-    const p5 = pct(code, 5);
-    const inf = inflow(code, 3);
-    const pass = ((p3 >= 3 && p1 >= 1.5) || p5 >= 5) && inf > 0;
-    if (!pass) return;
-    const s = pumpScore(p1, p3, p5, inf);
-    out.push({ code, price: tmap[code].trade_price, pc1: p1, pc3: p3, pc5: p5, inflow: inf, score: s });
-  });
-  out.sort((a, b) => b.score - a.score);
-  renderPump(out.slice(0, 20));
-}
+<!-- JS 경로 자동복구 로더 (한방 붙여넣기) -->
+<script>
+  (function () {
+    var statusEl = document.getElementById('ws-status');
+    if (statusEl) statusEl.textContent = '초기화중... (로더)';
+
+    function load(src, onOk, onFail) {
+      var s = document.createElement('script');
+      s.src = src + (src.indexOf('?')>-1 ? '' : '?v=20250218'); // 캐시무효화
+      s.defer = true;
+      s.onload = onOk;
+      s.onerror = onFail;
+      document.body.appendChild(s);
+    }
+
+    // 1차: /js 경로
+    load('/js/zzeol_app.js', function () {
+      if (statusEl) statusEl.textContent = 'REST 모드(강제) — 1~2초 갱신';
+    }, function () {
+      // 2차: /public/js 경로로 자동 폴백
+      load('/public/js/zzeol_app.js', function () {
+        if (statusEl) statusEl.textContent = 'REST 모드(강제) — 1~2초 갱신';
+      }, function () {
+        // 3차: 완전 실패 → 안내 문구
+        if (statusEl) statusEl.textContent = 'JS 로딩 실패(/js, /public/js 모두 404). 경로 확인 필요';
+      });
+    });
+  })();
+</script>
