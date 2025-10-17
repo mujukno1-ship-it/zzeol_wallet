@@ -11,6 +11,47 @@ let searchIndex = [];      // 검색 인덱스
 let ws = null;             // Upbit WebSocket
 let currentCode = null;    // 선택된 코드 (예: KRW-BTC)
 let wsAlive = false;
+let WS_FAILS = 0;
+let USE_REST = false;          // 웹소켓 실패 시 REST 폴링 모드
+let restTickerTimer = null;
+let restOrderbookTimer = null;
+
+function clearRestLoop(){
+  if (restTickerTimer) { clearInterval(restTickerTimer); restTickerTimer = null; }
+  if (restOrderbookTimer) { clearInterval(restOrderbookTimer); restOrderbookTimer = null; }
+}
+async function restFetchTicker(code){
+  try{
+    const r = await fetch(`https://api.upbit.com/v1/ticker?markets=${code}`);
+    const js = await r.json();
+    const t = js && js[0];
+    if (!t) return;
+    renderTicker({ ...t, market: t.market });
+  }catch(_){}
+}
+
+async function restFetchOrderbook(code){
+  try{
+    const r = await fetch(`https://api.upbit.com/v1/orderbook?markets=${code}`);
+    const js = await r.json();
+    const ob = js && js[0];
+    if (!ob) return;
+    renderOrderbook(ob);
+  }catch(_){}
+}
+
+function startRestLoop(code){
+  clearRestLoop();
+  if (!code) return;
+  el.ws.textContent = 'REST 모드(웹소켓 차단) — 2~3초 갱신';
+  // 티커 2초 주기
+  restTickerTimer = setInterval(()=>restFetchTicker(code), 2000);
+  // 호가 3초 주기
+  restOrderbookTimer = setInterval(()=>restFetchOrderbook(code), 3000);
+  // 첫 즉시호출
+  restFetchTicker(code);
+  restFetchOrderbook(code);
+}
 
 // ====== 업비트 틱 규칙(근사) & 포맷 ======
 function upbitTick(p){
@@ -119,32 +160,61 @@ function renderTicker(t){
 
 // ====== WebSocket 관리 ======
 function openWS(codes){
-  if (ws) try{ ws.close(); }catch(e){}
-  wsAlive = false;
+  if (USE_MOCK) return;      // 모의모드면 WS 미사용
+  if (USE_REST) {            // 이미 REST 모드면 그냥 REST 루프만
+    startRestLoop(codes && codes[0]);
+    return;
+  }
+
+  if (ws) try{ ws.close(); }catch(_){}
   ws = new WebSocket('wss://api.upbit.com/websocket/v1');
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => {
-    wsAlive = true; el.ws.textContent = '실시간 연결됨';
-    const req = [ {ticket:'zzeol'}, {type:'ticker', codes} ];
-    ws.send(JSON.stringify(req));
+
+  ws.onopen = ()=>{
+    WS_FAILS = 0;
+    clearRestLoop();
+    el.ws.textContent = '실시간 연결됨';
+    ws.send(JSON.stringify([
+      { ticket:'zzeol' },
+      { type:'ticker', codes },
+      { type:'orderbook', codes }
+    ]));
   };
-  ws.onclose = () => { wsAlive = false; el.ws.textContent = '연결 종료 — 재시도 중...'; setTimeout(()=>selectCode(currentCode||'KRW-BTC'), 1200); };
-  ws.onerror = () => { el.ws.textContent = '연결 오류'; };
-  ws.onmessage = (ev) => {
-    // Upbit는 바이너리(JSON 텍스트)로 옴
+
+  ws.onclose = ()=>{
+    WS_FAILS++;
+    el.ws.textContent = '연결 종료 — 재시도 중...';
+    // 2번 이상 실패하면 REST 폴백
+    if (WS_FAILS >= 2){
+      USE_REST = true;
+      startRestLoop(codes && codes[0]);
+      return;
+    }
+    setTimeout(()=>openWS(codes), 1200);
+  };
+
+  ws.onerror = ()=>{
+    WS_FAILS++;
+    el.ws.textContent = '연결 오류';
+    if (WS_FAILS >= 2){
+      USE_REST = true;
+      startRestLoop(codes && codes[0]);
+    }
+  };
+
+  ws.onmessage = (ev)=>{
     const data = new TextDecoder('utf-8').decode(ev.data);
     try{
       const t = JSON.parse(data);
-      if (t && t.code) renderTicker(t);
-    }catch(e){ /* ignore */ }
+      if (t && t.code && t.trade_price !== undefined) {
+        renderTicker({ ...t, market: t.code });
+      } else if (t && t.code && t.orderbook_units) {
+        renderOrderbook(t);
+      }
+    }catch(_){}
   };
 }
 
-function selectCode(code){
-  if (!code) return;
-  currentCode = code;
-  openWS([code]);
-}
 
 // ====== KRW 마켓 로드 & 검색 ======
 async function loadMarkets(){
