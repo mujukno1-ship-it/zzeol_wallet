@@ -1,86 +1,86 @@
-<!-- public/zzeol_live.html -->
 <!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>쩔다지갑 Live</title>
-
-  <!-- 기존 CSS 유지: 파일명이 다르면 맞게 바꿔주세요 -->
-  <link rel="stylesheet" href="/css/reset.css" />
-  <link rel="stylesheet" href="/css/style.css" />
-
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>쩔어지갑 🔥 풀세트 9.2 Live</title>
   <style>
-    body{background:#000;color:#e5ffe5;font-family:system-ui,apple sd gothic neo,malgun gothic,sans-serif}
-    .wrap{max-width:1200px;margin:0 auto;padding:24px}
-    h1{font-size:28px;margin:0 0 8px}
-    .muted{color:#9be29b}
-    .grid{display:grid;gap:16px;grid-template-columns:repeat(12,1fr)}
-    .card{grid-column:span 12;background:#0b140b;border:1px solid #144d14;border-radius:12px;padding:16px}
-    @media(min-width:960px){
-      .card.span6{grid-column:span 6}
-      .card.span4{grid-column:span 4}
-    }
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .btn{background:#0b2; color:#fff; border:0; border-radius:8px; padding:8px 12px; cursor:pointer}
-    .btn:disabled{opacity:.6;cursor:default}
-    .chip{background:#132; color:#6f9; padding:4px 8px; border-radius:999px; font-size:12px}
-    table{width:100%;border-collapse:collapse;margin-top:8px}
-    th,td{border-bottom:1px solid #123;padding:8px;text-align:left}
-    .pos{color:#7df77d}.neg{color:#ff8686}
+    body{background:#000;color:#eee;font-family:'Pretendard','Malgun Gothic',sans-serif;text-align:center}
+    h1{color:#0f0;margin-top:40px}
+    table{width:90%;margin:30px auto;border-collapse:collapse}
+    th,td{border:1px solid #222;padding:8px}
+    th{background:#111;color:#0f0}
+    td{background:#0b0b0b}
+    input{padding:6px 10px;border:1px solid #333;background:#111;color:#fff;border-radius:6px}
+    .risk1{color:#0f0}.risk2{color:#8f8}.risk3{color:#ff0}.risk4{color:#f80}.risk5{color:#f00}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>🚀 자동배포 통합 – <span class="muted">쩔다지갑 Live</span></h1>
-    <div class="row" style="margin-bottom:12px">
-      <button id="btn-refresh" class="btn">전체 새로고침</button>
-      <span id="last-updated" class="chip">업데이트 대기…</span>
-      <span class="chip">Vercel ↔ GitHub 자동배포</span>
-    </div>
+  <h1>🚀 쩔어지갑 Live 실시간 코인현황</h1>
 
-    <div class="grid">
-      <!-- 예열 코인 -->
-      <section class="card span6">
-        <div class="row">
-          <h2 style="margin:0">🔥 예열 코인</h2>
-          <span id="warm-count" class="chip">0 종목</span>
-        </div>
-        <div id="warmup-box"></div>
-      </section>
-
-      <!-- 급등 코인 -->
-      <section class="card span6">
-        <div class="row">
-          <h2 style="margin:0">⚡ 급등 코인</h2>
-          <span id="surge-count" class="chip">0 종목</span>
-        </div>
-        <div id="surge-box"></div>
-      </section>
-
-      <!-- 매수/매도 타점 -->
-      <section class="card span12">
-        <div class="row">
-          <h2 style="margin:0">🎯 매수/매도 타점</h2>
-          <span id="signal-count" class="chip">0 신호</span>
-        </div>
-        <div id="signal-box"></div>
-      </section>
-    </div>
+  <div>
+    <input type="text" id="search" placeholder="코인명(한글/영문)" onkeyup="filterTable()" />
   </div>
 
-  <!-- 기존 전역 유틸/데이터 로더가 있으면 먼저 로드 -->
-  <!-- 예: /js/utils.js, /js/api.js 등이 있다면 아래처럼 추가 -->
-  <!-- <script src="/js/utils.js"></script>
-  <script src="/js/api.js"></script> -->
+  <table id="coinTable">
+    <thead>
+      <tr>
+        <th>코인명</th>
+        <th>심볼</th>
+        <th>현재가</th>
+        <th>매수</th>
+        <th>손절</th>
+        <th>TP1</th>
+        <th>TP2</th>
+        <th>TP3</th>
+        <th>상태</th>
+        <th>급등락</th>
+        <th>위험도</th>
+        <th>쩔어 한마디</th>
+      </tr>
+    </thead>
+    <tbody id="coinBody"></tbody>
+  </table>
 
-  <!-- 기존 메인 로직(JS) 파일들 유지: 파일명/경로 맞게 바꿔주세요 -->
-  <!-- 아래의 함수 이름들은 기존 코드에 맞춰 entry에서 호출합니다. -->
-  <script src="/js/warmup.js"></script>   <!-- window.renderWarmup(data) -->
-  <script src="/js/surge.js"></script>    <!-- window.renderSurge(data) -->
-  <script src="/js/signals.js"></script>  <!-- window.renderSignals(data) -->
+  <script>
+    const data = [
+      {name:'리플',symbol:'XRP',price:630,buy:620,cut:610,tp1:650,tp2:670,tp3:690,state:'중립',move:'급등',risk:3,comment:'관망'},
+      {name:'도지코인',symbol:'DOGE',price:210,buy:190,cut:180,tp1:220,tp2:230,tp3:240,state:'상승',move:'급등',risk:2,comment:'단타매수'},
+      {name:'비트코인',symbol:'BTC',price:116500,buy:115000,cut:113000,tp1:118000,tp2:120000,tp3:122000,state:'불장',move:'급등',risk:1,comment:'강세 유지'},
+      {name:'이더리움',symbol:'ETH',price:3800,buy:3700,cut:3600,tp1:3950,tp2:4100,tp3:4300,state:'하락',move:'급락',risk:4,comment:'관망 필요'},
+      {name:'칠리즈',symbol:'CHZ',price:64,buy:62,cut:60,tp1:67,tp2:70,tp3:74,state:'중립',move:'급등',risk:2,comment:'매집 중'}
+    ];
 
-  <!-- 새 엔트리(접착) 스크립트 -->
-  <script src="/js/entry.zzeol_live.js"></script>
+    function render() {
+      const body = document.getElementById('coinBody');
+      body.innerHTML = data.map(c => `
+        <tr>
+          <td>${c.name}</td>
+          <td>${c.symbol}</td>
+          <td>${c.price.toLocaleString()}원</td>
+          <td>${c.buy.toLocaleString()}원</td>
+          <td>${c.cut.toLocaleString()}원</td>
+          <td>${c.tp1.toLocaleString()}</td>
+          <td>${c.tp2.toLocaleString()}</td>
+          <td>${c.tp3.toLocaleString()}</td>
+          <td>${c.state}</td>
+          <td>${c.move}</td>
+          <td class="risk${c.risk}">Risk ${c.risk}</td>
+          <td>${c.comment}</td>
+        </tr>
+      `).join('');
+    }
+
+    function filterTable(){
+      const keyword=document.getElementById('search').value.toLowerCase();
+      const rows=document.querySelectorAll('#coinBody tr');
+      rows.forEach(r=>{
+        const text=r.textContent.toLowerCase();
+        r.style.display=text.includes(keyword)?'':'none';
+      });
+    }
+
+    render();
+  </script>
 </body>
 </html>
