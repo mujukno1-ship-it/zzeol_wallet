@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 v4.2 — 업비트 실시간 + 급등 피드(저장)</title>
+  <title>쩔어지갑 v4.3 — 업비트 실시간 + 급등 피드(저장/알림)</title>
   <style>
     :root{--bg:#0d1117;--panel:#161b22;--line:#2d333b;--text:#e6edf3;--muted:#9fb1c1;--up:#16c784;--down:#ea3943;--chip:#223045}
     *{box-sizing:border-box}
@@ -25,12 +25,18 @@
     .diff.up{color:var(--up)}.diff.down{color:var(--down)}
     .muted{color:var(--muted)}
     .error{color:#ff6b6b;font-size:12px;margin-top:6px}
+    /* 새 급등 하이라이트 */
+    @keyframes flash {
+      0%{background:rgba(255,255,0,.18)}
+      100%{background:transparent}
+    }
+    .flash { animation: flash 1s ease-out 1; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>쩔어지갑 <span class="badge">v4.2</span> <span class="badge" id="net">OFFLINE</span></h1>
+      <h1>쩔어지갑 <span class="badge">v4.3</span> <span class="badge" id="net">OFFLINE</span></h1>
       <div class="badge" id="clock">KST — --:--:--</div>
     </header>
 
@@ -75,11 +81,14 @@
       </table>
     </div>
 
-    <!-- 🔥 급등코인 실시간 피드 (누적형 + 저장/복원) -->
+    <!-- 🔥 급등코인 실시간 피드 (누적형 + 저장/복원 + 알림/하이라이트) -->
     <div class="card" id="hotCard">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h3 style="margin:0">🔥 급등코인 실시간 피드 (5%↑, 10억↑)</h3>
-        <button id="btnFeedClear" title="저장된 급등 피드 비우기">피드 비우기</button>
+        <div class="row" style="gap:8px">
+          <button id="btnFeedClear" title="저장된 급등 피드 비우기">피드 비우기</button>
+          <button id="btnTestBeep" title="알림음 테스트">🔔 테스트</button>
+        </div>
       </div>
       <table>
         <thead>
@@ -87,12 +96,12 @@
         </thead>
         <tbody id="hotFeed"></tbody>
       </table>
-      <div class="muted" style="font-size:12px;margin-top:6px">※ 새로 감지된 급등코인은 위로 추가되고, 기존 항목은 아래로 밀립니다. (최대 100개, 24시간 보관)</div>
+      <div class="muted" style="font-size:12px;margin-top:6px">※ 새로 감지된 급등코인은 위로 추가, 기존 항목은 아래로 이동. (최대 100개, 24시간 보관)</div>
     </div>
   </div>
 
   <script>
-    // ===== 공통 유틸 / 안정성 =====
+    // ===== 유틸/안정성 =====
     const $=(id)=>document.getElementById(id);
 
     function safeJSON(url, timeout=9000){
@@ -103,7 +112,7 @@
         .finally(()=>clearTimeout(timer));
     }
 
-    // 시계/온라인 뱃지 (DOMContentLoaded 이후만 실행)
+    // 시계/온라인 뱃지
     function tick(){
       const clock=$('clock'), net=$('net');
       if(!clock||!net) return;
@@ -115,7 +124,7 @@
     }
     window.addEventListener('DOMContentLoaded',()=>{ tick(); setInterval(tick,1000); });
 
-    // ===== 업비트 호가단위 포맷 =====
+    // 업비트 호가단위 포맷
     function getTick(price){
       if(price>=2000000) return 1000;
       if(price>=1000000) return 500;
@@ -141,7 +150,22 @@
       return r.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
     }
 
-    // ===== 업비트 마켓/티커 =====
+    // 알림음 (WebAudio, 외부파일 불필요)
+    let audioCtx;
+    function beep(ms=180, freq=880){
+      try{
+        audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+        const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+        o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(0.001,audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.2,audioCtx.currentTime+0.02);
+        o.start();
+        setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.02); o.stop(); }, ms);
+      }catch(e){ /* 음소거 환경일 수 있음 */ }
+    }
+    $('btnTestBeep').addEventListener('click', ()=>beep());
+
+    // 업비트 마켓/티커
     let MARKETS=[];
     async function ensureMarkets(){
       if(MARKETS.length) return MARKETS;
@@ -153,7 +177,7 @@
       return (await safeJSON(`https://api.upbit.com/v1/ticker?markets=${market}`))[0];
     }
 
-    // ===== 분석 텍스트 =====
+    // 분석 텍스트
     function riskText(rate){
       const r=Math.abs(rate*100);
       if(r<1) return '1(안정)';
@@ -168,7 +192,7 @@
       return '💀 하락 리스크';
     }
 
-    // ===== 검색 (강화: 부분일치/엔터/에러표시) =====
+    // 검색 (부분일치/엔터/오류표시)
     async function doSearch(){
       const err=$('searchError'); err.style.display='none';
       const q=($('q').value||'').trim();
@@ -220,7 +244,7 @@
       $('q').value=''; $('result').style.display='none'; $('searchError').style.display='none';
     });
 
-    // ===== 급등 피드: 저장/복원 =====
+    // 급등 피드 저장/복원
     const FEED_KEY='zzeol_hot_feed_v1';
     const FEED_TTL_HOURS=24;
 
@@ -258,8 +282,8 @@
       alert('급등 피드를 비웠습니다.');
     });
 
-    // ===== 급등 피드 로직 (신규 위로, 저장 반영) =====
-    const shown = {}; // 이미 렌더된 심볼
+    // 급등 피드 (신규 위로, 저장/복원, 알림/하이라이트)
+    const shown={}; // 이미 화면에 있는 심볼
     async function loadHot(){
       try{
         const list=await ensureMarkets();
@@ -274,13 +298,13 @@
 
         for(const t of hot){
           const sym=t.market.replace('KRW-','');
-          if (shown[sym]) continue; // 이미 화면에 있으면 스킵
+          if (shown[sym]) continue;
 
           shown[sym]=true;
           const p=t.trade_price, rate=t.signed_change_rate;
 
-          // 화면 최상단에 삽입
-          const tr=document.createElement('tr'); tr.style.textAlign='center';
+          // 새 행 생성 + 하이라이트
+          const tr=document.createElement('tr'); tr.style.textAlign='center'; tr.classList.add('flash');
           tr.innerHTML=`
             <td>💥 ${sym}</td>
             <td>${fmtKRW(p)}</td>
@@ -290,8 +314,12 @@
             <td>${riskText(rate)}</td>
             <td>${zzeolComment(rate)}</td>`;
           feedEl.prepend(tr);
+          setTimeout(()=>tr.classList.remove('flash'), 1000);
 
-          // 저장소 갱신(중복 제거 후 맨 앞에 추가)
+          // 알림음
+          beep(160, 920);
+
+          // 저장소 갱신(최신 맨 앞, 중복 제거)
           const entry={
             ts:Date.now(),
             sym,
@@ -308,7 +336,7 @@
       }catch(e){ console.error('급등 피드 오류:', e); }
     }
 
-    // 부팅 시 저장된 피드 먼저 복원 → 이후 1분마다 업데이트
+    // 부팅 시 저장된 피드 복원 → 이후 1분마다 업데이트
     window.addEventListener('DOMContentLoaded', ()=>{
       const boot=loadFeedFromStore();
       if(boot.length) renderFeed(boot);
