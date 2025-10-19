@@ -1,177 +1,120 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 v10.5 — Upbit 실시간</title>
+  <title>쩔어지갑 v10.4 — Upbit KRW 실시간</title>
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔥</text></svg>">
   <style>
-    body {
-      background-color: #0d1117;
-      color: #e6edf3;
-      font-family: "Pretendard", sans-serif;
-      margin: 0;
-      padding: 20px;
+    :root{
+      --bg:#0f1115;--card:#151824;--line:#252a3b;--text:#dfe4f5;--muted:#8a92a6;--accent:#67bfff;
+      --pos:#5be49b;--neg:#ff6b6b;--warn:#ffd166
     }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .header h1 { font-size: 18px; color: #58a6ff; margin: 0; }
-    .search-box {
-      margin-top: 20px;
-      display: flex;
-      gap: 10px;
-    }
-    input {
-      flex: 1;
-      padding: 8px;
-      font-size: 16px;
-      border-radius: 8px;
-      border: none;
-      outline: none;
-    }
-    button {
-      background-color: #238636;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    .panel {
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      background-color: #161b22;
-      border-radius: 10px;
-      margin-top: 20px;
-      padding: 15px;
-      text-align: center;
-    }
-    .panel div {
-      flex: 1;
-      font-size: 16px;
-    }
-    .highlight { color: #58a6ff; font-weight: 600; }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    a{color:inherit}
+    .wrap{max-width:1200px;margin:28px auto;padding:0 18px}
+    header{display:flex;gap:10px;align-items:center;margin-bottom:18px}
+    .brand{font-weight:700}
+    .chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 10px;color:var(--muted)}
+    .status{margin-left:auto}
+    .ok{color:var(--pos)} .bad{color:var(--neg)} .warn{color:var(--warn)}
+    .grid{display:grid;gap:12px}
+    .g2{grid-template-columns:repeat(2,1fr)}
+    .g3{grid-template-columns:repeat(3,1fr)}
+    .g4{grid-template-columns:repeat(4,1fr)}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .card h3{margin:0 0 10px 0;font-size:13px;color:var(--muted);font-weight:600}
+    input[type="text"]{width:100%;background:#0e111b;border:1px solid var(--line);border-radius:10px;color:var(--text);padding:11px 12px}
+    button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:10px 12px;cursor:pointer}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-top:1px solid var(--line);padding:10px 8px;text-align:left}
+    thead th{font-weight:600;color:var(--muted);border-top:none}
+    tbody tr:hover{background:#111629}
+    .muted{color:var(--muted)}
+    .row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+    .metric{background:#0e1322;border:1px solid var(--line);border-radius:12px;padding:12px}
+    .metric .k{font-size:12px;color:var(--muted);margin-bottom:4px}
+    .metric .v{font-size:18px;font-weight:700}
+    .pos{color:var(--pos)} .neg{color:var(--neg)}
+    .tag{font-size:12px;border:1px solid var(--line);padding:3px 8px;border-radius:999px;color:var(--muted)}
+    .flex{display:flex;gap:8px;align-items:center}
+    @media (max-width:980px){.g4{grid-template-columns:1fr}.row{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>쩔어지갑 🔥 v10.5</h1>
-    <span id="ws-status">상태: 연결 대기중...</span>
+  <div class="wrap">
+    <header>
+      <div class="brand">쩔어지갑 🔥 <span class="chip">v10.4</span></div>
+      <div class="chip">Upbit KRW 실시간</div>
+      <div class="chip status">상태: <span id="ws-status" class="warn">확인중…</span></div>
+    </header>
+
+    <!-- 검색 & 선택 -->
+    <div class="grid g4">
+      <div class="card">
+        <h3>코인 검색</h3>
+        <div class="flex">
+          <input id="search" type="text" placeholder="한글/영문/심볼: 비트코인, ETH, SOL 등" />
+          <button id="btn-refresh">KRW 목록 새로고침</button>
+        </div>
+        <div class="muted" style="margin-top:6px">KRW 마켓만 표시. 행 클릭 시 상세·신호 즉시 갱신.</div>
+      </div>
+
+      <div class="card">
+        <h3>선택 코인</h3>
+        <div class="flex"><span class="tag">이름</span><div id="sel-name" class="muted">-</div></div>
+        <div class="flex" style="margin-top:6px"><span class="tag">심볼</span><div id="sel-symbol" class="muted">-</div></div>
+      </div>
+
+      <div class="card">
+        <h3>상태</h3>
+        <div id="sel-state" class="muted">-</div>
+      </div>
+
+      <div class="card">
+        <h3>등록률(24h)</h3>
+        <div id="sel-change24" class="muted">-</div>
+      </div>
+    </div>
+
+    <!-- 가로형 핵심 패널 -->
+    <div class="card" style="margin-top:12px">
+      <div class="row">
+        <div class="metric"><div class="k">현재가</div><div id="m-price" class="v">-</div></div>
+        <div class="metric"><div class="k">매수(1/2/3)</div><div id="m-buys" class="v muted">-</div></div>
+        <div class="metric"><div class="k">매도(익절 1/2/3)</div><div id="m-sells" class="v muted">-</div></div>
+        <div class="metric"><div class="k">손절</div><div id="m-stop" class="v muted">-</div></div>
+        <div class="metric"><div class="k">위험도</div><div id="m-risk" class="v">-</div></div>
+        <div class="metric"><div class="k">쩔어한마디</div><div id="m-remark" class="v muted" style="font-size:16px">-</div></div>
+      </div>
+    </div>
+
+    <!-- 유동성/변동성 / 티켓 -->
+    <div class="grid g3" style="margin-top:12px">
+      <div class="card"><h3>EMA20</h3><div id="box-ema" class="muted">-</div></div>
+      <div class="card"><h3>ATR(14)</h3><div id="box-atr" class="muted">-</div></div>
+      <div class="card"><h3>틱 체감강도 (최근)</h3><div id="box-ticks" class="muted">-</div></div>
+    </div>
+
+    <!-- 실시간 KRW 리스트 -->
+    <div class="card" style="margin-top:14px">
+      <h3>KRW 코인 목록 (실시간)</h3>
+      <div class="muted" style="margin:6px 0">행 클릭 시 상단 타점/위험도/한마디 즉시 갱신.</div>
+      <table id="tbl">
+        <thead>
+          <tr><th style="width:90px">심볼</th><th>코인명(한글)</th><th style="width:160px">현재가</th><th style="width:120px">등락률</th><th style="width:180px">거래대금(24h)</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="muted" style="margin-top:16px">
+      🛰 연결 상태: <span id="api-status">확인중…</span> · 경로: <code>/public/zzeol_live.html</code>
+    </div>
   </div>
 
-  <div class="search-box">
-    <input id="search-input" placeholder="코인명 (예: 비트코인, 이더리움, 시바이누)" />
-    <button onclick="startUpbitSync(document.getElementById('search-input').value)">검색</button>
-  </div>
-
-  <!-- 가로형 패널 -->
-  <div class="panel">
-    <div>현재가: <span id="price" class="highlight">-</span></div>
-    <div>매수: <span id="bid1" class="highlight">-</span></div>
-    <div>매도: <span id="ask1" class="highlight">-</span></div>
-    <div>위험도: <span id="risk" class="highlight">-</span></div>
-    <div>쩔어한마디: <span id="comment" class="highlight">-</span></div>
-  </div>
-
-<script>
-/* ========= 업비트 호가단위 규칙 ========= */
-function upbitTick(price){
-  if (price >= 2000000) return 1000;
-  if (price >= 1000000) return 500;
-  if (price >=  500000) return 100;
-  if (price >=  100000) return 50;
-  if (price >=   10000) return 10;
-  if (price >=    1000) return 1;
-  if (price >=     100) return 0.1;
-  if (price >=      10) return 0.01;
-  return 0.001;
-}
-function roundToTick(price, mode="round"){
-  const t = upbitTick(price);
-  if (t === 0) return price;
-  if (mode === "ceil")  return Math.ceil (price / t) * t;
-  if (mode === "floor") return Math.floor(price / t) * t;
-  return Math.round(price / t) * t;
-}
-
-/* ========= API 공용 fetch ========= */
-async function jfetch(url){
-  try{
-    const r = await fetch(url, { cache: "no-store" });
-    if(!r.ok) throw new Error(await r.text());
-    return await r.json();
-  }catch(e){
-    console.error("[fetch error]", url, e);
-    return null;
-  }
-}
-
-/* ========= 업비트와 동일한 현재가 + 호가 ========= */
-async function getUpbitExactPrice(market){
-  const [ticker, ob] = await Promise.all([
-    jfetch(`/api/ticker?markets=${market}`),
-    jfetch(`/api/orderbook?markets=${market}`)
-  ]);
-
-  let tradePrice=null;
-  if(Array.isArray(ticker)&&ticker.length) tradePrice=Number(ticker[0].trade_price);
-
-  let ask1=null,bid1=null;
-  if(ob && Array.isArray(ob.orderbook_units)){
-    ask1=ob.orderbook_units[0].ask_price;
-    bid1=ob.orderbook_units[0].bid_price;
-  } else if(Array.isArray(ob) && ob.length){
-    const u=ob[0]?.orderbook_units||[];
-    if(u.length){ask1=u[0].ask_price;bid1=u[0].bid_price;}
-  }
-
-  return {
-    price: tradePrice!=null ? roundToTick(tradePrice) : null,
-    ask: ask1!=null ? roundToTick(ask1) : null,
-    bid: bid1!=null ? roundToTick(bid1) : null
-  };
-}
-
-/* ========= UI 갱신 ========= */
-async function updatePanel(market){
-  const $price=document.getElementById("price");
-  const $ask=document.getElementById("ask1");
-  const $bid=document.getElementById("bid1");
-  const $risk=document.getElementById("risk");
-  const $comment=document.getElementById("comment");
-
-  const data=await getUpbitExactPrice(market);
-  if(!data.price){$price.textContent="-";return;}
-
-  $price.textContent=data.price.toLocaleString("ko-KR");
-  $ask.textContent=data.ask?.toLocaleString("ko-KR")||"-";
-  $bid.textContent=data.bid?.toLocaleString("ko-KR")||"-";
-
-  // 위험도와 쩔어한마디 (단순 예시)
-  const diff=Math.abs(data.ask-data.bid);
-  let risk="1";
-  if(diff>100) risk="2";
-  if(diff>500) risk="3";
-  $risk.textContent=risk;
-  $comment.textContent = risk==="1" ? "안정적" :
-                         risk==="2" ? "주의 요망" : "변동성 급등";
-}
-
-/* ========= 자동 갱신 ========= */
-let _sync=null;
-function startUpbitSync(input){
-  clearInterval(_sync);
-  const market = input.toUpperCase().startsWith("KRW-") ? input.toUpperCase() : `KRW-${input.toUpperCase()}`;
-  updatePanel(market);
-  _sync=setInterval(()=>updatePanel(market),2000);
-}
-
-/* ========= 초기 연결 상태 확인 ========= */
-document.getElementById("ws-status").textContent="상태: 정상 연결";
-startUpbitSync("KRW-SHIB");
-</script>
+  <script src="/js/zzeol_app.js"></script>
 </body>
 </html>
