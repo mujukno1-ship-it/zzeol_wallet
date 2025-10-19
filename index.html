@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 — 실시간 업비트 연동 완전판</title>
+  <title>쩔어지갑 프로 v2.0 — 업비트 실시간 연동</title>
   <style>
     :root{--bg:#0b0f14;--panel:#121923;--text:#e6edf3;--muted:#8aa0b6;--up:#16c784;--down:#ea3943;--chip:#1a2330}
     *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Noto Sans KR,Apple SD Gothic Neo,Helvetica,Arial}
@@ -26,12 +26,15 @@
     .price{font-size:28px;font-weight:800}
     .diff.up{color:var(--up)}.diff.down{color:var(--down)}
     @media (max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+    #memoBox{position:fixed;bottom:20px;right:20px;width:320px;height:280px;background:#0e141d;border:1px solid #243142;border-radius:10px;padding:10px;z-index:9999;display:none;}
+    #memoText{width:100%;height:200px;background:#121923;color:#e6edf3;border:none;outline:none;border-radius:8px;padding:8px;}
+    #saveMemo{margin-top:8px;width:100%;background:#243142;color:white;border:none;padding:8px;border-radius:8px;}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>쩔어지갑 <span class="badge">정확한 호가단위 버전</span> <span class="badge" id="net">OFFLINE</span></h1>
+      <h1>쩔어지갑 <span class="badge">프로 v2.0</span> <span class="badge" id="net">OFFLINE</span></h1>
       <div class="badge" id="clock">KST — --:--:--</div>
     </header>
 
@@ -41,6 +44,7 @@
         <div class="list" id="list"></div>
       </div>
       <button class="card" id="reset">초기화</button>
+      <button class="card" id="memoBtn">📝 메모장</button>
     </div>
 
     <div class="card" id="panel">
@@ -66,8 +70,14 @@
     </div>
   </div>
 
+  <!-- 📝 메모창 -->
+  <div id="memoBox">
+    <textarea id="memoText"></textarea>
+    <button id="saveMemo">저장</button>
+  </div>
+
   <script>
-  // ✅ 업비트 호가단위 자동 적용 함수
+  // ✅ 업비트 호가단위 자동
   function getTickSize(price) {
     if (price >= 2000000) return 1000;
     if (price >= 1000000) return 500;
@@ -87,7 +97,6 @@
     return 0.000000001;
   }
 
-  // ✅ 업비트 API 모듈
   const Upbit = {
     async getMarkets(){
       const list=await fetch('https://api.upbit.com/v1/market/all?isDetails=false').then(r=>r.json());
@@ -122,6 +131,14 @@
     ['price','change','v_price','v_buy','v_sell','v_stop','v_risk','v_comment'].forEach(id=>$(id).textContent='—');
   }
 
+  function aiComment(rate){
+    if(rate>0.05) return '🔥 불장 초입, 급등 주의!';
+    if(rate>0.02) return '📈 상승 탄력, 추세 유지';
+    if(rate>-0.02) return '⚖️ 횡보 구간 — 관망 권장';
+    if(rate<-0.02 && rate>-0.05) return '📉 단기 조정 구간, 매수 분할 유효';
+    return '💀 급락 리스크 구간 — 철저한 손절 필요';
+  }
+
   function updatePanel(t){
     if(!t)return;
     const p=t.trade_price, rate=t.signed_change_rate;
@@ -134,13 +151,21 @@
     $('v_sell').textContent=Upbit.format(sell)+' 원';
     $('v_stop').textContent=Upbit.format(stop)+' 원';
     $('v_risk').textContent=Math.abs(rate*100)<1?'1(안정)':Math.abs(rate*100)<2?'2(보통)':'3(주의)';
-    $('v_comment').textContent=rate>0.02?'단기 급등 주의!':rate<-0.02?'급락 리스크 — 관망!':'무난';
+    $('v_comment').textContent=aiComment(rate);
   }
 
-  async function select(market){
+  async function select(market, metaName){
     currentMarket=market; clearPanel();
     const t=await Upbit.getTicker(market);
     updatePanel(t);
+
+    // 📝 자동 메모 기록
+    const now=new Date().toLocaleString('ko-KR');
+    const record=`[${now}] ${metaName} (${market}) — 현재가: ${Upbit.format(t.trade_price)}원\n`;
+    const prev=localStorage.getItem('zzeol_memo')||'';
+    localStorage.setItem('zzeol_memo', record+prev);
+    memoText.value=localStorage.getItem('zzeol_memo');
+
     if(stopPoll)clearInterval(stopPoll);
     stopPoll=setInterval(async()=>{
       const t=await Upbit.getTicker(market);
@@ -155,20 +180,29 @@
     input.addEventListener('input',()=>{
       const s=input.value.toLowerCase();
       const items=list.filter(x=>x.korean_name.toLowerCase().includes(s)||x.market.toLowerCase().includes(s));
-      box.innerHTML=items.map(x=>`<div class="item" data-m="${x.market}">${x.korean_name} <span style="color:#8aa0b6">(${x.market.replace('KRW-','')})</span></div>`).join('');
+      box.innerHTML=items.map(x=>`<div class="item" data-m="${x.market}" data-n="${x.korean_name}">${x.korean_name} <span style="color:#8aa0b6">(${x.market.replace('KRW-','')})</span></div>`).join('');
       box.classList.add('show');
     });
     box.addEventListener('click',e=>{
       const el=e.target.closest('.item');
       if(!el)return;
       const m=el.dataset.m;
+      const n=el.dataset.n;
       input.value='';box.classList.remove('show');
-      const meta=list.find(x=>x.market===m);
-      $('coin-name').innerHTML=`${meta.korean_name} <span style="color:#8aa0b6">(${m.replace('KRW-','')})</span>`;
+      $('coin-name').innerHTML=`${n} <span style="color:#8aa0b6">(${m.replace('KRW-','')})</span>`;
       $('market').textContent=m;
-      select(m);
+      select(m,n);
     });
   })();
+
+  // 📝 메모장 시스템
+  const memoBtn=$('memoBtn');
+  const memoBox=$('memoBox');
+  const memoText=$('memoText');
+  const saveMemo=$('saveMemo');
+  memoText.value=localStorage.getItem('zzeol_memo')||'';
+  memoBtn.onclick=()=>{memoBox.style.display=memoBox.style.display==='none'?'block':'none';};
+  saveMemo.onclick=()=>{localStorage.setItem('zzeol_memo',memoText.value);alert('✅ 메모가 저장되었습니다!');};
   </script>
 </body>
 </html>
