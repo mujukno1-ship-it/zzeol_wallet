@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 v4.8 — 실시간 + 급등 피드(안정화)</title>
-  <!-- ✅ 파비콘 404 방지 -->
+  <title>쩔어지갑 v4.9 — 실시간 + 급등 피드(안정/한글)</title>
+  <!-- 파비콘 404 방지 -->
   <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
   <style>
     :root{--bg:#0d1117;--panel:#161b22;--line:#2d333b;--text:#e6edf3;--muted:#9fb1c1;--up:#16c784;--down:#ea3943;--chip:#223045}
@@ -19,16 +19,18 @@
     input,button{background:#0e141b;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
     input{flex:1;min-width:260px}
     button{cursor:pointer} button:hover{background:#1a2330}
-    table{width:100%;border-collapse:collapse} th,td{padding:8px;border-bottom:1px solid var(--line);text-align:center}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid var(--line);text-align:center}
     .price{font-weight:800;font-size:28px}
     .diff.up{color:var(--up)} .diff.down{color:var(--down)} .muted{color:var(--muted)}
-    @keyframes flash{0%{background:rgba(255,255,0,.18)}100%{background:transparent}} .flash{animation:flash 1s ease-out 1}
+    @keyframes flash{0%{background:rgba(255,255,0,.18)}100%{background:transparent}}
+    .flash{animation:flash 1s ease-out 1}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>쩔어지갑 <span class="badge">v4.8</span> <span class="badge" id="net">OFFLINE</span></h1>
+      <h1>쩔어지갑 <span class="badge">v4.9</span> <span class="badge" id="net">OFFLINE</span></h1>
       <div class="badge" id="clock">KST — --:--:--</div>
     </header>
 
@@ -42,7 +44,7 @@
       <div id="searchError" class="muted" style="color:#ff6b6b;display:none;margin-top:6px"></div>
     </div>
 
-    <!-- 선택 코인 (WS 실시간) -->
+    <!-- 선택 코인 (WebSocket 실시간) -->
     <div class="card" id="result" style="display:none">
       <div class="row" style="justify-content:space-between;align-items:end">
         <div>
@@ -55,11 +57,20 @@
         </div>
       </div>
       <table style="margin-top:10px">
-        <thead><tr class="muted"><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th><th class="muted">연결</th></tr></thead>
-        <tbody><tr>
-          <td id="c_price">—</td><td id="c_buy">—</td><td id="c_sell">—</td>
-          <td id="c_stop">—</td><td id="c_risk">—</td><td id="c_comment">—</td><td id="wsState" class="muted">—</td>
-        </tr></tbody>
+        <thead>
+          <tr class="muted"><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th><th class="muted">연결</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td id="c_price">—</td>
+            <td id="c_buy">—</td>
+            <td id="c_sell">—</td>
+            <td id="c_stop">—</td>
+            <td id="c_risk">—</td>
+            <td id="c_comment">—</td>
+            <td id="wsState" class="muted">—</td>
+          </tr>
+        </tbody>
       </table>
     </div>
 
@@ -70,18 +81,20 @@
         <button id="btnFeedClear">피드 비우기</button>
       </div>
       <table>
-        <thead><tr class="muted"><th>코인명(한글)</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr></thead>
+        <thead>
+          <tr class="muted"><th>코인명(한글)</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr>
+        </thead>
         <tbody id="hotFeed"></tbody>
       </table>
       <div class="muted" style="font-size:12px;margin-top:6px">※ 새로 감지되면 항상 맨 위로 이동. (최대 100개, 24시간 보관)</div>
     </div>
   </div>
 
-  <!-- ✅ 스크립트는 바디 맨 끝: DOM 생성 이후 실행 -->
+  <!-- 스크립트: DOM 생성 이후 실행 -->
   <script>
     const $=id=>document.getElementById(id);
 
-    /* 시계/온라인 */
+    /* ===== 시계/온라인 ===== */
     function tick(){
       const clock=$('clock'), net=$('net'); if(!clock||!net) return;
       const now=new Date(), utc=now.getTime()+now.getTimezoneOffset()*60000, kst=new Date(utc+9*3600000);
@@ -89,25 +102,43 @@
       const on=navigator.onLine; net.textContent=on?'ONLINE':'OFFLINE'; net.style.background=on?'#123922':'#3a1a1a';
     }
 
-    /* 호가단위 & 포맷 */
+    /* ===== 호가단위/포맷 ===== */
     function getTick(p){if(p>=2e6)return 1e3;if(p>=1e6)return 500;if(p>=5e5)return 100;if(p>=1e5)return 50;if(p>=1e4)return 10;if(p>=1e3)return 5;if(p>=100)return 1;if(p>=10)return .1;if(p>=1)return .01;if(p>=.1)return .001;if(p>=.01)return .0001;if(p>=.001)return .00001;if(p>=.0001)return .000001;if(p>=.00001)return .0000001;if(p>=.000001)return .00000001;return .000000001;}
     function fmtKRW(x){const t=getTick(x),d=(t.toString().split('.')[1]||'').length,r=Math.round(x/t)*t;return r.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});}
     const riskText=r=>{const v=Math.abs(r*100);return v<1?'1(안정)':v<3?'2(보통)':'3(주의)';};
     const zzeolComment=r=>r>0.08?'🚀 폭등 모드!':r>0.05?'🔥 불장 신호!':r>0.02?'📈 상승 탄력':r>-0.02?'⚖️ 관망':'💀 하락 리스크';
 
-    /* 네트워크 유틸 */
-    async function fetchJSON(url,{timeout=7000,retries=2,backoff=500}={}){for(let a=0;a<=retries;a++){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{signal:c.signal,cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json();}catch(e){if(a===retries)throw e;await new Promise(r=>setTimeout(r,backoff*Math.pow(2,a)));}finally{clearTimeout(t);}}}
+    /* ===== 네트워크 유틸(재시도/타임아웃) ===== */
+    async function fetchJSON(url,{timeout=7000,retries=2,backoff=500}={}){
+      for(let i=0;i<=retries;i++){
+        const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),timeout);
+        try{
+          const res=await fetch(url,{signal:ctrl.signal,cache:'no-store'});
+          if(!res.ok) throw new Error('HTTP '+res.status);
+          return await res.json();
+        }catch(e){
+          if(i===retries) throw e;
+          await new Promise(r=>setTimeout(r, backoff*Math.pow(2,i)));
+        }finally{ clearTimeout(t); }
+      }
+    }
 
-    /* 마켓 & 한글명 맵 */
+    /* ===== 마켓 & 한글명 맵 ===== */
     let MARKETS=[]; const NAME_KO=new Map(); const SYM=m=>m.replace('KRW-','');
-    async function ensureMarkets(){ if(MARKETS.length) return MARKETS; const all=await fetchJSON('https://api.upbit.com/v1/market/all?isDetails=false'); MARKETS=all.filter(m=>m.market.startsWith('KRW-')); for(const m of MARKETS) NAME_KO.set(m.market, m.korean_name||SYM(m.market)); return MARKETS; }
+    async function ensureMarkets(){
+      if(MARKETS.length) return MARKETS;
+      const all=await fetchJSON('https://api.upbit.com/v1/market/all?isDetails=false');
+      MARKETS=all.filter(x=>x.market.startsWith('KRW-'));
+      for(const m of MARKETS) NAME_KO.set(m.market, m.korean_name || SYM(m.market));
+      return MARKETS;
+    }
 
-    /* 검색 + WS 실시간 */
+    /* ===== 검색 + WebSocket 실시간 ===== */
     let ws=null, wsTimer=null, wsHB=null, wsBackoff=1000;
     function wsState(s){ const el=$('wsState'); if(el) el.textContent=s; }
     function openWS(market){
       if(ws){try{ws.close();}catch{} ws=null;} if(wsTimer){clearTimeout(wsTimer);} if(wsHB){clearInterval(wsHB);}
-      wsState('연결중…'); ws=new WebSocket('wss://api.upbit.com/websocket/v1'); ws.binaryType='arraybuffer';
+      wsState('연결중…'); const url='wss://api.upbit.com/websocket/v1'; ws=new WebSocket(url); ws.binaryType='arraybuffer';
       ws.onopen=()=>{ ws.send(JSON.stringify([{ticket:'zzeol'},{type:'ticker',codes:[market],isOnlyRealtime:true}])); wsState('연결됨'); wsBackoff=1000; wsHB=setInterval(()=>{try{ws.send(JSON.stringify([{ticket:'ping'}]));}catch{}},15000); };
       ws.onmessage=ev=>{ const txt=new TextDecoder('utf-8').decode(new Uint8Array(ev.data)); let t; try{t=JSON.parse(txt);}catch{return;} if((t.type||t.ty)!=='ticker') return;
         const price=t.trade_price??t.tp, rate=(t.signed_change_rate??t.scr)??0, change=(t.change??t.c)||'EVEN';
@@ -132,7 +163,7 @@
     $('q')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
     $('btnClear')?.addEventListener('click', ()=>{ if($('q')) $('q').value=''; $('result').style.display='none'; $('searchError').style.display='none'; if(ws){try{ws.close();}catch{} ws=null;} });
 
-    /* 급등 피드 — 항상 최신이 위, 안전 가드 포함 */
+    /* ===== 급등 피드(한글/저장/재정렬/내구성) ===== */
     const FEED_KEY='zzeol_hot_feed_v1', FEED_TTL_HOURS=24;
     const rowBySym=new Map(); let storeCache=[];
     function feedEl(){ return $('hotFeed'); }
@@ -157,6 +188,7 @@
       const list=await ensureMarkets(); const tickers=await getTickersBatch(list.map(x=>x.market));
       const hot=tickers.filter(t=>t.signed_change_rate>0.05 && t.acc_trade_price_24h>10_000_000_000).sort((a,b)=>b.signed_change_rate-a.signed_change_rate);
       const el=feedEl(); if(!el) return;
+
       for(const t of hot){
         const market=t.market, sym=SYM(market), nameKo=NAME_KO.get(market)||sym;
         const p=t.trade_price, rate=t.signed_change_rate;
@@ -173,12 +205,12 @@
       }
     }
 
-    /* 부팅 순서: DOM 준비 후 실행(❗핵심) */
+    /* ===== 부팅 순서 ===== */
     window.addEventListener('DOMContentLoaded', async ()=>{
-      tick(); setInterval(tick,1000);
-      await ensureMarkets();
-      const boot=loadStore(); if(boot.length) renderFeed(boot);
-      await loadHotOnce(); setInterval(loadHotOnce, 60000);
+      tick(); setInterval(tick,1000);       // 시계/온라인
+      await ensureMarkets();                 // 한글명 맵 준비
+      const boot=loadStore(); if(boot.length) renderFeed(boot);  // 저장 복원
+      await loadHotOnce(); setInterval(loadHotOnce, 60000);      // 급등 감지
     });
   </script>
 </body>
