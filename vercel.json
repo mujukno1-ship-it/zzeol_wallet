@@ -5,10 +5,8 @@
     {
       "source": "/(.*)\\.(js|css|json|html)",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=60, must-revalidate"
-        }
+        { "key": "Cache-Control", "value": "no-store, max-age=0" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
       ]
     }
   ],
@@ -26,5 +24,9 @@
     { "src": "/api/candles", "dest": "/api/candles.js" },
     { "src": "/api/ticks", "dest": "/api/ticks.js" },
     { "src": "/api/health", "dest": "/api/health.js" }
+  ],
+  "redirects": [
+    { "source": "/zzeol_live", "destination": "/zzeol_live.html", "permanent": false },
+    { "source": "/zzeol_live_v104", "destination": "/zzeol_live_v104.html", "permanent": false }
   ]
 }
