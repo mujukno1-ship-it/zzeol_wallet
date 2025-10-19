@@ -1,6 +1,7 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+
   "headers": [
     {
       "source": "/(.*)\\.(js|css|json|html)",
@@ -10,23 +11,23 @@
       ]
     }
   ],
+
   "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs18.x"
-    }
+    "api/**/*.js": { "runtime": "nodejs18.x" }
   },
-  "env": {
-    "NODE_ENV": "production"
-  },
+
+  "env": { "NODE_ENV": "production" },
+
   "routes": [
     { "src": "/api/markets", "dest": "/api/markets.js" },
-    { "src": "/api/ticker", "dest": "/api/ticker.js" },
+    { "src": "/api/ticker",  "dest": "/api/ticker.js"  },
     { "src": "/api/candles", "dest": "/api/candles.js" },
-    { "src": "/api/ticks", "dest": "/api/ticks.js" },
-    { "src": "/api/health", "dest": "/api/health.js" }
+    { "src": "/api/ticks",   "dest": "/api/ticks.js"   },
+    { "src": "/api/health",  "dest": "/api/health.js"  }
   ],
+
   "redirects": [
-    { "source": "/zzeol_live", "destination": "/zzeol_live.html", "permanent": false },
-    { "source": "/zzeol_live_v104", "destination": "/zzeol_live_v104.html", "permanent": false }
+    { "source": "/zzeol_live",      "destination": "/public/zzeol_live.html",       "permanent": false },
+    { "source": "/zzeol_live_v104", "destination": "/public/zzeol_live_v104.html",  "permanent": false }
   ]
 }
