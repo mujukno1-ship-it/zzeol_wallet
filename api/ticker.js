@@ -1,13 +1,14 @@
+import { ok, fail, handleOptions } from './_utils';
+
 export default async function handler(req, res) {
+  if (handleOptions(req, res)) return;
   try {
-    const ms = (req.query.ms || '').split(',').filter(Boolean);
-    if (!ms.length) return res.status(400).json({ error: 'missing ms' });
-    const url = 'https://api.upbit.com/v1/ticker?markets=' + ms.join(',');
-    const r = await fetch(url, { cache: 'no-store' });
+    const ms = String(req.query.ms || '').trim();
+    if (!ms) return fail(res, 400, 'param "ms" required');
+    const url = 'https://api.upbit.com/v1/ticker?markets=' + encodeURIComponent(ms);
+    const r = await fetch(url, { headers: { 'Accept':'application/json' }, cache:'no-store' });
+    if (!r.ok) throw new Error('upbit ticker ' + r.status);
     const data = await r.json();
-    res.setHeader('Cache-Control', 's-maxage=5, stale-while-revalidate=10');
-    res.status(200).json(data);
-  } catch (e) {
-    res.status(500).json({ error: 'ticker proxy failed' });
-  }
+    ok(res, data);
+  } catch (e) { fail(res, 500, e.message); }
 }
