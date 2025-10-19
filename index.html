@@ -1,150 +1,185 @@
-<script>
-// ===== 급등 피드 (항상 '최신 감지'가 맨 위) =====
-const FEED_KEY = 'zzeol_hot_feed_v1';
-const FEED_TTL_HOURS = 24;
-const rowBySym = new Map(); // 심볼 -> <tr> 매핑
-let storeCache = [];        // 저장소 캐시 (최신이 앞)
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>쩔어지갑 v4.8 — 실시간 + 급등 피드(안정화)</title>
+  <!-- ✅ 파비콘 404 방지 -->
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+  <style>
+    :root{--bg:#0d1117;--panel:#161b22;--line:#2d333b;--text:#e6edf3;--muted:#9fb1c1;--up:#16c784;--down:#ea3943;--chip:#223045}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Noto Sans KR,Apple SD Gothic Neo}
+    .wrap{max-width:1150px;margin:24px auto;padding:0 16px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    h1{margin:0;font-size:18px;display:flex;gap:8px;align-items:center}
+    .badge{background:var(--chip);border:1px solid #283752;color:var(--muted);padding:4px 8px;border-radius:999px;font-size:12px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.25);margin-top:12px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    input,button{background:#0e141b;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
+    input{flex:1;min-width:260px}
+    button{cursor:pointer} button:hover{background:#1a2330}
+    table{width:100%;border-collapse:collapse} th,td{padding:8px;border-bottom:1px solid var(--line);text-align:center}
+    .price{font-weight:800;font-size:28px}
+    .diff.up{color:var(--up)} .diff.down{color:var(--down)} .muted{color:var(--muted)}
+    @keyframes flash{0%{background:rgba(255,255,0,.18)}100%{background:transparent}} .flash{animation:flash 1s ease-out 1}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>쩔어지갑 <span class="badge">v4.8</span> <span class="badge" id="net">OFFLINE</span></h1>
+      <div class="badge" id="clock">KST — --:--:--</div>
+    </header>
 
-function loadFeedFromStore() {
-  try {
-    const raw = localStorage.getItem(FEED_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    const now = Date.now();
-    return arr.filter(x => now - x.ts < FEED_TTL_HOURS * 3600 * 1000).slice(0, 100);
-  } catch { return []; }
-}
-function saveFeedToStore(items) {
-  try { localStorage.setItem(FEED_KEY, JSON.stringify(items.slice(0, 100))); }
-  catch (e) { console.warn('feed save failed', e); }
-}
-function renderFeed(items) {
-  const feed = document.getElementById('hotFeed');
-  feed.innerHTML = '';
-  rowBySym.clear();
-  for (const it of items) {
-    const tr = document.createElement('tr');
-    tr.style.textAlign = 'center';
-    tr.innerHTML = `
-      <td>💥 ${it.nameKo || it.sym}</td>
-      <td>${it.price}</td>
-      <td>${it.buy}</td>
-      <td>${it.sell}</td>
-      <td>${it.stop}</td>
-      <td>${it.risk}</td>
-      <td>${it.comment}</td>`;
-    feed.appendChild(tr);
-    rowBySym.set(it.sym, tr);
-  }
-  storeCache = items;
-}
-document.getElementById('btnFeedClear')?.addEventListener('click', () => {
-  localStorage.removeItem(FEED_KEY);
-  renderFeed([]);
-  alert('급등 피드를 비웠습니다.');
-});
+    <!-- 검색 -->
+    <div class="card">
+      <div class="row">
+        <input id="q" placeholder="코인 검색 (예: 이더리움 / ETH / KRW-ETH)" autocomplete="off" />
+        <button id="btnSearch">검색</button>
+        <button id="btnClear">초기화</button>
+      </div>
+      <div id="searchError" class="muted" style="color:#ff6b6b;display:none;margin-top:6px"></div>
+    </div>
 
-// 유틸: 배열 맨 앞에 최신으로 넣되 중복 제거
-function upsertFront(entry) {
-  storeCache = [entry, ...storeCache.filter(x => x.sym !== entry.sym)];
-  saveFeedToStore(storeCache);
-}
+    <!-- 선택 코인 (WS 실시간) -->
+    <div class="card" id="result" style="display:none">
+      <div class="row" style="justify-content:space-between;align-items:end">
+        <div>
+          <div style="font-weight:700;font-size:18px">선택된 코인: <span id="selName" class="muted">-</span></div>
+          <div id="selMarket" class="badge" style="margin-top:6px">—</div>
+        </div>
+        <div style="text-align:right">
+          <div id="nowPrice" class="price">—</div>
+          <div id="nowChange" class="diff">—</div>
+        </div>
+      </div>
+      <table style="margin-top:10px">
+        <thead><tr class="muted"><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th><th class="muted">연결</th></tr></thead>
+        <tbody><tr>
+          <td id="c_price">—</td><td id="c_buy">—</td><td id="c_sell">—</td>
+          <td id="c_stop">—</td><td id="c_risk">—</td><td id="c_comment">—</td><td id="wsState" class="muted">—</td>
+        </tr></tbody>
+      </table>
+    </div>
 
-// 업비트 요청 보조
-function chunk(arr, size){ const out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
-async function fetchJSON(url, {timeout=8000, retries=2, backoff=500}={}) {
-  for (let a=0; a<=retries; a++) {
-    const ctrl = new AbortController(); const timer = setTimeout(()=>ctrl.abort(), timeout);
-    try {
-      const res = await fetch(url, {signal: ctrl.signal, cache: 'no-store'});
-      if (!res.ok) throw new Error('HTTP '+res.status);
-      return await res.json();
-    } catch (e) {
-      if (a === retries) throw e;
-      await new Promise(r => setTimeout(r, backoff * Math.pow(2,a)));
-    } finally { clearTimeout(timer); }
-  }
-}
-async function getTickersBatch(markets){
-  const parts = chunk(markets, 60);
-  const out = [];
-  for (const p of parts) {
-    const r = await fetchJSON('https://api.upbit.com/v1/ticker?markets='+p.join(',')); 
-    out.push(...r);
-  }
-  return out;
-}
+    <!-- 🔥 급등 피드 -->
+    <div class="card" id="hotCard">
+      <div class="row" style="justify-content:space-between">
+        <h3 style="margin:0">🔥 급등코인 실시간 피드 (5%↑, 10억↑)</h3>
+        <button id="btnFeedClear">피드 비우기</button>
+      </div>
+      <table>
+        <thead><tr class="muted"><th>코인명(한글)</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr></thead>
+        <tbody id="hotFeed"></tbody>
+      </table>
+      <div class="muted" style="font-size:12px;margin-top:6px">※ 새로 감지되면 항상 맨 위로 이동. (최대 100개, 24시간 보관)</div>
+    </div>
+  </div>
 
-// 핵심: 새로 감지되면 (이미 표에 있어도) 값 업데이트 + 맨 위로 이동
-async function loadHotOnce() {
-  const list = await ensureMarkets();      // <- 너의 기존 함수 유지됨
-  const tickers = await getTickersBatch(list.map(x => x.market));
-  const hot = tickers
-    .filter(t => t.signed_change_rate > 0.05 && t.acc_trade_price_24h > 10_000_000_000)
-    .sort((a,b)=> b.signed_change_rate - a.signed_change_rate);
+  <!-- ✅ 스크립트는 바디 맨 끝: DOM 생성 이후 실행 -->
+  <script>
+    const $=id=>document.getElementById(id);
 
-  const feed = document.getElementById('hotFeed');
-
-  for (const t of hot) {
-    const market = t.market;
-    const sym = market.replace('KRW-','');
-    const nameKo = (typeof NAME_KO !== 'undefined' && NAME_KO.get) ? (NAME_KO.get(market) || sym) : sym;
-
-    const p = t.trade_price, rate = t.signed_change_rate;
-    const entry = {
-      ts: Date.now(),
-      sym,
-      nameKo,
-      price: fmtKRW(p),
-      buy:   fmtKRW(p*0.988),
-      sell:  fmtKRW(p*1.012),
-      stop:  fmtKRW(p*0.975),
-      risk:  (typeof riskText==='function'? riskText(rate): '—'),
-      comment: (typeof zzeolComment==='function'? zzeolComment(rate): '—')
-    };
-
-    if (rowBySym.has(sym)) {
-      // 이미 표에 있던 코인: 내용 업데이트 후 맨 위로 이동
-      const tr = rowBySym.get(sym);
-      tr.innerHTML = `
-        <td>💥 ${entry.nameKo}</td>
-        <td>${entry.price}</td>
-        <td>${entry.buy}</td>
-        <td>${entry.sell}</td>
-        <td>${entry.stop}</td>
-        <td>${entry.risk}</td>
-        <td>${entry.comment}</td>`;
-      tr.classList.add('flash');
-      feed.prepend(tr);            // ✅ 항상 위로
-      setTimeout(()=>tr.classList.remove('flash'), 900);
-      upsertFront(entry);          // 저장소에서도 최신으로 갱신
-    } else {
-      // 새 코인: 새 행 만들고 맨 위로
-      const tr = document.createElement('tr');
-      tr.style.textAlign='center'; tr.classList.add('flash');
-      tr.innerHTML = `
-        <td>💥 ${entry.nameKo}</td>
-        <td>${entry.price}</td>
-        <td>${entry.buy}</td>
-        <td>${entry.sell}</td>
-        <td>${entry.stop}</td>
-        <td>${entry.risk}</td>
-        <td>${entry.comment}</td>`;
-      feed.prepend(tr);
-      setTimeout(()=>tr.classList.remove('flash'), 900);
-      rowBySym.set(sym, tr);
-      upsertFront(entry);
+    /* 시계/온라인 */
+    function tick(){
+      const clock=$('clock'), net=$('net'); if(!clock||!net) return;
+      const now=new Date(), utc=now.getTime()+now.getTimezoneOffset()*60000, kst=new Date(utc+9*3600000);
+      clock.textContent='KST — '+kst.toLocaleTimeString('ko-KR',{hour12:false});
+      const on=navigator.onLine; net.textContent=on?'ONLINE':'OFFLINE'; net.style.background=on?'#123922':'#3a1a1a';
     }
-  }
-}
 
-// 부팅: 저장본 먼저 복원 → 주기적으로 스캔(30초)
-window.addEventListener('DOMContentLoaded', async ()=>{
-  // 한글명 맵을 쓰는 버전이면 ensureMarkets 먼저
-  try { if (typeof ensureMarkets==='function') await ensureMarkets(); } catch {}
-  const boot = loadFeedFromStore();
-  if (boot.length) renderFeed(boot);
-  await loadHotOnce();
-  setInterval(loadHotOnce, 30000); // 30초마다 감지
-});
-</script>
+    /* 호가단위 & 포맷 */
+    function getTick(p){if(p>=2e6)return 1e3;if(p>=1e6)return 500;if(p>=5e5)return 100;if(p>=1e5)return 50;if(p>=1e4)return 10;if(p>=1e3)return 5;if(p>=100)return 1;if(p>=10)return .1;if(p>=1)return .01;if(p>=.1)return .001;if(p>=.01)return .0001;if(p>=.001)return .00001;if(p>=.0001)return .000001;if(p>=.00001)return .0000001;if(p>=.000001)return .00000001;return .000000001;}
+    function fmtKRW(x){const t=getTick(x),d=(t.toString().split('.')[1]||'').length,r=Math.round(x/t)*t;return r.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});}
+    const riskText=r=>{const v=Math.abs(r*100);return v<1?'1(안정)':v<3?'2(보통)':'3(주의)';};
+    const zzeolComment=r=>r>0.08?'🚀 폭등 모드!':r>0.05?'🔥 불장 신호!':r>0.02?'📈 상승 탄력':r>-0.02?'⚖️ 관망':'💀 하락 리스크';
+
+    /* 네트워크 유틸 */
+    async function fetchJSON(url,{timeout=7000,retries=2,backoff=500}={}){for(let a=0;a<=retries;a++){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{signal:c.signal,cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json();}catch(e){if(a===retries)throw e;await new Promise(r=>setTimeout(r,backoff*Math.pow(2,a)));}finally{clearTimeout(t);}}}
+
+    /* 마켓 & 한글명 맵 */
+    let MARKETS=[]; const NAME_KO=new Map(); const SYM=m=>m.replace('KRW-','');
+    async function ensureMarkets(){ if(MARKETS.length) return MARKETS; const all=await fetchJSON('https://api.upbit.com/v1/market/all?isDetails=false'); MARKETS=all.filter(m=>m.market.startsWith('KRW-')); for(const m of MARKETS) NAME_KO.set(m.market, m.korean_name||SYM(m.market)); return MARKETS; }
+
+    /* 검색 + WS 실시간 */
+    let ws=null, wsTimer=null, wsHB=null, wsBackoff=1000;
+    function wsState(s){ const el=$('wsState'); if(el) el.textContent=s; }
+    function openWS(market){
+      if(ws){try{ws.close();}catch{} ws=null;} if(wsTimer){clearTimeout(wsTimer);} if(wsHB){clearInterval(wsHB);}
+      wsState('연결중…'); ws=new WebSocket('wss://api.upbit.com/websocket/v1'); ws.binaryType='arraybuffer';
+      ws.onopen=()=>{ ws.send(JSON.stringify([{ticket:'zzeol'},{type:'ticker',codes:[market],isOnlyRealtime:true}])); wsState('연결됨'); wsBackoff=1000; wsHB=setInterval(()=>{try{ws.send(JSON.stringify([{ticket:'ping'}]));}catch{}},15000); };
+      ws.onmessage=ev=>{ const txt=new TextDecoder('utf-8').decode(new Uint8Array(ev.data)); let t; try{t=JSON.parse(txt);}catch{return;} if((t.type||t.ty)!=='ticker') return;
+        const price=t.trade_price??t.tp, rate=(t.signed_change_rate??t.scr)??0, change=(t.change??t.c)||'EVEN';
+        $('nowPrice').textContent=fmtKRW(price)+' 원'; $('nowChange').className='diff '+(change==='RISE'?'up':change==='FALL'?'down':''); $('nowChange').textContent=`${change==='RISE'?'+':''}${(rate*100).toFixed(2)}%`;
+        $('c_price').textContent=fmtKRW(price); $('c_buy').textContent=fmtKRW(price*0.988); $('c_sell').textContent=fmtKRW(price*1.012); $('c_stop').textContent=fmtKRW(price*0.975); $('c_risk').textContent=riskText(rate); $('c_comment').textContent=zzeolComment(rate);
+      };
+      ws.onclose=()=>{ wsState('재연결 대기…'); wsTimer=setTimeout(()=>openWS(market), wsBackoff); wsBackoff=Math.min(wsBackoff*2,15000); };
+      ws.onerror=()=>{ try{ws.close();}catch{} };
+    }
+    async function doSearch(){
+      const err=$('searchError'); if(err) err.style.display='none';
+      const q=($('q')?.value||'').trim(); if(!q){$('q')?.focus();return;}
+      try{
+        const list=await ensureMarkets(); const s=q.toLowerCase();
+        const exact=list.find(x=>x.korean_name.toLowerCase()===s||(x.english_name||'').toLowerCase()===s||x.market.toLowerCase()===s||SYM(x.market).toLowerCase()===s);
+        const coin=exact||list.find(x=>x.korean_name.toLowerCase().includes(s)||(x.english_name||'').toLowerCase().includes(s)||x.market.toLowerCase().includes(s)||SYM(x.market).toLowerCase().includes(s));
+        if(!coin){ if(err){err.textContent='일치하는 코인을 못 찾았어. (예: 이더리움 / ETH / KRW-ETH)'; err.style.display='block';} return; }
+        $('result').style.display='block'; $('selName').textContent=coin.korean_name; $('selMarket').textContent=coin.market; wsState('연결 준비…'); openWS(coin.market);
+      }catch(e){ console.error(e); if(err){err.textContent='업비트 연결에 문제가 있어. 잠시 후 다시 시도해줘!'; err.style.display='block';} }
+    }
+    $('btnSearch')?.addEventListener('click', doSearch);
+    $('q')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+    $('btnClear')?.addEventListener('click', ()=>{ if($('q')) $('q').value=''; $('result').style.display='none'; $('searchError').style.display='none'; if(ws){try{ws.close();}catch{} ws=null;} });
+
+    /* 급등 피드 — 항상 최신이 위, 안전 가드 포함 */
+    const FEED_KEY='zzeol_hot_feed_v1', FEED_TTL_HOURS=24;
+    const rowBySym=new Map(); let storeCache=[];
+    function feedEl(){ return $('hotFeed'); }
+    function loadStore(){ try{ const raw=localStorage.getItem(FEED_KEY); if(!raw) return []; const now=Date.now(); return JSON.parse(raw).filter(x=>now-x.ts<FEED_TTL_HOURS*3600*1000).slice(0,100);}catch{return [];} }
+    function saveStore(items){ try{ localStorage.setItem(FEED_KEY, JSON.stringify(items.slice(0,100))); }catch(e){ console.warn('feed save failed',e); } }
+    function renderFeed(items){
+      const el=feedEl(); if(!el) return; el.innerHTML=''; rowBySym.clear();
+      for(const it of items){
+        const tr=document.createElement('tr'); tr.style.textAlign='center';
+        tr.innerHTML=`<td>💥 ${it.nameKo||it.sym}</td><td>${it.price}</td><td>${it.buy}</td><td>${it.sell}</td><td>${it.stop}</td><td>${it.risk}</td><td>${it.comment}</td>`;
+        el.appendChild(tr); rowBySym.set(it.sym,tr);
+      }
+      storeCache=items;
+    }
+    $('btnFeedClear')?.addEventListener('click', ()=>{ localStorage.removeItem(FEED_KEY); renderFeed([]); alert('급등 피드를 비웠습니다.'); });
+    function upsertFront(entry){ storeCache=[entry, ...storeCache.filter(x=>x.sym!==entry.sym)]; saveStore(storeCache); }
+
+    function chunk(a,s){const o=[];for(let i=0;i<a.length;i+=s)o.push(a.slice(i,i+s));return o;}
+    async function getTickersBatch(markets){ const out=[]; for(const c of chunk(markets,60)){ const part=await fetchJSON('https://api.upbit.com/v1/ticker?markets='+c.join(','),{timeout:8000,retries:2}); out.push(...part);} return out; }
+
+    async function loadHotOnce(){
+      const list=await ensureMarkets(); const tickers=await getTickersBatch(list.map(x=>x.market));
+      const hot=tickers.filter(t=>t.signed_change_rate>0.05 && t.acc_trade_price_24h>10_000_000_000).sort((a,b)=>b.signed_change_rate-a.signed_change_rate);
+      const el=feedEl(); if(!el) return;
+      for(const t of hot){
+        const market=t.market, sym=SYM(market), nameKo=NAME_KO.get(market)||sym;
+        const p=t.trade_price, rate=t.signed_change_rate;
+        const entry={ts:Date.now(), sym, nameKo, price:fmtKRW(p), buy:fmtKRW(p*0.988), sell:fmtKRW(p*1.012), stop:fmtKRW(p*0.975), risk:riskText(rate), comment:zzeolComment(rate)};
+        if(rowBySym.has(sym)){
+          const tr=rowBySym.get(sym);
+          tr.innerHTML=`<td>💥 ${entry.nameKo}</td><td>${entry.price}</td><td>${entry.buy}</td><td>${entry.sell}</td><td>${entry.stop}</td><td>${entry.risk}</td><td>${entry.comment}</td>`;
+          tr.classList.add('flash'); el.prepend(tr); setTimeout(()=>tr.classList.remove('flash'),900); upsertFront(entry);
+        }else{
+          const tr=document.createElement('tr'); tr.style.textAlign='center'; tr.classList.add('flash');
+          tr.innerHTML=`<td>💥 ${entry.nameKo}</td><td>${entry.price}</td><td>${entry.buy}</td><td>${entry.sell}</td><td>${entry.stop}</td><td>${entry.risk}</td><td>${entry.comment}</td>`;
+          el.prepend(tr); setTimeout(()=>tr.classList.remove('flash'),900); rowBySym.set(sym,tr); upsertFront(entry);
+        }
+      }
+    }
+
+    /* 부팅 순서: DOM 준비 후 실행(❗핵심) */
+    window.addEventListener('DOMContentLoaded', async ()=>{
+      tick(); setInterval(tick,1000);
+      await ensureMarkets();
+      const boot=loadStore(); if(boot.length) renderFeed(boot);
+      await loadHotOnce(); setInterval(loadHotOnce, 60000);
+    });
+  </script>
+</body>
+</html>
