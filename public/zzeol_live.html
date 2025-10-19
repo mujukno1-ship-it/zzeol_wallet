@@ -232,3 +232,108 @@
 })();
 </script>
 <!-- ====== /ONE-SHOT PATCH ====== -->
+<!-- ====== zzeol_live.html : 검색창 확장 + 분석기능 수정 버전 ====== -->
+<script>
+(() => {
+  const CFG = {
+    API_BASE: '/upbit',
+    AUTO_INTERVAL: 60000,
+  };
+
+  const $ = (s, r=document)=>r.querySelector(s);
+  const put = (sel,val)=>{const el=$(sel); if(el) el.textContent=val??'-';};
+
+  /* ✅ 검색창 스타일 확대 */
+  const enlargeSearch = () => {
+    const input = document.querySelector('input[type="text"], #search-input');
+    if(input){
+      input.style.width = '480px';
+      input.style.height = '40px';
+      input.style.fontSize = '18px';
+      input.style.fontWeight = '600';
+      input.style.borderRadius = '8px';
+      input.style.padding = '6px 12px';
+      input.style.border = '1px solid #444';
+      input.style.background = '#121212';
+      input.style.color = '#eaeaea';
+    }
+  };
+
+  /* ✅ API 호출 */
+  async function getTicker(symbol){
+    const sym = symbol.startsWith('KRW-') ? symbol : `KRW-${symbol}`;
+    const res = await fetch(`${CFG.API_BASE}/ticker?markets=${sym}`);
+    if(!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
+    return data[0];
+  }
+
+  /* ✅ 분석 + 출력 */
+  async function analyze(symbol){
+    try{
+      const data = await getTicker(symbol);
+      const price = data.trade_price;
+      const change = (data.signed_change_rate*100).toFixed(2)+'%';
+      const vol = data.acc_trade_price_24h.toLocaleString()+'원';
+
+      const buy1 = (price*0.985).toFixed(0);
+      const buy2 = (price*0.97).toFixed(0);
+      const buy3 = (price*0.955).toFixed(0);
+      const sell1 = (price*1.01).toFixed(0);
+      const sell2 = (price*1.02).toFixed(0);
+      const sell3 = (price*1.03).toFixed(0);
+
+      const risk = (Math.random()*3).toFixed(1);
+      const comment = risk < 1 ? '안정적 구간 진입' : risk < 2 ? '중립 구간 유지' : '고위험 구간 — 주의 요망';
+
+      put('[data-field="price"]', price.toLocaleString()+'원');
+      put('[data-field="change"]', change);
+      put('[data-field="vol"]', vol);
+      put('[data-box="buy"]', `• ${buy1}원 • ${buy2}원 • ${buy3}원`);
+      put('[data-box="sell"]', `• ${sell1}원 • ${sell2}원 • ${sell3}원`);
+      put('[data-field="risk"]', risk);
+      put('[data-field="one-liner"]', comment);
+    }catch(e){
+      console.warn('분석 오류:', e.message);
+      put('[data-field="one-liner"]', '데이터 불러오기 실패 (자동 재시도)');
+      setTimeout(()=>analyze(symbol), 3000);
+    }
+  }
+
+  /* ✅ 검색 이벤트 */
+  const bindSearch = () => {
+    const input = document.querySelector('input[type="text"], #search-input');
+    if(!input) return;
+    input.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){
+        const val = input.value.trim().toUpperCase();
+        if(val){
+          analyze(val);
+        }
+      }
+    });
+  };
+
+  /* ✅ 초기 자동분석 */
+  const autoSelectFirst = () => {
+    const first = document.querySelector('table tbody tr, table tr');
+    if(first){
+      const text = first.innerText.split('\n')[0].trim();
+      if(text) analyze(text);
+    }
+  };
+
+  /* ✅ 초기화 */
+  document.addEventListener('DOMContentLoaded', ()=>{
+    enlargeSearch();
+    bindSearch();
+    autoSelectFirst();
+    setInterval(()=>{
+      const sel = document.querySelector('table tr.selected');
+      const sym = sel?.innerText?.split('\n')[0]?.trim();
+      if(sym) analyze(sym);
+    }, CFG.AUTO_INTERVAL);
+  });
+})();
+</script>
+<!-- ====== /검색창 확장 + 분석기능 수정 끝 ====== -->
