@@ -1,14 +1,15 @@
-import { ok, fail, handleOptions } from './_utils';
+import { upbit, json, err, config } from './_utils';
 
-export default async function handler(req, res) {
-  if (handleOptions(req, res)) return;
+export { config };
+export default async function handler(req) {
   try {
-    const ms = String(req.query.ms || '').trim();
-    if (!ms) return fail(res, 400, 'param "ms" required');
-    const url = 'https://api.upbit.com/v1/ticker?markets=' + encodeURIComponent(ms);
-    const r = await fetch(url, { headers: { 'Accept':'application/json' }, cache:'no-store' });
-    if (!r.ok) throw new Error('upbit ticker ' + r.status);
-    const data = await r.json();
-    ok(res, data);
-  } catch (e) { fail(res, 500, e.message); }
+    const { searchParams } = new URL(req.url);
+    const markets = searchParams.get('markets'); // 예: KRW-ETH,KRW-BTC
+    if (!markets) return err('missing markets', 400);
+
+    const data = await upbit(`/v1/ticker?markets=${encodeURIComponent(markets)}`);
+    return json({ ok: true, data });
+  } catch (e) {
+    return err(e.message || 'ticker failed');
+  }
 }
