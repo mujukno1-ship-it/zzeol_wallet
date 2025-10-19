@@ -41,6 +41,60 @@
 
     <div class="row" style="margin-bottom:10px">
       <div class="search card">
+        <!-- 🔥 급등코인 실시간 분석 섹션 -->
+<div class="card" id="hot-section" style="margin-top:10px; display:none;">
+  <h3 style="margin:0 0 10px 0;">🔥 급등코인 (실시간 5%↑)</h3>
+  <table style="width:100%;border-collapse:collapse;color:#e6edf3;font-size:13px;">
+    <thead>
+      <tr style="color:#8aa0b6;text-align:center;border-bottom:1px solid #243142;">
+        <th>코인명</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th>
+      </tr>
+    </thead>
+    <tbody id="hot-list"></tbody>
+  </table>
+</div>
+
+<script>
+async function loadHotCoins(){
+  try{
+    const all = await fetch('https://api.upbit.com/v1/market/all').then(r=>r.json());
+    const krw = all.filter(x=>x.market.startsWith('KRW-'));
+    const tickers = await fetch('https://api.upbit.com/v1/ticker?markets='+krw.map(x=>x.market).join(',')).then(r=>r.json());
+
+    const hot = tickers.filter(t =>
+      t.signed_change_rate > 0.05 &&
+      t.acc_trade_price_24h > 10_000_000_000
+    ).sort((a,b)=>b.signed_change_rate - a.signed_change_rate).slice(0,10);
+
+    const list = document.getElementById('hot-list');
+    if(!hot.length){ document.getElementById('hot-section').style.display='none'; return; }
+
+    list.innerHTML = hot.map(t=>{
+      const p=t.trade_price, rate=t.signed_change_rate;
+      const format=(v)=>v.toLocaleString('ko-KR',{maximumFractionDigits:4});
+      const buy=format(p*0.988), sell=format(p*1.012), stop=format(p*0.975);
+      const risk=Math.abs(rate*100)<1?'1(안정)':Math.abs(rate*100)<3?'2(보통)':'3(주의)';
+      const comment=rate>0.05?'🔥 불장 진입!':rate>0.02?'📈 상승 탄력 유지':rate>-0.02?'⚖️ 관망 구간':'💀 하락 리스크 주의';
+      return `
+      <tr style="text-align:center;">
+        <td>${t.market.replace('KRW-','')}</td>
+        <td>${format(p)}</td>
+        <td>${buy}</td>
+        <td>${sell}</td>
+        <td>${stop}</td>
+        <td>${risk}</td>
+        <td>${comment}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('hot-section').style.display='block';
+  }catch(e){
+    console.error('급등코인 분석 오류', e);
+  }
+}
+loadHotCoins();
+setInterval(loadHotCoins,60000); // 1분마다 갱신
+</script>
+
         <input id="search" placeholder="코인 검색 (예: 비트코인, 시바이누)" autocomplete="off" />
         <div class="list" id="list"></div>
       </div>
@@ -172,3 +226,4 @@
   </script>
 </body>
 </html>
+
