@@ -131,6 +131,30 @@ async function select(m){
   $('#quipBox').textContent=quip;
 }
 load();
+ <script>
+// 업비트 KRW 호가단위 규칙 (2023~현재)
+function upbitTick(price) {
+  // price는 숫자 (KRW)
+  if (price >= 2_000_000) return 1000;
+  if (price >= 1_000_000) return 500;
+  if (price >=   500_000) return 100;
+  if (price >=   100_000) return 50;
+  if (price >=    10_000) return 10;
+  if (price >=     1_000) return 1;
+  if (price >=       100) return 0.1;
+  if (price >=        10) return 0.01;
+  return 0.001; // 10원 미만
+}
+
+// 호가단위에 맞춰 반올림 (기본: 반올림, 올림/내림 옵션도 제공)
+function roundToTick(price, mode = "round") {
+  const t = upbitTick(price);
+  if (t === 0) return price;
+  if (mode === "ceil")  return Math.ceil (price / t) * t;
+  if (mode === "floor") return Math.floor(price / t) * t;
+  return Math.round(price / t) * t;
+}
 </script>
+
 </body>
 </html>
