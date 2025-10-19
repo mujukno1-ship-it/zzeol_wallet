@@ -1,5 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>쩔어지갑 v10.5 — Upbit 실시간</title>
+  <style>
+    body {
+      background-color: #0d1117;
+      color: #e6edf3;
+      font-family: "Pretendard", sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 18px; color: #58a6ff; margin: 0; }
+    .search-box {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    input {
+      flex: 1;
+      padding: 8px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+    }
+    button {
+      background-color: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .panel {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      background-color: #161b22;
+      border-radius: 10px;
+      margin-top: 20px;
+      padding: 15px;
+      text-align: center;
+    }
+    .panel div {
+      flex: 1;
+      font-size: 16px;
+    }
+    .highlight { color: #58a6ff; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>쩔어지갑 🔥 v10.5</h1>
+    <span id="ws-status">상태: 연결 대기중...</span>
+  </div>
+
+  <div class="search-box">
+    <input id="search-input" placeholder="코인명 (예: 비트코인, 이더리움, 시바이누)" />
+    <button onclick="startUpbitSync(document.getElementById('search-input').value)">검색</button>
+  </div>
+
+  <!-- 가로형 패널 -->
+  <div class="panel">
+    <div>현재가: <span id="price" class="highlight">-</span></div>
+    <div>매수: <span id="bid1" class="highlight">-</span></div>
+    <div>매도: <span id="ask1" class="highlight">-</span></div>
+    <div>위험도: <span id="risk" class="highlight">-</span></div>
+    <div>쩔어한마디: <span id="comment" class="highlight">-</span></div>
+  </div>
+
 <script>
-/* ========= Upbit 호가단위 규칙 + 반올림 ========= */
+/* ========= 업비트 호가단위 규칙 ========= */
 function upbitTick(price){
   if (price >= 2000000) return 1000;
   if (price >= 1000000) return 500;
@@ -19,7 +97,7 @@ function roundToTick(price, mode="round"){
   return Math.round(price / t) * t;
 }
 
-/* ========= 공용 fetch ========= */
+/* ========= API 공용 fetch ========= */
 async function jfetch(url){
   try{
     const r = await fetch(url, { cache: "no-store" });
@@ -31,81 +109,69 @@ async function jfetch(url){
   }
 }
 
-/* ========= 업비트와 동일한 현재가 산출 (ticker + orderbook 동기화) ========= */
+/* ========= 업비트와 동일한 현재가 + 호가 ========= */
 async function getUpbitExactPrice(market){
   const [ticker, ob] = await Promise.all([
     jfetch(`/api/ticker?markets=${market}`),
     jfetch(`/api/orderbook?markets=${market}`)
   ]);
 
-  let tradePrice = null;
-  if (Array.isArray(ticker) && ticker.length){
-    tradePrice = Number(ticker[0].trade_price);
-  }
+  let tradePrice=null;
+  if(Array.isArray(ticker)&&ticker.length) tradePrice=Number(ticker[0].trade_price);
 
   let ask1=null,bid1=null;
-  // 서버에서 리턴 형태가 { orderbook_units:[...] } 또는 업비트 원본 배열 둘 다 지원
-  if (ob && Array.isArray(ob.orderbook_units) && ob.orderbook_units.length){
-    ask1 = Number(ob.orderbook_units[0].ask_price);
-    bid1 = Number(ob.orderbook_units[0].bid_price);
-  } else if (Array.isArray(ob) && ob.length){
-    const units = ob[0]?.orderbook_units || [];
-    if (units.length){
-      ask1 = Number(units[0].ask_price);
-      bid1 = Number(units[0].bid_price);
-    }
+  if(ob && Array.isArray(ob.orderbook_units)){
+    ask1=ob.orderbook_units[0].ask_price;
+    bid1=ob.orderbook_units[0].bid_price;
+  } else if(Array.isArray(ob) && ob.length){
+    const u=ob[0]?.orderbook_units||[];
+    if(u.length){ask1=u[0].ask_price;bid1=u[0].bid_price;}
   }
 
-  if (tradePrice != null) return roundToTick(tradePrice, "round");
-  if (ask1!=null && bid1!=null) return roundToTick((ask1+bid1)/2, "round");
-  return null;
+  return {
+    price: tradePrice!=null ? roundToTick(tradePrice) : null,
+    ask: ask1!=null ? roundToTick(ask1) : null,
+    bid: bid1!=null ? roundToTick(bid1) : null
+  };
 }
 
-/* ========= DOM 반영 (id=price / ask1 / bid1 사용) ========= */
-async function updatePricePanel(market){
-  const price = await getUpbitExactPrice(market);
-  const el = document.querySelector("#price");
-  if (el){
-    el.textContent = (price!=null) ? price.toLocaleString("ko-KR") : "-";
-  }
-}
-async function updateBestQuotes(market){
-  const ob = await jfetch(`/api/orderbook?markets=${market}`);
-  let ask1=null,bid1=null;
-  if (ob && Array.isArray(ob.orderbook_units) && ob.orderbook_units.length){
-    ask1 = Number(ob.orderbook_units[0].ask_price);
-    bid1 = Number(ob.orderbook_units[0].bid_price);
-  } else if (Array.isArray(ob) && ob.length){
-    const units = ob[0]?.orderbook_units || [];
-    if (units.length){
-      ask1 = Number(units[0].ask_price);
-      bid1 = Number(units[0].bid_price);
-    }
-  }
-  const $ask = document.querySelector("#ask1");
-  const $bid = document.querySelector("#bid1");
-  if ($ask) $ask.textContent = (ask1!=null) ? roundToTick(ask1).toLocaleString("ko-KR") : "-";
-  if ($bid) $bid.textContent = (bid1!=null) ? roundToTick(bid1).toLocaleString("ko-KR") : "-";
+/* ========= UI 갱신 ========= */
+async function updatePanel(market){
+  const $price=document.getElementById("price");
+  const $ask=document.getElementById("ask1");
+  const $bid=document.getElementById("bid1");
+  const $risk=document.getElementById("risk");
+  const $comment=document.getElementById("comment");
+
+  const data=await getUpbitExactPrice(market);
+  if(!data.price){$price.textContent="-";return;}
+
+  $price.textContent=data.price.toLocaleString("ko-KR");
+  $ask.textContent=data.ask?.toLocaleString("ko-KR")||"-";
+  $bid.textContent=data.bid?.toLocaleString("ko-KR")||"-";
+
+  // 위험도와 쩔어한마디 (단순 예시)
+  const diff=Math.abs(data.ask-data.bid);
+  let risk="1";
+  if(diff>100) risk="2";
+  if(diff>500) risk="3";
+  $risk.textContent=risk;
+  $comment.textContent = risk==="1" ? "안정적" :
+                         risk==="2" ? "주의 요망" : "변동성 급등";
 }
 
-/* ========= 주기 갱신 ========= */
-let _syncTimer = null;
-function startUpbitSync(market){
-  clearInterval(_syncTimer);
-  const work = () => { updatePricePanel(market); updateBestQuotes(market); };
-  work();
-  _syncTimer = setInterval(work, 2000);
+/* ========= 자동 갱신 ========= */
+let _sync=null;
+function startUpbitSync(input){
+  clearInterval(_sync);
+  const market = input.toUpperCase().startsWith("KRW-") ? input.toUpperCase() : `KRW-${input.toUpperCase()}`;
+  updatePanel(market);
+  _sync=setInterval(()=>updatePanel(market),2000);
 }
 
-/* ========= 최초 실행: 기본 SHIB로 시작 (원하면 바꾸세요) ========= */
-document.addEventListener("DOMContentLoaded", () => {
-  // 기본: KRW-SHIB
-  startUpbitSync("KRW-SHIB");
-});
-
-/* ========= (선택) 코인 선택 시 동기화 재시작 헬퍼 =========
-   예: 코인을 바꿀 때 startUpbitSync("KRW-ETH") 처럼 호출만 해주면 끝.
-   아래 함수는 전역으로 둬서 기존 선택 로직에서 쉽게 호출 가능.
-*/
-window.setMarketAndSync = (market) => startUpbitSync(market);
+/* ========= 초기 연결 상태 확인 ========= */
+document.getElementById("ws-status").textContent="상태: 정상 연결";
+startUpbitSync("KRW-SHIB");
 </script>
+</body>
+</html>
