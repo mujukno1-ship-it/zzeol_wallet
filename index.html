@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 — 즉시 갱신 버전</title>
+  <title>쩔어지갑 — 실시간 업비트 연동 완전판</title>
   <style>
     :root{--bg:#0b0f14;--panel:#121923;--text:#e6edf3;--muted:#8aa0b6;--up:#16c784;--down:#ea3943;--chip:#1a2330}
     *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Noto Sans KR,Apple SD Gothic Neo,Helvetica,Arial}
@@ -31,7 +31,7 @@
 <body>
   <div class="wrap">
     <header>
-      <h1>쩔어지갑 <span class="badge">즉시 갱신</span> <span class="badge" id="net">OFFLINE</span></h1>
+      <h1>쩔어지갑 <span class="badge">정확한 호가단위 버전</span> <span class="badge" id="net">OFFLINE</span></h1>
       <div class="badge" id="clock">KST — --:--:--</div>
     </header>
 
@@ -66,91 +66,109 @@
     </div>
   </div>
 
-  <script src="net_upbit.js"></script>
   <script>
-    const $=(id)=>document.getElementById(id);
-    let currentMarket=null, stopSub=null;
+  // ✅ 업비트 호가단위 자동 적용 함수
+  function getTickSize(price) {
+    if (price >= 2000000) return 1000;
+    if (price >= 1000000) return 500;
+    if (price >= 500000) return 100;
+    if (price >= 100000) return 50;
+    if (price >= 10000) return 10;
+    if (price >= 1000) return 5;
+    if (price >= 100) return 1;
+    if (price >= 10) return 0.1;
+    if (price >= 1) return 0.01;
+    if (price >= 0.1) return 0.001;
+    if (price >= 0.01) return 0.0001;
+    if (price >= 0.001) return 0.00001;
+    if (price >= 0.0001) return 0.000001;
+    if (price >= 0.00001) return 0.0000001;
+    if (price >= 0.000001) return 0.00000001;
+    return 0.000000001;
+  }
 
-    function tick(){
-      const now=new Date(),utc=now.getTime()+now.getTimezoneOffset()*60000;
-      const kst=new Date(utc+9*3600000);
-      $('clock').textContent='KST — '+kst.toLocaleTimeString('ko-KR',{hour12:false});
-      $('net').textContent=navigator.onLine?'ONLINE':'OFFLINE';
-      $('net').style.background=navigator.onLine?'#123922':'#3a1a1a';
+  // ✅ 업비트 API 모듈
+  const Upbit = {
+    async getMarkets(){
+      const list=await fetch('https://api.upbit.com/v1/market/all?isDetails=false').then(r=>r.json());
+      return list.filter(x=>x.market.startsWith('KRW-'));
+    },
+    async getTicker(m){
+      const t=await fetch(`https://api.upbit.com/v1/ticker?markets=${m}`).then(r=>r.json());
+      return t[0];
+    },
+    format(p){
+      if(!p)return '—';
+      const tick = getTickSize(p);
+      const rounded = Math.round(p / tick) * tick;
+      const dec = (tick.toString().split('.')[1] || '').length;
+      return rounded.toLocaleString('ko-KR', {minimumFractionDigits: dec, maximumFractionDigits: dec});
     }
-    setInterval(tick,1000); tick();
+  };
 
-    function clearPanel(){
-      ['price','change','v_price','v_buy','v_sell','v_stop','v_risk','v_comment'].forEach(id=>$(id).textContent='—');
-      $('coin-name').innerHTML='선택된 코인: <span style="color:#8aa0b6">없음</span>';
-      $('market').textContent='—';
-    }
+  const $=(id)=>document.getElementById(id);
+  let currentMarket=null, stopPoll=null;
 
-    function compute(price, rate){
-      const buy=price*0.988, sell=price*1.012, stop=price*0.975;
-      const r=Math.abs(rate*100);
-      const risk=r<1?'1(안정)':r<2?'2(보통)':r<4?'3(주의)':'4(높음)';
-      const comment=rate>0.02?'단기 급등 주의!':rate<-0.02?'급락 리스크 — 관망!':'무난';
-      return {buy,sell,stop,risk,comment};
-    }
+  function tick(){
+    const now=new Date(),utc=now.getTime()+now.getTimezoneOffset()*60000;
+    const kst=new Date(utc+9*3600000);
+    $('clock').textContent='KST — '+kst.toLocaleTimeString('ko-KR',{hour12:false});
+    $('net').textContent=navigator.onLine?'ONLINE':'OFFLINE';
+    $('net').style.background=navigator.onLine?'#123922':'#3a1a1a';
+  }
+  setInterval(tick,1000); tick();
 
-    function updatePanel(t){
-      if(!t)return;
-      const fmt=Upbit.formatKRW, p=t.trade_price, rate=t.signed_change_rate||0;
-      $('price').textContent=fmt(p)+' 원';
-      $('change').className='diff '+(t.change==='RISE'?'up':t.change==='FALL'?'down':'');
-      $('change').textContent=`${t.change==='RISE'?'+':''}${(rate*100).toFixed(2)}%`;
-      $('v_price').textContent=fmt(p)+' 원';
-      const c=compute(p,rate);
-      $('v_buy').textContent=fmt(c.buy)+' 원';
-      $('v_sell').textContent=fmt(c.sell)+' 원';
-      $('v_stop').textContent=fmt(c.stop)+' 원';
-      $('v_risk').textContent=c.risk;
-      $('v_comment').textContent=c.comment;
-    }
+  function clearPanel(){
+    ['price','change','v_price','v_buy','v_sell','v_stop','v_risk','v_comment'].forEach(id=>$(id).textContent='—');
+  }
 
-    function select(market){
-      if(stopSub){try{stopSub();}catch{}stopSub=null;}
-      currentMarket=market;
-      clearPanel();
+  function updatePanel(t){
+    if(!t)return;
+    const p=t.trade_price, rate=t.signed_change_rate;
+    $('price').textContent=Upbit.format(p)+' 원';
+    $('change').className='diff '+(t.change==='RISE'?'up':t.change==='FALL'?'down':'');
+    $('change').textContent=`${t.change==='RISE'?'+':''}${(rate*100).toFixed(2)}%`;
+    $('v_price').textContent=Upbit.format(p)+' 원';
+    const buy=p*0.988, sell=p*1.012, stop=p*0.975;
+    $('v_buy').textContent=Upbit.format(buy)+' 원';
+    $('v_sell').textContent=Upbit.format(sell)+' 원';
+    $('v_stop').textContent=Upbit.format(stop)+' 원';
+    $('v_risk').textContent=Math.abs(rate*100)<1?'1(안정)':Math.abs(rate*100)<2?'2(보통)':'3(주의)';
+    $('v_comment').textContent=rate>0.02?'단기 급등 주의!':rate<-0.02?'급락 리스크 — 관망!':'무난';
+  }
 
-      const meta=(window.__krwList||[]).find(x=>x.market===market);
-      $('market').textContent=market;
-      $('coin-name').innerHTML=`${meta?meta.korean_name:''} <span style="color:#8aa0b6">(${market.replace('KRW-','')})</span>`;
+  async function select(market){
+    currentMarket=market; clearPanel();
+    const t=await Upbit.getTicker(market);
+    updatePanel(t);
+    if(stopPoll)clearInterval(stopPoll);
+    stopPoll=setInterval(async()=>{
+      const t=await Upbit.getTicker(market);
+      if(currentMarket!==market)return;
+      updatePanel(t);
+    },1000);
+  }
 
-      // ✅ 선택 즉시 현재가/매수/매도/손절/위험도/쩔어한마디 갱신
-      Upbit.getTickerOnce(market).then(t=>{ if(currentMarket!==market)return; updatePanel(t); });
-      stopSub=Upbit.subscribeTicker(market,t=>{ if(currentMarket!==market)return; updatePanel(t); });
-    }
-
-    Upbit.initKRWMarkets().then(list=>{
-      window.__krwList=list;
-      const box=$('list'),input=$('search');
-      const render=(q)=>{
-        const s=(q||'').toLowerCase();
-        const items=list.filter(m=>(m.korean_name+m.market).toLowerCase().includes(s)).slice(0,50);
-        box.innerHTML=items.map(m=>`<div class="item" data-m="${m.market}"><b>${m.korean_name}</b> <span style="color:#8aa0b6">(${m.market.replace('KRW-','')})</span></div>`).join('');
-        box.classList.add('show');
-      };
-
-      input.addEventListener('input',()=>render(input.value));
-      input.addEventListener('focus',()=>render(input.value));
-      document.addEventListener('click',e=>{if(!e.target.closest('.search'))box.classList.remove('show');});
-
-      // ✅ 선택 즉시 패널 업데이트
-      box.addEventListener('click',e=>{
-        const el=e.target.closest('.item'); if(!el)return;
-        const market=el.dataset.m;
-        input.value=''; box.classList.remove('show');
-        select(market);
-      });
-
-      input.addEventListener('keydown',e=>{
-        if(e.key==='Enter'){const first=box.querySelector('.item');if(first)first.click();}
-      });
+  (async()=>{
+    const list=await Upbit.getMarkets();
+    const box=$('list'),input=$('search');
+    input.addEventListener('input',()=>{
+      const s=input.value.toLowerCase();
+      const items=list.filter(x=>x.korean_name.toLowerCase().includes(s)||x.market.toLowerCase().includes(s));
+      box.innerHTML=items.map(x=>`<div class="item" data-m="${x.market}">${x.korean_name} <span style="color:#8aa0b6">(${x.market.replace('KRW-','')})</span></div>`).join('');
+      box.classList.add('show');
     });
-
-    $('reset').onclick=()=>location.reload();
+    box.addEventListener('click',e=>{
+      const el=e.target.closest('.item');
+      if(!el)return;
+      const m=el.dataset.m;
+      input.value='';box.classList.remove('show');
+      const meta=list.find(x=>x.market===m);
+      $('coin-name').innerHTML=`${meta.korean_name} <span style="color:#8aa0b6">(${m.replace('KRW-','')})</span>`;
+      $('market').textContent=m;
+      select(m);
+    });
+  })();
   </script>
 </body>
 </html>
