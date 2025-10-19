@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>쩔어지갑 v10.4 — Upbit KRW 실시간</title>
+
+  <!-- 캐시 무력화 (배포 즉시 반영) -->
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <!-- 기존 스타일이 있다면 유지 -->
+  <link rel="stylesheet" href="/css/zzeol.css" />
+  <style>
+    body { background:#0d1117; color:#c9d1d9; font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Apple SD Gothic Neo, Arial, sans-serif; }
+    .wrap { max-width:1200px; margin:24px auto; padding:0 16px; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    .card { background:#111827; border:1px solid #1f2937; border-radius:12px; padding:16px; }
+    .muted { color:#94a3b8; font-size:12px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:10px 8px; border-bottom:1px solid #1f2937; font-size:14px; }
+    th { text-align:left; color:#9ca3af; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #334155; }
+    .ok { color:#10b981; border-color:#10b981; }
+    .bad { color:#ef4444; border-color:#ef4444; }
+    .price-lg { font-size:28px; font-weight:700; letter-spacing:0.2px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
+      <div style="font-weight:700; font-size:18px">쩔어지갑 🔥 <span class="muted">v10.4 · Upbit KRW 실시간</span></div>
+      <div id="ws-status" class="pill ok">상태: 초기화 중…</div>
+    </div>
+
+    <div class="row" style="margin-bottom:16px">
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px">선택 코인</div>
+        <div style="display:flex; align-items:flex-end; gap:12px">
+          <div>
+            <div id="coin-name" style="font-size:16px; font-weight:600">시바이누</div>
+            <div id="coin-code" class="muted">KRW-SHIB</div>
+          </div>
+          <div class="price-lg" id="price">-</div>
+        </div>
+        <div style="margin-top:12px; font-size:13px" class="muted">
+          * 업비트 호가단위와 동일 규칙으로 표기합니다.
+        </div>
+      </div>
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px">간편 검색</div>
+        <input id="search-input" placeholder="한글/영문/심볼: 비트코인, ETH, SOL 등" style="width:100%; background:#0b1220; border:1px solid #1f2937; color:#e5e7eb; border-radius:10px; padding:10px 12px" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between">
+        <div style="font-weight:600">KRW 코인 목록 (실시간)</div>
+        <button id="refresh-btn" class="pill">KRW 목록 새로고침</button>
+      </div>
+      <div class="muted" style="margin:6px 0 10px">KRW 마켓만 표시. 행 클릭 시 상세·신호 즉시 갱신.</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:120px">심볼</th>
+            <th style="width:220px">코인명(한글)</th>
+            <th>현재가</th>
+            <th style="width:140px">등락률(24h)</th>
+            <th style="width:200px">거래대금(24h)</th>
+          </tr>
+        </thead>
+        <tbody id="coin-list-body">
+          <!-- JS가 채웁니다 -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 새 JS (v104) : 캐시 무력화 쿼리 포함 -->
+  <script src="/js/zzeol_app_v104.js?v=20251019" defer></script>
+</body>
+</html>
