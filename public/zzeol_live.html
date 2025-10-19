@@ -21,8 +21,6 @@
     .status{margin-left:auto}
     .ok{color:var(--pos)} .bad{color:var(--neg)} .warn{color:var(--warn)}
     .grid{display:grid;gap:12px}
-    .g2{grid-template-columns:repeat(2,1fr)}
-    .g3{grid-template-columns:repeat(3,1fr)}
     .g4{grid-template-columns:repeat(4,1fr)}
     .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
     .card h3{margin:0 0 10px 0;font-size:13px;color:var(--muted);font-weight:600}
@@ -61,18 +59,15 @@
         </div>
         <div class="muted" style="margin-top:6px">KRW 마켓만 표시. 행 클릭 시 상세·신호 즉시 갱신.</div>
       </div>
-
       <div class="card">
         <h3>선택 코인</h3>
         <div class="flex"><span class="tag">이름</span><div id="sel-name" class="muted">-</div></div>
         <div class="flex" style="margin-top:6px"><span class="tag">심볼</span><div id="sel-symbol" class="muted">-</div></div>
       </div>
-
       <div class="card">
         <h3>상태</h3>
         <div id="sel-state" class="muted">-</div>
       </div>
-
       <div class="card">
         <h3>등록률(24h)</h3>
         <div id="sel-change24" class="muted">-</div>
@@ -91,11 +86,12 @@
       </div>
     </div>
 
-    <!-- 유동성/변동성 / 티켓 -->
-    <div class="grid g3" style="margin-top:12px">
+    <!-- 보조 지표 -->
+    <div class="grid g4" style="margin-top:12px">
       <div class="card"><h3>EMA20</h3><div id="box-ema" class="muted">-</div></div>
       <div class="card"><h3>ATR(14)</h3><div id="box-atr" class="muted">-</div></div>
       <div class="card"><h3>틱 체감강도 (최근)</h3><div id="box-ticks" class="muted">-</div></div>
+      <div class="card"><h3>API 상태</h3><div id="api-status" class="muted">확인중…</div></div>
     </div>
 
     <!-- 실시간 KRW 리스트 -->
@@ -111,10 +107,211 @@
     </div>
 
     <div class="muted" style="margin-top:16px">
-      🛰 연결 상태: <span id="api-status">확인중…</span> · 경로: <code>/public/zzeol_live.html</code>
+      경로: <code>/public/zzeol_live.html</code>
     </div>
   </div>
 
-  <script src="/js/zzeol_app.js"></script>
+  <script>
+  // ===== API BASE (절대경로) =====
+  const API_BASE_URL = "https://satoshijibag-api.vercel.app"; // 여기만 바꾸면 됨
+
+  // ===== helpers =====
+  const $ = s => document.querySelector(s);
+  async function get(path, params = {}) {
+    const url = new URL(API_BASE_URL + path);
+    for (const [k,v] of Object.entries(params)) url.searchParams.set(k, v);
+    const res = await fetch(url, { cache: "no-store" });
+    const text = await res.text();
+    if (!res.ok) throw new Error("HTTP "+res.status+" "+res.statusText+"\n"+text.slice(0,200));
+    const ct = (res.headers.get("content-type")||"").toLowerCase();
+    if (!ct.includes("application/json")) throw new Error("Expected JSON but got "+ct+"\n"+text.slice(0,200));
+    return JSON.parse(text);
+  }
+  const toKRW = (n) => {
+    if (!Number.isFinite(n)) return "-";
+    if (n >= 1_000_000_000) return (n/1_000_000_000).toFixed(2) + "억";
+    if (n >= 10_000) return Math.round(n).toLocaleString();
+    if (n >= 1) return n.toLocaleString(undefined,{maximumFractionDigits:0});
+    return n.toFixed(4);
+  };
+
+  // ===== indicators =====
+  function EMA(closes, period){
+    const k = 2/(period+1);
+    let ema = closes[0];
+    const out = [ema];
+    for (let i=1;i<closes.length;i++){ ema = closes[i]*k + ema*(1-k); out.push(ema); }
+    return out;
+  }
+  function ATR(highs, lows, closes, period){
+    const TR = [];
+    for (let i=0;i<closes.length;i++){
+      if (i===0){ TR.push(highs[i]-lows[i]); continue; }
+      const tr = Math.max(
+        highs[i]-lows[i],
+        Math.abs(highs[i]-closes[i-1]),
+        Math.abs(lows[i]-closes[i-1]),
+      );
+      TR.push(tr);
+    }
+    const out = [];
+    let prev = TR.slice(0,period).reduce((a,b)=>a+b,0)/period;
+    out[period-1] = prev;
+    for (let i=period;i<TR.length;i++){
+      prev = (prev*(period-1) + TR[i]) / period;
+      out[i] = prev;
+    }
+    return out;
+  }
+
+  // ===== DOM refs =====
+  const wsStatus = $("#ws-status");
+  const apiStatus = $("#api-status");
+  const tbody = $("#tbody");
+  const el = {
+    search: $("#search"),
+    refresh: $("#btn-refresh"),
+    selName: $("#sel-name"),
+    selSymbol: $("#sel-symbol"),
+    selState: $("#sel-state"),
+    selChange24: $("#sel-change24"),
+    price: $("#m-price"), buys: $("#m-buys"), sells: $("#m-sells"),
+    stop: $("#m-stop"), risk: $("#m-risk"), remark: $("#m-remark"),
+    boxEma: $("#box-ema"), boxAtr: $("#box-atr"), boxTicks: $("#box-ticks"),
+  };
+
+  // ===== state =====
+  let marketsKRW = [];
+  let lastSelect = null;
+
+  async function checkHealth(){
+    try{
+      await get("/api/health");
+      wsStatus.textContent = "정상 연결"; wsStatus.className = "ok";
+      apiStatus.textContent = "정상";
+    }catch(e){
+      wsStatus.textContent = "연결 실패"; wsStatus.className = "bad";
+      apiStatus.textContent = "오류";
+      console.error(e);
+    }
+  }
+
+  async function loadMarkets(){
+    const data = await get("/api/markets");
+    marketsKRW = data.filter(m => m.market?.startsWith("KRW-"));
+    renderTable();
+    if (!lastSelect && marketsKRW.length) selectSymbol(marketsKRW[0].market);
+  }
+
+  function renderTable(){
+    tbody.innerHTML = marketsKRW.map(m => `
+      <tr data-m="${m.market}">
+        <td class="muted">${m.market.replace("KRW-","")}</td>
+        <td>${m.korean_name || "-"}</td>
+        <td class="muted" data-x="price">-</td>
+        <td class="muted" data-x="chg">-</td>
+        <td class="muted" data-x="vol">-</td>
+      </tr>`).join("");
+    tbody.querySelectorAll("tr").forEach(tr=>{
+      tr.addEventListener("click", ()=> selectSymbol(tr.dataset.m));
+    });
+  }
+
+  async function tickLoop(){
+    if (!marketsKRW.length) return setTimeout(tickLoop, 5000);
+    try{
+      const chunk = (arr,n)=>arr.reduce((a,_,i)=>(i%n?a[a.length-1].push(arr[i]):a.push([arr[i]]),a),[]);
+      const chunks = chunk(marketsKRW.map(m=>m.market), 50);
+      let all = [];
+      for (const c of chunks){
+        const r = await get("/api/ticker",{markets:c.join(",")});
+        all = all.concat(r);
+      }
+      all.forEach(t=>{
+        const tr = tbody.querySelector(`tr[data-m="${t.market}"]`);
+        if (!tr) return;
+        tr.querySelector('[data-x="price"]').textContent = toKRW(t.trade_price);
+        tr.querySelector('[data-x="chg"]').innerHTML =
+          (t.signed_change_rate*100>=0? `<span class="pos">+${(t.signed_change_rate*100).toFixed(2)}%</span>`:
+                                         `<span class="neg">${(t.signed_change_rate*100).toFixed(2)}%</span>`);
+        tr.querySelector('[data-x="vol"]').textContent = toKRW(t.acc_trade_price_24h)+"원";
+      });
+      if (lastSelect) updateSelected(lastSelect);
+    }catch(e){ console.error(e); }
+    finally{ setTimeout(tickLoop, 5000); }
+  }
+
+  async function selectSymbol(market){
+    lastSelect = market;
+    const info = marketsKRW.find(m=>m.market===market);
+    el.selName.textContent = info?.korean_name ?? "-";
+    el.selSymbol.textContent = market ?? "-";
+    el.selState.textContent="갱신중…"; el.selChange24.textContent="-";
+    el.price.textContent="-"; el.buys.textContent="-"; el.sells.textContent="-";
+    el.stop.textContent="-"; el.risk.textContent="-"; el.remark.textContent="-";
+    el.boxEma.textContent="-"; el.boxAtr.textContent="-"; el.boxTicks.textContent="-";
+    await updateSelected(market);
+  }
+
+  async function updateSelected(market){
+    try{
+      const [t] = await get("/api/ticker",{markets:market});
+      const cs = await get("/api/candles",{market,unit:5,count:200});
+      const closes = cs.map(c=>c.trade_price).reverse();
+      const highs  = cs.map(c=>c.high_price).reverse();
+      const lows   = cs.map(c=>c.low_price).reverse();
+
+      const ema20 = EMA(closes,20).at(-1);
+      const atr14 = ATR(highs,lows,closes,14).at(-1);
+      const price = t.trade_price;
+      const atrPct = atr14 / price;
+
+      const stop = Math.max(price - atr14, 0);
+      const tp1 = price + atr14*1.0, tp2 = price + atr14*1.6, tp3 = price + atr14*2.2;
+      const b1 = Math.max(ema20 - atr14*0.4, 0);
+      const b2 = Math.max(ema20 - atr14*0.8, 0);
+      const b3 = Math.max(ema20 - atr14*1.2, 0);
+      const riskLabel = atrPct < 0.004 ? "낮음" : atrPct < 0.009 ? "중간" : "높음";
+      const remark = (() => {
+        if (atrPct < 0.004 && price > ema20) return "완만한 우상향, 분할 접근";
+        if (atrPct >= 0.009) return "변동 급증(블랙스완). 진입 자제/짧은 손절 필수";
+        if (price < ema20) return "추세 하방. 큰 비중 진입 금지";
+        return "중립—완만한 우상향, 분할 접근";
+      })();
+
+      el.selState.textContent = t.signed_change_rate*100>=0 ? "상승" : "하락";
+      el.selChange24.innerHTML = t.signed_change_rate*100>=0
+        ? `<span class="pos">+${(t.signed_change_rate*100).toFixed(2)}%</span>`
+        : `<span class="neg">${(t.signed_change_rate*100).toFixed(2)}%</span>`;
+      el.price.textContent = toKRW(price);
+      el.buys.textContent  = [b1,b2,b3].map(toKRW).join(" / ");
+      el.sells.textContent = [tp1,tp2,tp3].map(toKRW).join(" / ");
+      el.stop.textContent  = toKRW(stop);
+      el.risk.textContent  = `${riskLabel} (${(atrPct*100).toFixed(2)}%)`;
+      el.remark.textContent= remark;
+      el.boxEma.textContent = toKRW(ema20);
+      el.boxAtr.textContent = `${toKRW(atr14)} (1x)`;
+      el.boxTicks.textContent= `체결 강도 추정: +${t.trade_volume?.toLocaleString?.() ?? "-"}`;
+    }catch(e){ console.error(e); }
+  }
+
+  // 검색/새로고침
+  $("#search").addEventListener("input",(e)=>{
+    const q = e.target.value.trim().toLowerCase();
+    $("#tbody").querySelectorAll("tr").forEach(tr=>{
+      const m = tr.dataset.m.toLowerCase();
+      const name = tr.children[1].textContent.toLowerCase();
+      tr.style.display = (m.includes(q) || name.includes(q)) ? "" : "none";
+    });
+  });
+  $("#btn-refresh").addEventListener("click", loadMarkets);
+
+  // 부트
+  (async function(){
+    await checkHealth();
+    await loadMarkets();
+    tickLoop();
+  })();
+  </script>
 </body>
 </html>
