@@ -11,5 +11,20 @@
         }
       ]
     }
+  ],
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "routes": [
+    { "src": "/api/markets", "dest": "/api/markets.js" },
+    { "src": "/api/ticker", "dest": "/api/ticker.js" },
+    { "src": "/api/candles", "dest": "/api/candles.js" },
+    { "src": "/api/ticks", "dest": "/api/ticks.js" },
+    { "src": "/api/health", "dest": "/api/health.js" }
   ]
 }
