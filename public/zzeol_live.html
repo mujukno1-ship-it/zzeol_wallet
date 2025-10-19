@@ -1,183 +1,111 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>쩔어지갑 v10.6 — Upbit KRW 실시간</title>
-<style>
-:root{
- --bg:#0b1117;--card:#121826;--txt:#e6edf3;--mut:#9fb0c0;
- --line:#243044;--up:#25d695;--dn:#ff6b6b;
-}
-body{margin:0;background:var(--bg);color:var(--txt);font-family:'Pretendard',sans-serif}
-.wrap{max-width:1100px;margin:30px auto;padding:0 16px}
-h1{font-size:18px;margin:0 0 14px;font-weight:700}
-
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}
-.title{font-weight:700;margin-bottom:8px}
-input[type="text"]{width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:#0e1522;color:var(--txt);font-size:16px}
-button{border:1px solid var(--line);background:#1a2333;color:var(--txt);padding:8px 10px;border-radius:8px;cursor:pointer}
-button:hover{filter:brightness(1.15)}
-table{width:100%;border-collapse:collapse}
-th,td{padding:9px 8px;border-top:1px solid var(--line);text-align:right}
-th:first-child,td:first-child{text-align:left}
-.good{color:var(--up)}.bad{color:var(--dn)}
-
-.infobar5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}
-.ibox{background:#0e1522;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
-.ibox .k{color:var(--mut);font-size:13px;margin-bottom:5px}
-.ibox .v{font-size:16px;font-weight:600;color:var(--txt)}
-@media(max-width:850px){.infobar5{grid-template-columns:repeat(2,1fr)}}
-</style>
-</head>
-
-<body>
-<div class="wrap">
-  <h1>쩔어지갑 🔥 v10.6 — Upbit KRW 실시간</h1>
-
-  <!-- 검색창 -->
-  <div class="card">
-    <div class="title">코인 검색</div>
-    <input id="search" type="text" placeholder="예: 시바이누, 이더리움, 비트코인…" />
-    <button id="btnReload">KRW 목록 새로고침</button>
-  </div>
-
-  <!-- ✅ 가로형 패널 -->
-  <div class="card">
-    <div class="title">AI 실시간 분석</div>
-    <div class="infobar5">
-      <div class="ibox"><div class="k">💰 현재가</div><div class="v" id="priceBox">-</div></div>
-      <div class="ibox"><div class="k">🟦 매수 타점</div><div class="v" id="buyBox">-</div></div>
-      <div class="ibox"><div class="k">🟥 매도(익절)</div><div class="v" id="sellBox">-</div></div>
-      <div class="ibox"><div class="k">⚠️ 위험도</div><div class="v" id="riskBox">-</div></div>
-      <div class="ibox"><div class="k">💬 쩔어한마디</div><div class="v" id="quipBox">-</div></div>
-    </div>
-  </div>
-
-  <!-- 코인 목록 -->
-  <div class="card">
-    <div class="title">KRW 코인 목록 (실시간)</div>
-    <table>
-      <thead><tr><th>심볼</th><th>코인명</th><th>현재가</th><th>등락률</th><th>거래대금(24h)</th></tr></thead>
-      <tbody id="listBody"><tr><td colspan="5">불러오는 중...</td></tr></tbody>
-    </table>
-  </div>
-</div>
-
 <script>
-const API='https://api.upbit.com/v1';
-const $=s=>document.querySelector(s);
-const fmt=v=>v?Number(v).toLocaleString('ko-KR')+'원':'-';
-const pct=r=>{const x=Number(r)*100;return `<span class="${x>0?'good':x<0?'bad':''}">${x>0?'+':''}${x.toFixed(2)}%</span>`};
-
-let markets=[],tickers={};
-
-async function load(){
-  const r=await fetch(API+'/market/all?isDetails=true');
-  markets=(await r.json()).filter(x=>x.market.startsWith('KRW-'));
-  await refresh();
-  renderList();
+/* ========= Upbit 호가단위 규칙 + 반올림 ========= */
+function upbitTick(price){
+  if (price >= 2000000) return 1000;
+  if (price >= 1000000) return 500;
+  if (price >=  500000) return 100;
+  if (price >=  100000) return 50;
+  if (price >=   10000) return 10;
+  if (price >=    1000) return 1;
+  if (price >=     100) return 0.1;
+  if (price >=      10) return 0.01;
+  return 0.001;
+}
+function roundToTick(price, mode="round"){
+  const t = upbitTick(price);
+  if (t === 0) return price;
+  if (mode === "ceil")  return Math.ceil (price / t) * t;
+  if (mode === "floor") return Math.floor(price / t) * t;
+  return Math.round(price / t) * t;
 }
 
-async function refresh(){
-  const ids=markets.map(x=>x.market);
-  for(let i=0;i<ids.length;i+=100){
-    const chunk=ids.slice(i,i+100);
-    const res=await fetch(API+'/ticker?markets='+chunk.join(','));
-    const arr=await res.json();
-    arr.forEach(t=>tickers[t.market]=t);
+/* ========= 공용 fetch ========= */
+async function jfetch(url){
+  try{
+    const r = await fetch(url, { cache: "no-store" });
+    if(!r.ok) throw new Error(await r.text());
+    return await r.json();
+  }catch(e){
+    console.error("[fetch error]", url, e);
+    return null;
   }
 }
 
-function renderList(){
-  const q=$('#search').value.trim().toLowerCase();
-  const body=$('#listBody');
-  const f=markets.filter(x=>{
-    const n=x.korean_name.toLowerCase(), e=x.english_name.toLowerCase();
-    return !q || n.includes(q)||e.includes(q)||x.market.replace('KRW-','').toLowerCase().includes(q);
-  }).slice(0,20);
-  body.innerHTML=f.map(x=>{
-    const t=tickers[x.market]||{};
-    return `<tr data-m="${x.market}">
-      <td><b>${x.market.replace('KRW-','')}</b></td>
-      <td>${x.korean_name}</td>
-      <td>${fmt(t.trade_price)}</td>
-      <td>${pct(t.signed_change_rate||0)}</td>
-      <td>${fmt(t.acc_trade_price_24h)}</td>
-    </tr>`;
-  }).join('');
-  [...body.querySelectorAll('tr')].forEach(tr=>tr.onclick=()=>select(tr.dataset.m));
+/* ========= 업비트와 동일한 현재가 산출 (ticker + orderbook 동기화) ========= */
+async function getUpbitExactPrice(market){
+  const [ticker, ob] = await Promise.all([
+    jfetch(`/api/ticker?markets=${market}`),
+    jfetch(`/api/orderbook?markets=${market}`)
+  ]);
+
+  let tradePrice = null;
+  if (Array.isArray(ticker) && ticker.length){
+    tradePrice = Number(ticker[0].trade_price);
+  }
+
+  let ask1=null,bid1=null;
+  // 서버에서 리턴 형태가 { orderbook_units:[...] } 또는 업비트 원본 배열 둘 다 지원
+  if (ob && Array.isArray(ob.orderbook_units) && ob.orderbook_units.length){
+    ask1 = Number(ob.orderbook_units[0].ask_price);
+    bid1 = Number(ob.orderbook_units[0].bid_price);
+  } else if (Array.isArray(ob) && ob.length){
+    const units = ob[0]?.orderbook_units || [];
+    if (units.length){
+      ask1 = Number(units[0].ask_price);
+      bid1 = Number(units[0].bid_price);
+    }
+  }
+
+  if (tradePrice != null) return roundToTick(tradePrice, "round");
+  if (ask1!=null && bid1!=null) return roundToTick((ask1+bid1)/2, "round");
+  return null;
 }
 
-$('#search').oninput=()=>renderList();
-$('#btnReload').onclick=()=>load();
-
-async function select(m){
-  const r=await fetch(API+'/ticker?markets='+m);
-  const t=(await r.json())[0];
-  const price=t.trade_price;
-  const atr=price*0.012; // 단순 ATR 대체
-  const buy=price-atr;
-  const sell1=price+atr*1.0, sell2=price+atr*1.5, sell3=price+atr*2.2;
-  const risk=(Math.abs(t.signed_change_rate)*10).toFixed(1);
-  const quip=t.signed_change_rate>0 ? '상승세 — 익절 유효 구간'
-             : t.signed_change_rate<0 ? '하락 조정 — 분할매수 접근' 
-             : '횡보 — 관망 안정권';
-
-  $('#priceBox').textContent=fmt(price);
-  $('#buyBox').textContent=fmt(buy);
-  $('#sellBox').textContent=`${fmt(sell1)} / ${fmt(sell2)} / ${fmt(sell3)}`;
-  $('#riskBox').textContent=risk+'/5.0';
-  $('#quipBox').textContent=quip;
+/* ========= DOM 반영 (id=price / ask1 / bid1 사용) ========= */
+async function updatePricePanel(market){
+  const price = await getUpbitExactPrice(market);
+  const el = document.querySelector("#price");
+  if (el){
+    el.textContent = (price!=null) ? price.toLocaleString("ko-KR") : "-";
+  }
 }
-load();
- <script>
-// 업비트 KRW 호가단위 규칙 (2023~현재)
-function upbitTick(price) {
-  // price는 숫자 (KRW)
-  if (price >= 2_000_000) return 1000;
-  if (price >= 1_000_000) return 500;
-  if (price >=   500_000) return 100;
-  if (price >=   100_000) return 50;
-  if (price >=    10_000) return 10;
-  if (price >=     1_000) return 1;
-  if (price >=       100) return 0.1;
-  if (price >=        10) return 0.01;
-  return 0.001; // 10원 미만
+async function updateBestQuotes(market){
+  const ob = await jfetch(`/api/orderbook?markets=${market}`);
+  let ask1=null,bid1=null;
+  if (ob && Array.isArray(ob.orderbook_units) && ob.orderbook_units.length){
+    ask1 = Number(ob.orderbook_units[0].ask_price);
+    bid1 = Number(ob.orderbook_units[0].bid_price);
+  } else if (Array.isArray(ob) && ob.length){
+    const units = ob[0]?.orderbook_units || [];
+    if (units.length){
+      ask1 = Number(units[0].ask_price);
+      bid1 = Number(units[0].bid_price);
+    }
+  }
+  const $ask = document.querySelector("#ask1");
+  const $bid = document.querySelector("#bid1");
+  if ($ask) $ask.textContent = (ask1!=null) ? roundToTick(ask1).toLocaleString("ko-KR") : "-";
+  if ($bid) $bid.textContent = (bid1!=null) ? roundToTick(bid1).toLocaleString("ko-KR") : "-";
 }
 
-// 호가단위에 맞춰 반올림 (기본: 반올림, 올림/내림 옵션도 제공)
-function roundToTick(price, mode = "round") {
-  const t = upbitTick(price);
-  if (t === 0) return price;
-  if (mode === "ceil")  return Math.ceil (price / t) * t;
-  if (mode === "floor") return Math.floor(price / t) * t;
-  return Math.round(price / t) * t;
-}
-<script>
-// 업비트 KRW 호가단위 규칙 (2023~현재)
-function upbitTick(price) {
-  // price는 숫자 (KRW)
-  if (price >= 2_000_000) return 1000;
-  if (price >= 1_000_000) return 500;
-  if (price >=   500_000) return 100;
-  if (price >=   100_000) return 50;
-  if (price >=    10_000) return 10;
-  if (price >=     1_000) return 1;
-  if (price >=       100) return 0.1;
-  if (price >=        10) return 0.01;
-  return 0.001; // 10원 미만
+/* ========= 주기 갱신 ========= */
+let _syncTimer = null;
+function startUpbitSync(market){
+  clearInterval(_syncTimer);
+  const work = () => { updatePricePanel(market); updateBestQuotes(market); };
+  work();
+  _syncTimer = setInterval(work, 2000);
 }
 
-// 호가단위에 맞춰 반올림 (기본: 반올림, 올림/내림 옵션도 제공)
-function roundToTick(price, mode = "round") {
-  const t = upbitTick(price);
-  if (t === 0) return price;
-  if (mode === "ceil")  return Math.ceil (price / t) * t;
-  if (mode === "floor") return Math.floor(price / t) * t;
-  return Math.round(price / t) * t;
-}
+/* ========= 최초 실행: 기본 SHIB로 시작 (원하면 바꾸세요) ========= */
+document.addEventListener("DOMContentLoaded", () => {
+  // 기본: KRW-SHIB
+  startUpbitSync("KRW-SHIB");
+});
+
+/* ========= (선택) 코인 선택 시 동기화 재시작 헬퍼 =========
+   예: 코인을 바꿀 때 startUpbitSync("KRW-ETH") 처럼 호출만 해주면 끝.
+   아래 함수는 전역으로 둬서 기존 선택 로직에서 쉽게 호출 가능.
+*/
+window.setMarketAndSync = (market) => startUpbitSync(market);
 </script>
-
-</body>
-</html>
