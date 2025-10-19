@@ -337,3 +337,184 @@
 })();
 </script>
 <!-- ====== /검색창 확장 + 분석기능 수정 끝 ====== -->
+<!-- ===== 시바이누 등 1원 미만 코인 가격/타점 교정 + 자동분석 보강 레이어 ===== -->
+<script>
+(() => {
+  const API = '/upbit';                // 서버 프록시 기준 (이미 쓰던 경로 유지)
+  const RETRY_MS = 2500;
+
+  /* ---------- 출력 유틸: '라벨' 글자를 찾아 바로 옆의 값 칸을 채우는 방식 ---------- */
+  function setValueNextToLabel(label, value, scope = document){
+    // 라벨 텍스트와 완전히 같은 요소를 찾고, 같은 '행'에서 다음 값 칸을 채움
+    const nodes = scope.querySelectorAll('*');
+    for (const el of nodes) {
+      const t = el.childNodes.length === 1 && el.childNodes[0].nodeType === 3 ? el.textContent.trim() : '';
+      if (t === label) {
+        // 1) 동일 라인 내 다음 텍스트 노드를 찾아서
+        let target = el.nextElementSibling;
+        // 일부 레이아웃은 라벨과 값이 같은 컨테이너의 형제 div/span로 구성
+        if (!target) target = el.parentElement?.querySelector(':scope > .value, :scope > span:last-child, :scope > div:last-child');
+        if (!target) target = el.parentElement?.nextElementSibling;
+        if (target) {
+          target.textContent = value;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /* ---------- 숫자/포맷 유틸 ---------- */
+  function formatKRW(n){
+    // 안전 가드
+    if (n == null || isNaN(n)) return '-';
+    const v = Number(n);
+    if (v >= 100) return Math.round(v).toLocaleString() + '원';
+    if (v >= 1)   return v.toFixed(2).toLocaleString() + '원';
+    // 1원 미만: 소수 6~8자리, 의미 없는 0 제거
+    let s = v.toFixed(8);
+    s = s.replace(/0+$/,'').replace(/\.$/,''); // 끝 0/점 제거
+    return s + '원';
+  }
+  const pct = x => (Number(x)*100).toFixed(2) + '%';
+  const krw = x => Number(x ?? 0).toLocaleString() + '원';
+
+  /* ---------- 타점/리스크 간단 로직(가격 0 방지용, 필요 시 교체 가능) ---------- */
+  function makeTargets(price){
+    // ATR/EMA가 없는 상태에서도 "기본 분할" 제시: -1.5%, -3.0%, -4.5% / +1.0%, +2.0%, +3.0%
+    const p = Number(price);
+    const buys  = [0.985, 0.97, 0.955].map(m => Math.max(p*m, 0));
+    const sells = [1.01, 1.02, 1.03].map(m => p*m);
+    return {
+      buys:  buys.map(formatKRW),
+      sells: sells.map(formatKRW)
+    };
+  }
+  function makeRisk(price, vol24){
+    // 아주 단순한 휴리스틱: 거래대금이 크고 가격 변동이 있는 경우 위험도↑
+    let score = 0.7;
+    if (Number(vol24) > 1e11) score += 0.6;     // 1000억원+
+    if (Number(price) < 1)   score += 0.4;     // 1원 미만 코인
+    if (score > 2.5) score = 2.5;
+    const oneLiner = score < 1 ? '안정 구간(분할매수 유리)'
+                   : score < 2 ? '중립 구간(추세 확인)'
+                               : '고위험 구간 — 손절엄수';
+    return {score: score.toFixed(1), oneLiner};
+  }
+
+  /* ---------- Upbit API ---------- */
+  async function fetchTicker(sym){
+    const m = sym.startsWith('KRW-') ? sym : 'KRW-'+sym;
+    const r = await fetch(`${API}/ticker?markets=${m}`);
+    if (!r.ok) throw new Error('API '+r.status);
+    const j = await r.json();
+    return j && j[0];
+  }
+
+  /* ---------- 선택 코인 패널 채우기 ---------- */
+  async function fillSelected(symbol){
+    try{
+      const t = await fetchTicker(symbol);
+      if (!t) throw new Error('no data');
+      const price = t.trade_price;
+      const change = pct(t.signed_change_rate);
+      const vol24  = t.acc_trade_price_24h;
+      const tickStrength = (t.signed_change_price ? Math.round(t.signed_change_price) : 0) + ' (±/가중)';
+
+      // 우측 정보 패널 채움(라벨 텍스트 기반으로 값칸 찾기)
+      setValueNextToLabel('현재가',    formatKRW(price));
+      setValueNextToLabel('등락률(24h)', change);
+      setValueNextToLabel('거래대금(24h)', krw(vol24));
+      setValueNextToLabel('틱 체감강도', tickStrength);
+
+      const tg = makeTargets(price);
+      // 매수 타점(세 줄) & 매도(익절) 타점(세 줄)
+      // 화면에 '•' 점 3개가 이미 있다면, 가장 근접한 목록/줄을 값으로 덮어씀
+      setBullets('매수 타점', tg.buys);
+      setBullets('매도(익절) 타점', tg.sells);
+
+      const risk = makeRisk(price, vol24);
+      setValueNextToLabel('위험도',  risk.score + ' / 5.0');
+      setValueNextToLabel('쩔어한마디', risk.oneLiner);
+
+    } catch(e){
+      console.warn('[selected fill] ', e);
+      setTimeout(()=>fillSelected(symbol), RETRY_MS);
+    }
+  }
+
+  // '섹션 제목'을 찾아 해당 섹션 내 점 목록(•) 3개를 채운다
+  function setBullets(sectionTitle, lines = []){
+    const sec = Array.from(document.querySelectorAll('*'))
+      .find(el => el.childNodes.length === 1 && el.childNodes[0].nodeType === 3 && el.textContent.trim() === sectionTitle);
+    if (!sec) return;
+    // 섹션 컨테이너 추정(제목 요소의 부모/다음 형제)
+    let box = sec.parentElement;
+    if (box && !box.querySelector('li, ul, ol')) box = box.nextElementSibling || box.parentElement;
+    if (!box) return;
+
+    // 점 목록 찾기 (•로 시작하는 줄들)
+    const bullets = Array.from(box.querySelectorAll('li, p, div')).filter(n => /^•/.test(n.textContent.trim()) || n.textContent.trim() === '•');
+    for (let i=0;i<3;i++){
+      const v = lines[i] ?? '-';
+      if (bullets[i]) bullets[i].textContent = '• ' + v;
+    }
+  }
+
+  /* ---------- 테이블(하단 목록)에서 0원 보정 ---------- */
+  async function fixZeroPricesInTable(){
+    // 헤더 한 줄 제외, 나머지 행 스캔
+    const tables = document.querySelectorAll('table');
+    if(!tables.length) return;
+    const tb = tables[tables.length-1]; // 보통 마지막 표가 KRW 코인 목록
+    const rows = tb.querySelectorAll('tbody tr, tr');
+    rows.forEach(async (tr, idx) => {
+      // 헤더 스킵
+      if (tr.querySelector('th') || idx === 0) return;
+      const tds = tr.querySelectorAll('td');
+      if (tds.length < 3) return;
+      const symbol = (tds[0].textContent || '').trim().toUpperCase(); // 첫 칸: 심볼
+      const priceCell = tds[2]; // 세 번째 칸: 현재가
+      const needFix = /^0(\.0*)?$/.test(priceCell.textContent.trim()) || priceCell.textContent.trim() === '0원';
+      if (!symbol || !needFix) return;
+      try{
+        const t = await fetchTicker(symbol);
+        if (t) priceCell.textContent = formatKRW(t.trade_price);
+      }catch(e){}
+    });
+  }
+
+  /* ---------- 검색창 엔터 → 선택 패널 갱신 ---------- */
+  function bindSearch(){
+    const input = document.querySelector('input[type="text"], input#search, input#search-input');
+    if (!input) return;
+    input.addEventListener('keydown', e=>{
+      if (e.key === 'Enter'){
+        const v = input.value.trim().toUpperCase();
+        if (v) fillSelected(v);
+      }
+    });
+  }
+
+  /* ---------- 초기 구동 ---------- */
+  document.addEventListener('DOMContentLoaded', () => {
+    bindSearch();
+    fixZeroPricesInTable();
+
+    // 테이블 클릭 시(행 선택) 우측 패널도 갱신
+    document.addEventListener('click', (e)=>{
+      const tr = e.target.closest('tr');
+      if (!tr) return;
+      const tds = tr.querySelectorAll('td');
+      if (tds.length >= 1){
+        const sym = (tds[0].textContent || '').trim().toUpperCase();
+        if (sym) fillSelected(sym);
+      }
+    });
+
+    // 주기적으로 0원 표시는 다시 교정
+    setInterval(fixZeroPricesInTable, 4000);
+  });
+})();
+</script>
+<!-- ===== /보강 레이어 끝 ===== -->
