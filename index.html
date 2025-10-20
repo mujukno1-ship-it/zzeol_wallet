@@ -83,350 +83,121 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px so
 
 <script>
 /* ===== 시계/상태 ===== */
-(function(){
-  function tick(){
-    var c=document.getElementById('clock'), n=document.getElementById('net'); if(!c||!n) return;
-    var now=new Date(), utc=now.getTime()+now.getTimezoneOffset()*60000, kst=new Date(utc+9*3600000);
-    c.textContent='KST — '+kst.toLocaleTimeString('ko-KR',{hour12:false});
-    var on=navigator.onLine; n.textContent=on?'ONLINE':'OFFLINE'; n.style.background=on?'#123922':'#3a1a1a';
-  }
-  setInterval(tick,1000); tick();
-})();
-
-/* ===== 프록시/API (자동 대체) ===== */
-var PROXIES = ['https://corsproxy.io/?','https://api.allorigins.win/raw?url='];
-var API = 'https://api.upbit.com/v1/';
-function withProxy(url,i){ return (PROXIES[i||0]) + url; }
-async function fetchJSONWithFallback(url,timeout){
-  const ts = timeout || 9000;
-  for(let i=0;i<PROXIES.length;i++){
-    try{
-      const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), ts);
-      const r = await fetch(withProxy(url, i), {signal:ctrl.signal, cache:'no-store'});
-      clearTimeout(t); if(!r.ok) throw new Error('HTTP '+r.status);
-      return await r.json();
-    }catch(e){ if(i===PROXIES.length-1) throw e; }
-  }
-}
-
-/* ===== 이름 맵/캐시 + 별명(알리아스) ===== */
-var NAME_CACHE_KEY='upbit_names_cache_v3';
-var NAME_BY_MARKET={}, NAME_BY_SYM={}, ALIAS_TO_MARKET={
-  '비트코인':'KRW-BTC','비트':'KRW-BTC','BTC':'KRW-BTC','BITCOIN':'KRW-BTC',
-  '비트코인캐시':'KRW-BCH','비트코인캐쉬':'KRW-BCH','비캐':'KRW-BCH','BCH':'KRW-BCH','BITCOINCASH':'KRW-BCH',
-  '이더리움':'KRW-ETH','ETH':'KRW-ETH','ETHEREUM':'KRW-ETH',
-  '이더리움클래식':'KRW-ETC','이클':'KRW-ETC','ETC':'KRW-ETC','ETHEREUMCLASSIC':'KRW-ETC',
-};
-function saveNameCache(o){ try{localStorage.setItem(NAME_CACHE_KEY,JSON.stringify(o));}catch(e){} }
-function loadNameCache(){ try{return JSON.parse(localStorage.getItem(NAME_CACHE_KEY)||'{}');}catch(e){return {}} }
-function normalize(s){ return (s||'').toString().normalize('NFC').replace(/\s+/g,'').toUpperCase(); }
-function SYM(m){ return m.replace('KRW-',''); }
-function ko(mOrS){
-  if(!mOrS) return '이름미정';
-  if(mOrS.indexOf && mOrS.indexOf('KRW-')===0) return NAME_BY_MARKET[mOrS]||'이름미정';
-  return NAME_BY_SYM[mOrS]||'이름미정';
-}
-(function hydrate(){
-  var c=loadNameCache(); var bm=c.byMarket||{}, bs=c.bySym||{};
-  for(var k in bm) NAME_BY_MARKET[k]=bm[k];
-  for(var s in bs) NAME_BY_SYM[s]=bs[s];
-})();
-async function ensureMarkets(){
-  if(Object.keys(NAME_BY_MARKET).length) return;
-  const all = await fetchJSONWithFallback(API+'market/all?isDetails=false', 9000);
-  const list = (all||[]).filter(x=>x.market.indexOf('KRW-')===0);
-  for(let i=0;i<list.length;i++){
-    const m=list[i], sym=SYM(m.market), k=(m.korean_name||'').trim()||sym;
-    NAME_BY_MARKET[m.market]=k; NAME_BY_SYM[sym]=k;
-  }
-  saveNameCache({byMarket:NAME_BY_MARKET, bySym:NAME_BY_SYM});
-  var n=document.getElementById('net'); n.textContent='ONLINE'; n.style.background='#123922';
-}
-
-/* ===== 호가단위/표시 (절사로 정확히) ===== */
-function getTick(p){
-  if(p>=2000000) return 1000; if(p>=1000000) return 500; if(p>=500000) return 100;
-  if(p>=100000) return 50; if(p>=10000) return 10; if(p>=1000) return 5; if(p>=100) return 1;
-  if(p>=10) return 0.1; if(p>=1) return 0.01; if(p>=0.1) return 0.001; if(p>=0.01) return 0.0001;
-  if(p>=0.001) return 0.00001; if(p>=0.0001) return 0.000001; if(p>=0.00001) return 0.0000001;
-  if(p>=0.000001) return 0.00000001; return 0.000000001;
-}
-function fmtKRW(x){
-  var t=getTick(x), d=(t.toString().split('.')[1]||'').length;
-  var r=Math.floor(x/t)*t; // 업비트 호가 단위와 일치
-  return r.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
-}
-function riskText(r){var v=Math.abs(r*100); return v<1?'1(안정)':(v<3?'2(보통)':'3(주의)');}
-function riskClass(r){var v=Math.abs(r*100); return v<1?'r1':(v<3?'r2':'r3');}
-function zzeolComment(r){return r>0.1?'🚀 폭등 모드!':(r>0.05?'🔥 불장 신호!':(r>0.02?'📈 상승 탄력':(r<-0.1?'💣 급락 경고':(r<-0.05?'⚠️ 약세 전환':'⚖️ 관망'))));}
-
-/* ===== 검색 ===== */
-function findMarketByQuery(qRaw){
-  var q=normalize(qRaw);
-  if(ALIAS_TO_MARKET[q]) return ALIAS_TO_MARKET[q];
-  if(/^KRW-[A-Z0-9]+$/.test(qRaw.toUpperCase())) return qRaw.toUpperCase();
-  var keys=Object.keys(NAME_BY_MARKET), found=null;
-  for(var i=0;i<keys.length;i++){
-    var k=keys[i]; var sym=normalize(SYM(k)); var koName=normalize(NAME_BY_MARKET[k]||'');
-    if(normalize(k)===q || sym===q || koName===q){ found=k; break; }
-  }
-  if(!found){
-    for(var j=0;j<keys.length;j++){
-      var kk=keys[j]; var sym2=normalize(SYM(kk)); var ko2=normalize(NAME_BY_MARKET[kk]||'');
-      if(normalize(kk).indexOf(q)>-1 || sym2.indexOf(q)>-1 || ko2.indexOf(q)>-1){ found=kk; break; }
-    }
-  }
-  return found;
-}
-async function doSearch(){
-  var err=document.getElementById('searchError'); if(err) err.style.display='none';
-  var q=document.getElementById('q').value; if(!q){document.getElementById('q').focus();return;}
-  try{
-    await ensureMarkets();
-    var market=findMarketByQuery(q);
-    if(!market){ err.textContent="일치 코인 없음 (예: 비트코인/비트코인캐시/이더리움/이더리움클래식/ETH/BTC/KRW-ETH)"; err.style.display='block'; return; }
-    var d=await fetchJSONWithFallback(API+'ticker?markets='+market,9000);
-    var t=d[0], p=t.trade_price, r=t.signed_change_rate;
-    document.getElementById('result').style.display='block';
-    document.getElementById('selName').textContent=ko(market); document.getElementById('selMarket').textContent=market;
-    document.getElementById('s_price').textContent=fmtKRW(p);
-    document.getElementById('s_buy').textContent=fmtKRW(p*0.988);
-    document.getElementById('s_sell').textContent=fmtKRW(p*1.012);
-    document.getElementById('s_stop').textContent=fmtKRW(p*0.975);
-    document.getElementById('s_rate').innerHTML='<span class="chg '+(r>=0?'up':'down')+'">'+(r*100).toFixed(2)+'%</span>';
-    document.getElementById('s_risk').innerHTML='<span class="risk '+riskClass(r)+'">'+riskText(r)+'</span>';
-    document.getElementById('s_comment').textContent=zzeolComment(r);
-  }catch(e){ err.textContent='데이터 불러오기 실패'; err.style.display='block'; }
-}
-document.getElementById('btnSearch').addEventListener('click',doSearch);
-document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') doSearch(); });
-document.getElementById('btnClear').addEventListener('click',function(){ document.getElementById('q').value=''; document.getElementById('result').style.display='none'; document.getElementById('searchError').style.display='none'; });
-
-/* ===== 지속형 저장 (급등/급락 캐시) ===== */
-const FEED_CACHE_KEY='zzeol_feed_cache_v1'; // {ts, ups:[{m,p,r}], downs:[{m,p,r}]}
-function saveFeedCache(ups,downs){
-  try{
-    const pack=(arr)=>arr.map(t=>({m:t.market,p:t.trade_price,r:t.signed_change_rate}));
-    const data={ts:Date.now(), ups:pack(ups).slice(0,10), downs:pack(downs).slice(0,10)};
-    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(data));
-  }catch(e){}
-}
-function loadFeedCache(){
-  try{
-    const s=localStorage.getItem(FEED_CACHE_KEY); if(!s) return null;
-    const o=JSON.parse(s);
-    if(!o.ups||!o.downs) return null;
-    // 12시간 이내 캐시만 신뢰
-    if(Date.now() - (o.ts||0) > 12*3600*1000) return null;
-    return o;
-  }catch(e){ return null; }
-}
-
-/* ===== 급등/급락 스캔 (조건 완화 + 빈상태 표시 + 위로정렬) ===== */
-function chunk(a,s){var o=[]; for(var i=0;i<a.length;i+=s) o.push(a.slice(i,i+s)); return o;}
-async function scanOnce(){
-  try{
-    await ensureMarkets();
-    const markets = Object.keys(NAME_BY_MARKET);
-    const parts = chunk(markets, 60);
-    let all = [];
-    for(const part of parts){
-      const j = await fetchJSONWithFallback(API+'ticker?markets='+part.join(','), 9000);
-      all = all.concat(j||[]);
-    }
-    const volMin = 1_000_000_000; // 24h 10억
-    const ups   = all.filter(t =>  (t.signed_change_rate||0) >  0.05 && (t.acc_trade_price_24h||0) >= volMin)
-                     .sort((a,b)=> b.signed_change_rate - a.signed_change_rate).slice(0,10);
-    const downs = all.filter(t =>  (t.signed_change_rate||0) < -0.05 && (t.acc_trade_price_24h||0) >= volMin)
-                     .sort((a,b)=> a.signed_change_rate - b.signed_change_rate).slice(0,10);
-
-    renderList('feedUp',   ups,   true);
-    renderList('feedDown', downs, true);
-    saveFeedCache(ups,downs);
-
-    document.getElementById('upSource').style.display='none';
-    document.getElementById('downSource').style.display='none';
-
-    const n = document.getElementById('net'); n.textContent='ONLINE'; n.style.background='#123922';
-  }catch(e){
-    console.error(e);
-    const n = document.getElementById('net'); n.textContent='OFFLINE (재시도중)'; n.style.background='#3a1a1a';
-    renderEmptyIfNeeded('feedUp',   '조건에 맞는 급등코인이 현재 없습니다.');
-    renderEmptyIfNeeded('feedDown', '조건에 맞는 급락코인이 현재 없습니다.');
-  }
-}
-function renderList(tbodyId, arr, reorder){
-  const el = document.getElementById(tbodyId);
-  if(!reorder) el.innerHTML='';
-  if(!arr || arr.length===0){ renderEmptyIfNeeded(tbodyId, tbodyId==='feedUp' ? '조건에 맞는 급등코인이 현재 없습니다.' : '조건에 맞는 급락코인이 현재 없습니다.'); return; }
-
-  // 뒤에서부터 prepend → 화면엔 올바른 순서
-  for(let i=arr.length-1;i>=0;i--){
-    const t = arr[i], p=t.trade_price, r=t.signed_change_rate, market=t.market;
-    const row = el.querySelector('tr[data-market="'+market+'"]');
-    const html = `
-      <td class="rank"></td>
-      <td>${ko(market)}</td>
-      <td>${fmtKRW(p)}</td>
-      <td class="chg ${r>=0?'up':'down'}">${(r*100).toFixed(2)}%</td>
-      <td>${fmtKRW(p*0.988)}</td>
-      <td>${fmtKRW(p*1.012)}</td>
-      <td>${fmtKRW(p*0.975)}</td>
-      <td><span class="risk ${riskClass(r)}">${riskText(r)}</span></td>
-      <td>${zzeolComment(r)}</td>`;
-    if(row){
-      row.innerHTML = html; row.classList.add('flash'); el.prepend(row); setTimeout(rr=>rr.classList.remove('flash'), 800, row);
-    }else{
-      const tr=document.createElement('tr'); tr.dataset.market=market; tr.classList.add('flash'); tr.innerHTML=html; el.prepend(tr); setTimeout(rr=>rr.classList.remove('flash'), 800, tr);
-    }
-  }
-  while(el.children.length>10) el.removeChild(el.lastChild);
-  el.querySelectorAll('tr').forEach((r,idx)=>{ const c=r.querySelector('.rank'); if(c) c.textContent=(idx+1); });
-}
-function renderEmptyIfNeeded(tbodyId, msg){
-  const el = document.getElementById(tbodyId);
-  if(!el) return;
-  el.innerHTML = `<tr><td colspan="9" class="muted">${msg}</td></tr>`;
-}
-
-/* ===== 부팅: 캐시 먼저 보여주고 → 실데이터 덮어쓰기 ===== */
-(function boot(){
-  // 1) 캐시가 있으면 즉시 표시
-  const cache = loadFeedCache();
-  if(cache){
-    // 캐시 → 가짜 티커로 복원하여 동일 렌더 사용
-    const inflate = (arr)=> (arr||[]).map(x=>({market:x.m, trade_price:x.p, signed_change_rate:x.r}));
-    const ups = inflate(cache.ups), downs = inflate(cache.downs);
-    if(ups.length){ renderList('feedUp', ups, true); document.getElementById('upSource').style.display='inline-block'; }
-    if(downs.length){ renderList('feedDown', downs, true); document.getElementById('downSource').style.display='inline-block'; }
-  }
-  // 2) 바로 실시간 스캔으로 덮어쓰기
-  scanOnce();
-  // 3) 주기 갱신(60초)
-  setInterval(scanOnce, 60000);
-})();
-
-/* ===== 이벤트 바인딩 ===== */
-document.getElementById('btnSearch').addEventListener('click',doSearch);
-document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') doSearch(); });
-document.getElementById('btnClear').addEventListener('click',function(){ document.getElementById('q').value=''; document.getElementById('result').style.display='none'; document.getElementById('searchError').style.display='none'; });
-<!-- 타점 전략 로더 (UI 건드리지 않음) -->
-<script type="module" src="/strategies/loader.js"></script>
-</script>
-<!-- 쩔어지갑 6.0 타점 로더 연결 -->
-<script type="module" src="/strategies/loader.js"></script>
 <script>
-/* ===== Upbit 실시간 동기화 모듈 =====
-   - WebSocket(업비트 공식)로 현재가를 실시간 반영
-   - 실패/차단 시 1초 REST 폴링으로 자동 폴백
-   - 기존 UI/함수(fmtKRW 등) 그대로 사용
-*/
+/* ===== Upbit 실시간 동기화 v2 (무효코드 필터 + 하트비트 + 폴백) ===== */
 (function(){
   const WS_URL = 'wss://api.upbit.com/websocket/v1';
-  let ws = null, alive = false, reconnectTimer = null, pollTimer = null;
+  let ws=null, alive=false, reconnectTimer=null, pollTimer=null;
 
-  // 현재 화면에서 구독해야 할 마켓 코드 수집
+  const isMarket = (m)=> /^KRW-[A-Z0-9]{2,}$/.test(m||'');
+
   function collectMarkets(){
     const set = new Set();
-
-    // 1) 검색 결과
     const selMkt = document.getElementById('selMarket');
-    if (selMkt && selMkt.textContent && /^KRW-[A-Z0-9]+$/.test(selMkt.textContent)) {
-      set.add(selMkt.textContent.trim());
+    if (selMkt) {
+      const m = (selMkt.textContent||'').trim();
+      if (isMarket(m)) set.add(m);
     }
-
-    // 2) 급등/급락 표
     document.querySelectorAll('#feedUp tr[data-market], #feedDown tr[data-market]').forEach(tr=>{
       const m = tr.getAttribute('data-market');
-      if (m) set.add(m);
+      if (isMarket(m)) set.add(m);
     });
-
-    // 최대 100개까지만 (안전)
-    return Array.from(set).slice(0, 100);
+    const list = Array.from(set).filter(isMarket);
+    if (list.length === 0) list.push('KRW-BTC');
+    return list.slice(0,80);
   }
 
-  // DOM 업데이트 (현재가 & 변동률)
   function applyTicker(t){
     const market = t.code || t.market;
     const price  = t.trade_price;
     const rate   = (t.signed_change_rate ?? 0);
 
-    // 1) 검색 카드
     const selMkt = document.getElementById('selMarket');
-    if (selMkt && selMkt.textContent === market) {
+    if (selMkt && (selMkt.textContent||'').trim() === market) {
       const priceEl = document.getElementById('s_price');
       const rateEl  = document.getElementById('s_rate');
       if (priceEl) priceEl.textContent = (typeof fmtKRW==='function') ? fmtKRW(price) : price.toLocaleString('ko-KR');
       if (rateEl)  rateEl.innerHTML = `<span class="chg ${rate>=0?'up':'down'}">${(rate*100).toFixed(2)}%</span>`;
+      const calc = (window.calcTradeLevels || ((p)=>({buy:p*0.988,sell:p*1.012,stop:p*0.975})));
+      const L = calc(price, rate);
+      const asKRW = (x)=> (typeof fmtKRW==='function') ? fmtKRW(x) : Math.floor(x).toLocaleString('ko-KR');
+      const ids = ['s_buy','s_sell','s_stop'];
+      const vals= [L.buy, L.sell, L.stop];
+      ids.forEach((id,i)=>{ const el=document.getElementById(id); if(el) el.textContent = asKRW(vals[i]); });
     }
 
-    // 2) 급등/급락 표
     document.querySelectorAll(`tr[data-market="${market}"]`).forEach(tr=>{
       const tds = tr.querySelectorAll('td');
-      // 컬럼: #, 코인(한글), 현재가, 변동률, 매수, 매도, 손절, 위험도, 한마디
       if (tds.length >= 9) {
-        const pTxt = (typeof fmtKRW==='function') ? fmtKRW(price) : price.toLocaleString('ko-KR');
-        tds[2].textContent = pTxt;                                 // 현재가
+        const asKRW = (x)=> (typeof fmtKRW==='function') ? fmtKRW(x) : Math.floor(x).toLocaleString('ko-KR');
+        tds[2].textContent = asKRW(price);
         tds[3].innerHTML   = `<span class="chg ${rate>=0?'up':'down'}">${(rate*100).toFixed(2)}%</span>`;
-        // 매수/매도/손절은 기존 고정식 기준 즉시 갱신(전략 주입 시 calcTradeLevels 사용)
-        const calc = (window.calcTradeLevels || function(p){return {buy:p*0.988, sell:p*1.012, stop:p*0.975};});
+        const calc = (window.calcTradeLevels || ((p)=>({buy:p*0.988,sell:p*1.012,stop:p*0.975})));
         const L = calc(price, rate);
-        tds[4].textContent = (typeof fmtKRW==='function') ? fmtKRW(L.buy)  : Math.floor(L.buy);
-        tds[5].textContent = (typeof fmtKRW==='function') ? fmtKRW(L.sell) : Math.floor(L.sell);
-        tds[6].textContent = (typeof fmtKRW==='function') ? fmtKRW(L.stop) : Math.floor(L.stop);
+        tds[4].textContent = asKRW(L.buy);
+        tds[5].textContent = asKRW(L.sell);
+        tds[6].textContent = asKRW(L.stop);
       }
     });
   }
 
-  // WebSocket 연결/구독
+  function mark(status){
+    const n=document.getElementById('net');
+    if(!n) return;
+    if(status==='ONLINE'){ n.textContent='ONLINE'; n.style.background='#123922'; }
+    else { n.textContent='OFFLINE (재시도)'; n.style.background='#3a1a1a'; }
+  }
+
   function connect(){
     const codes = collectMarkets();
-    if (codes.length === 0) { startPolling(); return; } // 화면에 구독 대상 없으면 폴링로
+    console.log('[WS] subscribe', codes);
+    if (!codes.length){ startPolling(); return; }
 
-    try {
+    try{
       stopPolling();
-      if (ws) { try{ ws.close(); }catch(_){} ws=null; }
+      if (ws){ try{ws.close();}catch(_){} ws=null; }
       ws = new WebSocket(WS_URL);
+      ws.binaryType='blob';
 
-      ws.binaryType = 'blob';
       ws.onopen = () => {
-        alive = true;
-        // 구독 메시지 전송
+        alive = true; mark('ONLINE');
         const msg = [
-          { ticket: 'zzeol-wallet' },
-          { type: 'ticker', codes, isOnlyRealtime: true }
+          { ticket:'zzeol-wallet' },
+          { type:'ticker', codes, isOnlyRealtime:true }
         ];
         ws.send(JSON.stringify(msg));
-        // 상태표시
-        const n=document.getElementById('net'); if(n){ n.textContent='ONLINE'; n.style.background='#123922'; }
+        console.log('[WS] opened');
       };
+
       ws.onmessage = async (e) => {
-        // Upbit WS는 Blob(JSON)로 옴
-        const text = await e.data.text();
-        try { const data = JSON.parse(text); applyTicker(data); } catch (_){}
+        try{
+          const text = await e.data.text();
+          const data = JSON.parse(text);
+          applyTicker(data);
+        }catch(err){}
       };
-      ws.onclose = () => { alive = false; scheduleReconnect(); };
-      ws.onerror = () => { alive = false; scheduleReconnect(); };
-    } catch (_) {
-      scheduleReconnect();
+
+      ws.onclose = () => { console.warn('[WS] closed'); alive=false; scheduleReconnect(); };
+      ws.onerror = () => { console.warn('[WS] error');  alive=false; scheduleReconnect(); };
+    }catch(err){
+      console.warn('[WS] connect fail', err); scheduleReconnect();
     }
   }
 
-  // 재연결
   function scheduleReconnect(){
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(()=>{ reconnectTimer=null; connect(); }, 1500);
-    startPolling(); // WS 안될 때 즉시 폴백
-    const n=document.getElementById('net'); if(n){ n.textContent='OFFLINE (재시도)'; n.style.background='#3a1a1a'; }
+    startPolling();
+    mark('OFFLINE');
   }
 
-  // 1초 REST 폴링(WS 차단/실패 폴백)
   function startPolling(){
     if (pollTimer) return;
-    const api = 'https://api.upbit.com/v1/ticker?markets=';
+    console.log('[POLL] start');
+    const api='https://api.upbit.com/v1/ticker?markets=';
     pollTimer = setInterval(async ()=>{
       const mkts = collectMarkets();
-      if (mkts.length===0) return;
+      if (!mkts.length) return;
       try{
         const r = await fetch(api + encodeURIComponent(mkts.join(',')), { cache:'no-store' });
         if(!r.ok) throw 0;
@@ -435,19 +206,16 @@ document.getElementById('btnClear').addEventListener('click',function(){ documen
       }catch(_){}
     }, 1000);
   }
-  function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+  function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; console.log('[POLL] stop'); } }
 
-  // 최초 연결 & 주기적 재구독 (리스트 바뀔 수 있으니)
   connect();
-  setInterval(()=>{
-    // 리스트 변동 감지용: 간단히 재연결
-    if (alive) { try{ ws.close(); }catch(_){} }
-    connect();
-  }, 60*1000); // 1분마다 구독 갱신
+  setInterval(()=>{ if(alive){ try{ws.close();}catch(_){} } connect(); }, 60000);
 })();
+</script>
 </script>
 </body>
 </html>
+
 
 
 
