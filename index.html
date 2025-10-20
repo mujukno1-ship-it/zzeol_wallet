@@ -302,6 +302,187 @@ $('#btnPinDown').onclick=()=>$('#listDown').innerHTML='';
     alert('초기화 실패: /api/upbit 프록시 또는 네트워크 상태를 확인하세요.');
   }
 })();
+ <!-- ========== BEGIN: COMPACT SUMMARY + TARGETS (v6.3+ safe patch) ========== -->
+<style>
+  /* 요약줄/칩 기본 톤 — 기존 다크테마에 어울리게 가볍게만 추가 */
+  .zz-line-compact{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:14px 0 8px 0}
+  .zz-line-compact .name{font-weight:700;font-size:14px;opacity:.95}
+  .zz-chip{display:inline-flex;align-items:center;gap:.35rem;background:#111a; border:1px solid #2a2f3a;
+           padding:.28rem .55rem;border-radius:.6rem;font-size:.85rem}
+  .zz-chip b{font-weight:700;letter-spacing:.2px}
+  .zz-pep{padding:.28rem .55rem;border-radius:.6rem;border:1px solid #2a2f3a;font-size:.85rem}
+  .zz-pep.flat{background:#0b1320}
+  .zz-pep.warn{background:#26150f}
+  .zz-pep.danger{background:#2b1010}
+  .zz-risk{padding:.28rem .55rem;border-radius:.6rem;border:1px solid #2a2f3a;font-size:.85rem;background:#0d1422}
+  .zz-card{border:1px solid #2a2f3a;border-radius:10px;background:#0b0f16;margin:10px 0}
+  .zz-card .zz-title{display:flex;align-items:center;justify-content:space-between;
+                     padding:10px 12px;border-bottom:1px solid #1c2230;font-weight:700}
+  .zz-card .zz-body{padding:10px 12px}
+  .zz-row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+  .zz-row .zz-chip{min-width:88px;justify-content:space-between}
+  /* 리스트 칼럼 간격 살짝 줄여 한 줄 맞춤 보조 */
+  .table .cell{padding-left:8px;padding-right:8px}
+</style>
+
+<!-- 상단: 요약 한 줄 -->
+<div id="zz-summary" class="zz-line-compact" hidden>
+  <div class="name" id="zz-sym">—</div>
+  <span class="zz-chip">현재가 <b id="zz-price">—</b></span>
+  <span class="zz-chip">변동률 <b id="zz-chg">—</b></span>
+  <span class="zz-chip">매수 <b id="zz-bid">—</b></span>
+  <span class="zz-chip">매도 <b id="zz-ask">—</b></span>
+  <span class="zz-risk" id="zz-risk">—</span>
+  <span class="zz-pep flat" id="zz-pep">—</span>
+</div>
+
+<!-- 하단: 타점(매수·매도·손절)만 -->
+<div class="zz-card" id="zz-targets" hidden>
+  <div class="zz-title">🎯 실전 타점</div>
+  <div class="zz-body">
+    <div class="zz-row">
+      <span class="zz-chip">매수 <b id="zz-t-buy">—</b></span>
+      <span class="zz-chip">매도 <b id="zz-t-sell">—</b></span>
+      <span class="zz-chip">손절 <b id="zz-t-cut">—</b></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* ===== 안전 유틸: 기존 프로젝트에 있으면 그걸 사용, 없으면 대체 제공 ===== */
+  const $  = (sel,root=document)=>root.querySelector(sel);
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const n2  = x => (typeof x==='number' && isFinite(x)) ? x : 0;
+  const fmt = x => (x==null||isNaN(x)) ? '—' : n2(x).toLocaleString('ko-KR', {maximumFractionDigits: 6});
+  const pc  = x => (x==null||isNaN(x)) ? '—' : (x>0?'+':'') + x.toFixed(2) + '%';
+
+  // 프로젝트에 tickSize / cut / fetchJSON / getOrderbookTop 가 있으면 사용
+  const tickSize = (typeof window.tickSize==='function')
+      ? window.tickSize
+      : (p)=>{ // 간이 KRW 호가단위
+          const v = Math.abs(p);
+          if (v >= 2000000) return 1000;
+          if (v >= 1000000) return 500;
+          if (v >= 500000)  return 100;
+          if (v >= 100000)  return 50;
+          if (v >= 10000)   return 10;
+          if (v >= 1000)    return 1;
+          if (v >= 100)     return 0.1;
+          if (v >= 10)      return 0.01;
+          return 0.001;
+        };
+
+  const cut = (typeof window.cut==='function')
+      ? window.cut
+      : (ref)=> {
+          const u = tickSize(ref);
+          // 2단계 아래를 손절 디폴트 (가벼운 보수적)
+          return ref - 2*u*5;
+        };
+
+  async function fetchJSON(url, opt){
+    const r = await fetch(url, opt);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  const getOrderbookTop = (typeof window.getOrderbookTop==='function')
+    ? window.getOrderbookTop
+    : async (market)=>{
+        // 업비트 호가 1호선
+        const data = await fetchJSON(`/api/upbit?path=/v1/orderbook?markets=${encodeURIComponent(market)}&ts=${Date.now()}`);
+        const ob = Array.isArray(data) ? data[0] : null;
+        if(!ob || !ob.orderbook_units || !ob.orderbook_units.length) return null;
+        const u = ob.orderbook_units[0];
+        return { bid_price: u.bid_price, ask_price: u.ask_price };
+      };
+
+  function setPep(el, text){
+    el.classList.remove('flat','warn','danger');
+    el.textContent = text ?? '—';
+    if (/불장|폭등|모드/i.test(text||'')) el.classList.add('warn');
+    if (/주의|위험|경고/i.test(text||'')) el.classList.add('danger');
+    if (!el.classList.contains('warn') && !el.classList.contains('danger')) el.classList.add('flat');
+  }
+
+  // 화면에 요약/타점 찍기
+  async function renderCompactSummary(info){
+    // info = { nameKr, price, chg, riskText, pepText, market }
+    const sum = $('#zz-summary'), tg = $('#zz-targets');
+    if(!sum || !tg) return;
+
+    $('#zz-sym').textContent   = info.nameKr ?? '—';
+    $('#zz-price').textContent = fmt(info.price);
+    $('#zz-chg').textContent   = (typeof info.chg === 'number') ? pc(info.chg) : (info.chg || '—');
+    $('#zz-risk').textContent  = info.riskText ?? '—';
+    setPep($('#zz-pep'), info.pepText ?? '—');
+
+    sum.hidden = false;
+
+    // 타점: 호가 탑 활용
+    try{
+      const top = await getOrderbookTop(info.market);
+      const u   = tickSize(info.price);
+      const bid = top ? (top.bid_price - 2*u) : (info.price - 2*u);
+      const ask = top ? (top.ask_price + 2*u) : (info.price + 2*u);
+      const c   = cut(info.price);
+      $('#zz-t-buy').textContent  = fmt(bid);
+      $('#zz-t-sell').textContent = fmt(ask);
+      $('#zz-t-cut').textContent  = fmt(c);
+      tg.hidden = false;
+    }catch(e){
+      console.warn('타점 표시 실패:', e);
+      tg.hidden = true;
+    }
+  }
+
+  /* ====== 기존 renderSelected를 건드리지 않고 "후킹" ======
+     - 원 프로젝트에 renderSelected(ticker) 가 있으면 그 뒤에 요약/타점 갱신을 호출.
+     - 없더라도 window.zzUpdateSummary(info) 함수를 외부에서 호출할 수 있게 제공.
+  ===========================================================*/
+  window.zzUpdateSummary = (ticker, extra={})=>{
+    if(!ticker) return;
+    // ticker: { market, trade_price, signed_change_rate, korean_name ... } 형태 가정
+    const info = {
+      market: ticker.market,
+      nameKr: extra.nameKr ?? ticker.korean_name ?? extra.name ?? '—',
+      price : ticker.trade_price ?? extra.price,
+      chg   : (typeof ticker.signed_change_rate==='number')
+                ? ticker.signed_change_rate*100
+                : (typeof extra.chg==='number' ? extra.chg : undefined),
+      riskText: extra.riskText ?? (ticker.zz_risk ?? '—'),
+      pepText : extra.pepText  ?? (ticker.zz_pep  ?? '—'),
+    };
+    renderCompactSummary(info);
+  };
+
+  // 만약 기존에 renderSelected가 있다면, 한 줄 후킹해서 요약/타점도 갱신
+  if (typeof window.renderSelected === 'function'){
+    const _orig = window.renderSelected;
+    window.renderSelected = async function(tk, ...rest){
+      const r = await _orig.call(this, tk, ...rest);
+      try{
+        // 프로젝트에서 산출한 위험/한마디 텍스트가 있으면 tk에 zz_risk/zz_pep로 넘겨주세요.
+        window.zzUpdateSummary(tk);
+      }catch(e){ console.warn('zz summary hook fail', e); }
+      return r;
+    };
+  }
+
+  // 페이지 처음 진입했을 때 선택 코인이 이미 있다면 1회 갱신 시도
+  // (프로젝트에 따라 선택 상태 엘리먼트가 다르니 안전하게 무시 가능)
+  window.addEventListener('load', ()=>{
+    // 선택된 코인의 기본 정보가 전역으로 있다면 (예: window._selectedTicker) 한번 찍어주기
+    if (window._selectedTicker) {
+      try { window.zzUpdateSummary(window._selectedTicker); }catch(e){}
+    }
+  });
+})();
+</script>
+<!-- ========== END: COMPACT SUMMARY + TARGETS (v6.3+ safe patch) ========== -->
+ 
 </script>
 </body>
 </html>
+
