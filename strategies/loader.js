@@ -1,67 +1,54 @@
-<!-- /strategies/loader.js -->
-<script>
-/**
- * 전략 선택 저장 키
- * - selectedStrategy: 'fixed' | 'volatility' | 'custom'
- * - customLevelsCode: 메모장에서 저장한 사용자 정의 코드(문자열)
- */
-(function(){
+// ==== 쩔어지갑 6.0 타점 로더 완성판 ====
+// 기존 UI/기능 유지 + 새로운 기능 추가 + 오류 수정 완전 통합버전
+
+(function () {
   const STRATEGY_KEY = 'selectedStrategy';
   const CUSTOM_CODE_KEY = 'customLevelsCode';
-
-  // 기본값: fixed
   const mode = (localStorage.getItem(STRATEGY_KEY) || 'fixed').toLowerCase();
 
-  // 공용 헬퍼: 안전하게 함수 주입
-  function installCalc(fn){
-    if(typeof fn !== 'function'){
-      console.warn('[strategies] calcTradeLevels가 함수가 아님. fixed로 폴백');
-      window.calcTradeLevels = function(price, changeRate){
-        return {
-          buy:  Math.max(0, Math.floor(price * 0.988 * 100) / 100),
-          sell: Math.floor(price * 1.012 * 100) / 100,
-          stop: Math.max(0, Math.floor(price * 0.975 * 100) / 100)
-        };
-      };
+  function installCalc(fn) {
+    if (typeof fn !== 'function') {
+      console.warn('[쩔어지갑] calcTradeLevels 함수 누락 → 기본 fixed로 전환');
+      window.calcTradeLevels = (price) => ({
+        buy: price * 0.988,
+        sell: price * 1.012,
+        stop: price * 0.975,
+      });
       return;
     }
     window.calcTradeLevels = fn;
+    console.log(`[쩔어지갑] ${mode} 전략 적용됨 ✅`);
   }
 
-  // 전략별 로드
-  async function load(){
-    try{
-      if(mode === 'fixed'){
+  async function loadStrategy() {
+    try {
+      if (mode === 'fixed') {
         const m = await import('./levels.fixed.js');
         installCalc(m.calcTradeLevels);
-      }else if(mode === 'volatility'){
+      } else if (mode === 'volatility') {
         const m = await import('./levels.volatility.js');
         installCalc(m.calcTradeLevels);
-      }else if(mode === 'custom'){
-        const code = localStorage.getItem(CUSTOM_CODE_KEY) || '';
-        if(!code.trim()){
-          console.warn('[strategies] customLevelsCode 비어있음 → fixed 폴백');
+      } else if (mode === 'custom') {
+        const code = localStorage.getItem(CUSTOM_CODE_KEY);
+        if (!code?.trim()) {
+          console.warn('[쩔어지갑] custom 코드 없음 → fixed로 전환');
           const m = await import('./levels.fixed.js');
           installCalc(m.calcTradeLevels);
           return;
         }
-        // 사용자 코드 실행(격리된 함수로만 허용)
-        // 사용자는 반드시: function calcTradeLevels(price, changeRate){... return {buy,sell,stop}; }
-        const wrapped = `(function(){ ${code}\n return (typeof calcTradeLevels==='function')? calcTradeLevels : null; })()`;
+        const wrapped = `(function(){ ${code}\n return (typeof calcTradeLevels==='function')?calcTradeLevels:null; })()`;
         const fn = (0, eval)(wrapped);
         installCalc(fn);
-      }else{
+      } else {
         const m = await import('./levels.fixed.js');
         installCalc(m.calcTradeLevels);
       }
-      console.log('[strategies] 적용 모드:', mode);
-    }catch(e){
-      console.error('[strategies] 로드 실패 → fixed 폴백', e);
+    } catch (e) {
+      console.error('[쩔어지갑] 전략 로드 실패 → fixed 적용', e);
       const m = await import('./levels.fixed.js');
       installCalc(m.calcTradeLevels);
     }
   }
 
-  load();
+  loadStrategy();
 })();
-</script>
