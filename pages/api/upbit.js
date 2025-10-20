@@ -1,10 +1,37 @@
+// pages/api/upbit.js
 export default async function handler(req, res) {
-  const { endpoint } = req.query;
   try {
-    const r = await fetch(`https://api.upbit.com/v1/${endpoint}`);
-    const data = await r.json();
-    res.status(200).json(data);
+    if (req.method !== 'GET') {
+      res.status(405).json({ error: 'Method Not Allowed' });
+      return;
+    }
+    const path = req.query.path || '';
+    // 안전: /v1/ 로 시작하는 엔드포인트만 허용
+    if (typeof path !== 'string' || !path.startsWith('/v1/')) {
+      res.status(400).json({ error: 'Bad path' });
+      return;
+    }
+
+    // 업비트로 프록시
+    const upstream = 'https://api.upbit.com' + path;
+    const r = await fetch(upstream, {
+      headers: {
+        'User-Agent': 'zzeolwallet/1.0',
+        'Accept': 'application/json'
+      },
+      cache: 'no-store',
+    });
+
+    // 429 등 그대로 전달하되 CORS 허용
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(r.status);
+
+    // JSON만 다룸
+    const text = await r.text();
+    res.send(text);
   } catch (e) {
-    res.status(500).json({ error: 'Upbit fetch error', detail: e.message });
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.status(500).json({ error: 'proxy-fail', message: String(e) });
   }
 }
