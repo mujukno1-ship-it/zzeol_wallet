@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>쩔어지갑 v6.2 — 급등/급락 위로정렬+검색강화+정확호가</title>
+<title>쩔어지갑 v6.2.1 — 접속즉시 급등/급락 + 프록시자동대체 + 위로정렬</title>
 <link rel="icon" href="data:;base64,iVBORw0KGgo="/>
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--line:#2d333b;--text:#e6edf3;--muted:#9fb1c1;--up:#16c784;--down:#ea3943;--chip:#223045}
@@ -28,7 +28,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px so
 <body>
 <div class="wrap">
   <header>
-    <h1>쩔어지갑 <span class="badge">v6.2</span> <span class="badge" id="net">OFFLINE</span></h1>
+    <h1>쩔어지갑 <span class="badge">v6.2.1</span> <span class="badge" id="net">OFFLINE</span></h1>
     <div class="badge" id="clock">KST — --:--:--</div>
   </header>
 
@@ -56,16 +56,16 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px so
 
   <!-- 급등 Top 10 -->
   <div class="card">
-    <div class="title"><b>🔥 급등코인 Top 10</b> <span class="tag" id="tagUp">기본: 5%↑ · 24h 1000억↑</span></div>
+    <div class="title"><b>🔥 급등코인 Top 10</b> <span class="tag" id="tagUp">조건: 5%↑ · 24h 10억↑</span></div>
     <table>
       <thead><tr class="muted"><th>#</th><th>코인명(한글)</th><th>현재가</th><th>변동률</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr></thead>
       <tbody id="feedUp"></tbody>
     </table>
   </div>
 
-  <!-- 급락 Top 10 (급등 아래) -->
+  <!-- 급락 Top 10 -->
   <div class="card">
-    <div class="title"><b>💧 급락코인 Top 10</b> <span class="tag" id="tagDown">기본: -5%↓ · 24h 1000억↑</span></div>
+    <div class="title"><b>💧 급락코인 Top 10</b> <span class="tag" id="tagDown">조건: -5%↓ · 24h 10억↑</span></div>
     <table>
       <thead><tr class="muted"><th>#</th><th>코인명(한글)</th><th>현재가</th><th>변동률</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr></thead>
       <tbody id="feedDown"></tbody>
@@ -85,17 +85,27 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px so
   setInterval(tick,1000); tick();
 })();
 
-/* ===== 프록시/API ===== */
-var PROXIES=['https://corsproxy.io/?','https://api.allorigins.win/raw?url='];
-var API='https://api.upbit.com/v1/';
-function withProxy(url){ return PROXIES[0]+url; }
-function fetchJSON(url,timeout){
-  timeout=timeout||9000;
-  return new Promise(function(resolve,reject){
-    var ctrl=new AbortController(); var t=setTimeout(function(){ctrl.abort();},timeout);
-    fetch(url,{signal:ctrl.signal,cache:'no-store'}).then(function(r){clearTimeout(t); if(!r.ok) throw new Error('HTTP '+r.status); return r.json();})
-    .then(resolve).catch(reject);
-  });
+/* ===== 프록시/API (자동 대체) ===== */
+var PROXIES = [
+  'https://corsproxy.io/?',
+  'https://api.allorigins.win/raw?url=',
+];
+var API = 'https://api.upbit.com/v1/';
+function withProxy(url,i){ return (PROXIES[i||0]) + url; }
+async function fetchJSONWithFallback(url,timeout){
+  const ts = timeout || 9000;
+  for(let i=0;i<PROXIES.length;i++){
+    try{
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), ts);
+      const r = await fetch(withProxy(url, i), {signal:ctrl.signal, cache:'no-store'});
+      clearTimeout(t);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return await r.json();
+    }catch(e){
+      if(i===PROXIES.length-1) throw e;
+    }
+  }
 }
 
 /* ===== 이름 맵/캐시 + 별명(알리아스) ===== */
@@ -120,21 +130,19 @@ function ko(mOrS){
   for(var k in bm) NAME_BY_MARKET[k]=bm[k];
   for(var s in bs) NAME_BY_SYM[s]=bs[s];
 })();
-function ensureMarkets(){
-  if(Object.keys(NAME_BY_MARKET).length) return Promise.resolve();
-  var url=withProxy(API+'market/all?isDetails=false');
-  return fetchJSON(url,9000).then(function(all){
-    var list=all.filter(function(x){return x.market.indexOf('KRW-')===0;});
-    for(var i=0;i<list.length;i++){
-      var m=list[i], sym=SYM(m.market), k=(m.korean_name||'').trim()||sym;
-      NAME_BY_MARKET[m.market]=k; NAME_BY_SYM[sym]=k;
-    }
-    saveNameCache({byMarket:NAME_BY_MARKET, bySym:NAME_BY_SYM});
-    var n=document.getElementById('net'); n.textContent='ONLINE'; n.style.background='#123922';
-  }).catch(function(){});
+async function ensureMarkets(){
+  if(Object.keys(NAME_BY_MARKET).length) return;
+  const all = await fetchJSONWithFallback(API+'market/all?isDetails=false', 9000);
+  const list = (all||[]).filter(x=>x.market.indexOf('KRW-')===0);
+  for(let i=0;i<list.length;i++){
+    const m=list[i], sym=SYM(m.market), k=(m.korean_name||'').trim()||sym;
+    NAME_BY_MARKET[m.market]=k; NAME_BY_SYM[sym]=k;
+  }
+  saveNameCache({byMarket:NAME_BY_MARKET, bySym:NAME_BY_SYM});
+  var n=document.getElementById('net'); n.textContent='ONLINE'; n.style.background='#123922';
 }
 
-/* ===== 호가단위/표시 ===== */
+/* ===== 호가단위/표시 (절사로 정확히) ===== */
 function getTick(p){
   if(p>=2000000) return 1000; if(p>=1000000) return 500; if(p>=500000) return 100;
   if(p>=100000) return 50; if(p>=10000) return 10; if(p>=1000) return 5; if(p>=100) return 1;
@@ -144,7 +152,7 @@ function getTick(p){
 }
 function fmtKRW(x){
   var t=getTick(x); var d=(t.toString().split('.')[1]||'').length;
-  var r=Math.floor(x/t)*t; // 정확 호가: 절사
+  var r=Math.floor(x/t)*t; // 업비트 호가 단위와 일치하도록 절사
   return r.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
 }
 function riskText(r){var v=Math.abs(r*100); return v<1?'1(안정)':(v<3?'2(보통)':'3(주의)');}
@@ -154,14 +162,14 @@ function zzeolComment(r){return r>0.1?'🚀 폭등 모드!':(r>0.05?'🔥 불장
 /* ===== 검색 ===== */
 function findMarketByQuery(qRaw){
   var q=normalize(qRaw);
-  if(ALIAS_TO_MARKET[q]) return ALIAS_TO_MARKET[q];                      // 별명/한글/심볼 즉시 매핑
-  if(/^KRW-[A-Z0-9]+$/.test(qRaw.toUpperCase())) return qRaw.toUpperCase(); // 직접 코드
+  if(ALIAS_TO_MARKET[q]) return ALIAS_TO_MARKET[q];
+  if(/^KRW-[A-Z0-9]+$/.test(qRaw.toUpperCase())) return qRaw.toUpperCase();
   var keys=Object.keys(NAME_BY_MARKET), found=null;
-  for(var i=0;i<keys.length;i++){ // 정확
+  for(var i=0;i<keys.length;i++){
     var k=keys[i]; var sym=normalize(SYM(k)); var koName=normalize(NAME_BY_MARKET[k]||'');
     if(normalize(k)===q || sym===q || koName===q){ found=k; break; }
   }
-  if(!found){ // 부분
+  if(!found){
     for(var j=0;j<keys.length;j++){
       var kk=keys[j]; var sym2=normalize(SYM(kk)); var ko2=normalize(NAME_BY_MARKET[kk]||'');
       if(normalize(kk).indexOf(q)>-1 || sym2.indexOf(q)>-1 || ko2.indexOf(q)>-1){ found=kk; break; }
@@ -172,11 +180,12 @@ function findMarketByQuery(qRaw){
 function doSearch(){
   var err=document.getElementById('searchError'); if(err) err.style.display='none';
   var q=document.getElementById('q').value; if(!q){document.getElementById('q').focus();return;}
-  ensureMarkets().then(function(){
-    var market=findMarketByQuery(q);
-    if(!market){ err.textContent="일치 코인 없음 (예: 비트코인/비트코인캐시/이더리움/이더리움클래식/ETH/BTC/KRW-ETH)"; err.style.display='block'; return; }
-    var url=withProxy(API+'ticker?markets='+market);
-    return fetchJSON(url,9000).then(function(d){
+  (async()=>{
+    try{
+      await ensureMarkets();
+      var market=findMarketByQuery(q);
+      if(!market){ err.textContent="일치 코인 없음 (예: 비트코인/비트코인캐시/이더리움/이더리움클래식/ETH/BTC/KRW-ETH)"; err.style.display='block'; return; }
+      var d=await fetchJSONWithFallback(API+'ticker?markets='+market,9000);
       var t=d[0], p=t.trade_price, r=t.signed_change_rate;
       document.getElementById('result').style.display='block';
       document.getElementById('selName').textContent=ko(market); document.getElementById('selMarket').textContent=market;
@@ -187,85 +196,98 @@ function doSearch(){
       document.getElementById('s_rate').innerHTML='<span class="chg '+(r>=0?'up':'down')+'">'+(r*100).toFixed(2)+'%</span>';
       document.getElementById('s_risk').innerHTML='<span class="risk '+riskClass(r)+'">'+riskText(r)+'</span>';
       document.getElementById('s_comment').textContent=zzeolComment(r);
-    });
-  }).catch(function(){
-    err.textContent='데이터 불러오기 실패'; err.style.display='block';
-  });
+    }catch(e){
+      err.textContent='데이터 불러오기 실패'; err.style.display='block';
+    }
+  })();
 }
 document.getElementById('btnSearch').addEventListener('click',doSearch);
 document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') doSearch(); });
 document.getElementById('btnClear').addEventListener('click',function(){ document.getElementById('q').value=''; document.getElementById('result').style.display='none'; document.getElementById('searchError').style.display='none'; });
 
-/* ===== 급등/급락 스캔 ===== */
+/* ===== 급등/급락 스캔 (조건 완화 + 빈상태 표시 + 위로정렬) ===== */
 function chunk(a,s){var o=[]; for(var i=0;i<a.length;i+=s) o.push(a.slice(i,i+s)); return o;}
-function scanOnce(){
-  return ensureMarkets().then(function(){
-    var markets=Object.keys(NAME_BY_MARKET); var parts=chunk(markets,60); var all=[];
-    function seq(i){ if(i>=parts.length) return Promise.resolve();
-      var url=withProxy(API+'ticker?markets='+parts[i].join(','));
-      return fetchJSON(url,9000).then(function(js){ all=all.concat(js||[]); }).then(function(){return seq(i+1);});
+async function scanOnce(){
+  try{
+    await ensureMarkets();
+    const markets = Object.keys(NAME_BY_MARKET);
+    const parts = chunk(markets, 60);
+    let all = [];
+    for(const part of parts){
+      const j = await fetchJSONWithFallback(API+'ticker?markets='+part.join(','), 9000);
+      all = all.concat(j||[]);
     }
-    return seq(0).then(function(){
-      var volMin=1000*100000000; // 1000억
-      var ups=all.filter(function(t){return t.signed_change_rate> 0.05 && (t.acc_trade_price_24h||0)>=volMin;})
-                 .sort(function(a,b){return b.signed_change_rate-a.signed_change_rate;}).slice(0,10);
-      var downs=all.filter(function(t){return t.signed_change_rate<-0.05 && (t.acc_trade_price_24h||0)>=volMin;})
-                   .sort(function(a,b){return a.signed_change_rate-b.signed_change_rate;}).slice(0,10);
-      renderList('feedUp',ups,true);
-      renderList('feedDown',downs,true);
-      var n=document.getElementById('net'); n.textContent='ONLINE'; n.style.background='#123922';
-    }).catch(function(){ var n=document.getElementById('net'); n.textContent='OFFLINE (재시도중)'; n.style.background='#3a1a1a'; });
-  });
+    // 조건 완화: 24h 거래대금 10억 + ±5%
+    const volMin = 1_000_000_000;
+    const ups   = all.filter(t =>  (t.signed_change_rate||0) >  0.05 && (t.acc_trade_price_24h||0) >= volMin)
+                     .sort((a,b)=> b.signed_change_rate - a.signed_change_rate)
+                     .slice(0,10);
+    const downs = all.filter(t =>  (t.signed_change_rate||0) < -0.05 && (t.acc_trade_price_24h||0) >= volMin)
+                     .sort((a,b)=> a.signed_change_rate - b.signed_change_rate)
+                     .slice(0,10);
+
+    renderList('feedUp',   ups,   true);
+    renderList('feedDown', downs, true);
+
+    const n = document.getElementById('net'); n.textContent='ONLINE'; n.style.background='#123922';
+  }catch(e){
+    console.error(e);
+    const n = document.getElementById('net'); n.textContent='OFFLINE (재시도중)'; n.style.background='#3a1a1a';
+    renderEmptyIfNeeded('feedUp',   '조건에 맞는 급등코인이 현재 없습니다.');
+    renderEmptyIfNeeded('feedDown', '조건에 맞는 급락코인이 현재 없습니다.');
+  }
 }
-
-/* ✅ 새/재감지 시 맨 위로 올리는 렌더러 */
 function renderList(tbodyId, arr, reorder){
-  var el=document.getElementById(tbodyId);
-  if(!reorder){ el.innerHTML=''; } // (옵션) 처음부터 그릴 때만 비움
+  const el = document.getElementById(tbodyId);
+  if(!reorder) el.innerHTML='';
 
-  // arr는 정렬된 상태라 뒤에서부터 prepend하면 화면에는 올바른 순서가 됨
-  for(var i=arr.length-1;i>=0;i--){
-    var t=arr[i], p=t.trade_price, r=t.signed_change_rate, market=t.market;
-    var row=el.querySelector('tr[data-market="'+market+'"]');
-    var html='<td class="rank"></td>'
-      +'<td>'+ko(market)+'</td>'
-      +'<td>'+fmtKRW(p)+'</td>'
-      +'<td class="chg '+(r>=0?'up':'down')+'">'+(r*100).toFixed(2)+'%</td>'
-      +'<td>'+fmtKRW(p*0.988)+'</td>'
-      +'<td>'+fmtKRW(p*1.012)+'</td>'
-      +'<td>'+fmtKRW(p*0.975)+'</td>'
-      +'<td><span class="risk '+riskClass(r)+'">'+riskText(r)+'</span></td>'
-      +'<td>'+zzeolComment(r)+'</td>';
+  if(!arr || arr.length===0){
+    renderEmptyIfNeeded(tbodyId, tbodyId==='feedUp' ? '조건에 맞는 급등코인이 현재 없습니다.' : '조건에 맞는 급락코인이 현재 없습니다.');
+    return;
+  }
+
+  // 뒤에서부터 prepend → 화면은 올바른 정렬
+  for(let i=arr.length-1;i>=0;i--){
+    const t = arr[i], p=t.trade_price, r=t.signed_change_rate, market=t.market;
+    const row = el.querySelector('tr[data-market="'+market+'"]');
+    const html = `
+      <td class="rank"></td>
+      <td>${ko(market)}</td>
+      <td>${fmtKRW(p)}</td>
+      <td class="chg ${r>=0?'up':'down'}">${(r*100).toFixed(2)}%</td>
+      <td>${fmtKRW(p*0.988)}</td>
+      <td>${fmtKRW(p*1.012)}</td>
+      <td>${fmtKRW(p*0.975)}</td>
+      <td><span class="risk ${riskClass(r)}">${riskText(r)}</span></td>
+      <td>${zzeolComment(r)}</td>`;
 
     if(row){
-      row.innerHTML=html;
+      row.innerHTML = html;
       row.classList.add('flash');
-      el.prepend(row); // ✅ 재감지 → 맨 위로 이동
-      setTimeout(function(rr){ return function(){ rr.classList.remove('flash'); }; }(row),800);
+      el.prepend(row); // 재감지 → 맨 위로 이동
+      setTimeout(rr=>rr.classList.remove('flash'), 800, row);
     }else{
-      var tr=document.createElement('tr');
-      tr.dataset.market=market;
+      const tr = document.createElement('tr');
+      tr.dataset.market = market;
       tr.classList.add('flash');
-      tr.innerHTML=html;
-      el.prepend(tr); // ✅ 신규 감지 → 맨 위로 추가
-      setTimeout(function(rr){ return function(){ rr.classList.remove('flash'); }; }(tr),800);
+      tr.innerHTML = html;
+      el.prepend(tr); // 신규 감지 → 맨 위 추가
+      setTimeout(rr=>rr.classList.remove('flash'), 800, tr);
     }
   }
-
-  // Top10 유지
   while(el.children.length>10) el.removeChild(el.lastChild);
-
-  // 순위 번호 다시 매기기
-  var rows=el.querySelectorAll('tr');
-  for(var j=0;j<rows.length;j++){
-    var rnkCell=rows[j].querySelector('.rank'); if(rnkCell) rnkCell.textContent=(j+1);
-  }
+  el.querySelectorAll('tr').forEach((r,idx)=>{ const c=r.querySelector('.rank'); if(c) c.textContent=(idx+1); });
+}
+function renderEmptyIfNeeded(tbodyId, msg){
+  const el = document.getElementById(tbodyId);
+  if(!el) return;
+  el.innerHTML = `<tr><td colspan="9" class="muted">${msg}</td></tr>`;
 }
 
-/* ===== 부팅: 접속 즉시 실행 + 주기적 갱신 ===== */
+/* ===== 부팅: 접속 즉시 실행 + 주기 갱신(60초) ===== */
 (async function boot(){
-  await scanOnce();            // 접속 직후 바로 표시
-  setInterval(scanOnce,60000); // 1분마다 갱신
+  await scanOnce();               // 접속 즉시 표시
+  setInterval(scanOnce, 60000);   // 1분마다 갱신
 })();
 </script>
 </body>
