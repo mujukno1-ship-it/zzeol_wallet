@@ -1,6 +1,9 @@
 {
   "name": "zzeol_wallet",
   "version": "1.0.0",
-  "type": "module",
+  "type": "commonjs",
+  "scripts": {
+    "start": "vercel dev"
+  },
   "dependencies": {}
 }
