@@ -1,14 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "index.html", "use": "@vercel/static" },
-    { "src": "pages/api/**/*.js", "use": "@vercel/node" }
-  ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/pages/api/$1.js" },
+    { "src": "/api/upbit", "dest": "/api/upbit.js" },
+    { "src": "/api/upbit/(.*)", "dest": "/api/upbit.js" },
     { "src": "/(.*)", "dest": "/index.html" }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
