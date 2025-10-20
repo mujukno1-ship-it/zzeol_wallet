@@ -1,4 +1,3 @@
-// api/upbit.js
 export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') {
