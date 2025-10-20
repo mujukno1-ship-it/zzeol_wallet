@@ -310,6 +310,9 @@ function renderEmptyIfNeeded(tbodyId, msg){
 document.getElementById('btnSearch').addEventListener('click',doSearch);
 document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') doSearch(); });
 document.getElementById('btnClear').addEventListener('click',function(){ document.getElementById('q').value=''; document.getElementById('result').style.display='none'; document.getElementById('searchError').style.display='none'; });
+<!-- 타점 전략 로더 (UI 건드리지 않음) -->
+<script type="module" src="/strategies/loader.js"></script>
 </script>
 </body>
 </html>
+
