@@ -349,7 +349,20 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px so
   });
 
 })();
+ // --- 안정 연결 모듈 ---
+setInterval(() => {
+  fetch("https://api.upbit.com/v1/market/all")
+    .then(r => r.json())
+    .then(() => {
+      document.querySelector("body").classList.add("online");
+      document.querySelector(".status").textContent = "ONLINE";
+    })
+    .catch(() => {
+      document.querySelector(".status").textContent = "OFFLINE (재연결 중)";
+    });
+}, 10000); // 10초마다 확인 
 </script>
 </body>
 </html>
+
 
