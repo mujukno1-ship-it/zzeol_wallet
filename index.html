@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>쩔어지갑 v5.3 ⚡</title>
+  <title>쩔어지갑 v5.4 ⚡</title>
   <style>
-    body { background:#0d1117; color:#e6edf3; font-family: 'Pretendard', sans-serif; text-align:center; }
+    body { background:#0d1117; color:#e6edf3; font-family:'Pretendard',sans-serif; text-align:center; }
     h1 { color:#00e6b8; margin:20px; }
     table { width:90%; margin:0 auto; border-collapse:collapse; }
     th,td { padding:10px; border-bottom:1px solid #2d333b; }
@@ -15,7 +15,7 @@
   </style>
 </head>
 <body>
-  <h1>쩔어지갑 v5.3 ⚡ <span class="status">OFFLINE</span></h1>
+  <h1>쩔어지갑 v5.4 ⚡ <span class="status">OFFLINE</span></h1>
   <input id="search" placeholder="코인 검색 (예: 이더리움 / ETH / KRW-ETH)" style="width:60%;padding:10px;font-size:16px;">
   <button onclick="searchCoin()">검색</button>
   <button onclick="init()">초기화</button>
@@ -34,12 +34,12 @@
     const FEED = document.getElementById('feed');
     const STATUS = document.querySelector('.status');
     const PROXY = "https://corsproxy.io/?";
-    const UPBIT_TICKERS = "https://api.upbit.com/v1/ticker?markets=";
-    const UPBIT_MARKET_ALL = PROXY + "https://api.upbit.com/v1/market/all";
-
-    // --- 한글명 매핑 ---
+    const API_BASE = "https://api.upbit.com/v1/";
+    const UPBIT_MARKET_ALL = PROXY + API_BASE + "market/all";
+    const UPBIT_TICKER = PROXY + API_BASE + "ticker?markets=";
     let nameMap = {};
 
+    // ✅ 한글코인명 불러오기
     async function loadMarkets() {
       try {
         const res = await fetch(UPBIT_MARKET_ALL);
@@ -57,10 +57,11 @@
       }
     }
 
+    // ✅ 급등코인 자동 업데이트
     async function loadTickers() {
       const markets = await loadMarkets();
       if (!markets.length) return;
-      const res = await fetch(PROXY + UPBIT_TICKERS + markets.join(","));
+      const res = await fetch(PROXY + API_BASE + "ticker?markets=" + markets.join(","));
       const data = await res.json();
       FEED.innerHTML = "";
 
@@ -83,27 +84,48 @@
           });
     }
 
+    // ✅ 검색 기능 (CORS 해결)
     async function searchCoin() {
-      const query = document.getElementById('search').value.toUpperCase();
-      if (!query) return;
-      const res = await fetch(PROXY + "https://api.upbit.com/v1/ticker?markets=KRW-" + query);
-      const data = await res.json();
-      FEED.innerHTML = `
-        <tr>
-          <td>${query}</td>
-          <td>${data[0].trade_price.toLocaleString()}원</td>
-          <td>${(data[0].trade_price*0.99).toLocaleString()}</td>
-          <td>${(data[0].trade_price*1.01).toLocaleString()}</td>
-          <td>${(data[0].trade_price*0.97).toLocaleString()}</td>
-          <td>${(data[0].signed_change_rate*100).toFixed(2)}%</td>
-          <td>${data[0].signed_change_rate>0?"상승 흐름":"하락 주의"}</td>
-        </tr>`;
+      const query = document.getElementById('search').value.trim();
+      if (!query) return alert("검색할 코인명을 입력하세요!");
+
+      const marketKey = Object.keys(nameMap).find(k =>
+        k.toUpperCase().includes(query.toUpperCase()) ||
+        nameMap[k]?.includes(query)
+      );
+
+      if (!marketKey) {
+        FEED.innerHTML = `<tr><td colspan="7">❌ '${query}' 코인을 찾을 수 없습니다.</td></tr>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(PROXY + API_BASE + "ticker?markets=" + marketKey);
+        const data = await res.json();
+        const t = data[0];
+        FEED.innerHTML = `
+          <tr>
+            <td>${nameMap[marketKey]}</td>
+            <td>${t.trade_price.toLocaleString()}원</td>
+            <td>${(t.trade_price*0.99).toLocaleString()}</td>
+            <td>${(t.trade_price*1.01).toLocaleString()}</td>
+            <td>${(t.trade_price*0.97).toLocaleString()}</td>
+            <td>${(t.signed_change_rate*100).toFixed(2)}%</td>
+            <td>${t.signed_change_rate>0?"📈 상승 흐름":"📉 하락 주의"}</td>
+          </tr>`;
+      } catch (err) {
+        FEED.innerHTML = `<tr><td colspan="7">⚠️ 데이터 불러오기 오류</td></tr>`;
+      }
     }
 
-    function init() { FEED.innerHTML = ""; document.getElementById('search').value = ""; }
+    function init() {
+      FEED.innerHTML = "";
+      document.getElementById('search').value = "";
+    }
 
-    setInterval(loadTickers, 15000); // 15초마다 자동 업데이트
-    loadTickers(); // 첫 로드
+    // ✅ 자동 갱신
+    setInterval(loadTickers, 15000);
+    loadTickers();
   </script>
 </body>
 </html>
