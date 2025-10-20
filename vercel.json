@@ -1,11 +1,11 @@
 {
   "version": 2,
   "builds": [
-    { "src": "pages/api/*.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" }
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "pages/api/upbit.js", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/pages/api/$1.js" },
+    { "src": "/api/upbit", "dest": "/pages/api/upbit.js" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
