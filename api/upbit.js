@@ -11,7 +11,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ✅ 경로 보정
+    // ✅ URL 자동 보정
     path = decodeURIComponent(path);
 
     const upstream = 'https://api.upbit.com' + path;
