@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 v5.0 — 실시간 + 급등 피드(안정/한글/마이그레이션)</title>
-  <!-- 파비콘 404 방지 -->
+  <title>쩔어지갑 v5.1 — 한글 전용</title>
   <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
   <style>
     :root{--bg:#0d1117;--panel:#161b22;--line:#2d333b;--text:#e6edf3;--muted:#9fb1c1;--up:#16c784;--down:#ea3943;--chip:#223045}
@@ -31,7 +30,7 @@
 <body>
   <div class="wrap">
     <header>
-      <h1>쩔어지갑 <span class="badge">v5.0</span> <span class="badge" id="net">OFFLINE</span></h1>
+      <h1>쩔어지갑 <span class="badge">v5.1</span> <span class="badge" id="net">OFFLINE</span></h1>
       <div class="badge" id="clock">KST — --:--:--</div>
     </header>
 
@@ -86,9 +85,7 @@
       </div>
       <table>
         <thead>
-          <tr class="muted">
-            <th>코인명(한글)</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th>
-          </tr>
+          <tr class="muted"><th>코인명(한글)</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr>
         </thead>
         <tbody id="hotFeed"></tbody>
       </table>
@@ -114,7 +111,7 @@
     const riskText=r=>{const v=Math.abs(r*100);return v<1?'1(안정)':v<3?'2(보통)':'3(주의)';};
     const zzeolComment=r=>r>0.08?'🚀 폭등 모드!':r>0.05?'🔥 불장 신호!':r>0.02?'📈 상승 탄력':r>-0.02?'⚖️ 관망':'💀 하락 리스크';
 
-    /* ===== 네트워크 유틸(재시도/타임아웃) ===== */
+    /* ===== 네트워크 유틸 ===== */
     async function fetchJSON(url,{timeout=7000,retries=2,backoff=500}={}){
       for(let i=0;i<=retries;i++){
         const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),timeout);
@@ -129,20 +126,39 @@
       }
     }
 
-    /* ===== 마켓 & 한글명 맵 ===== */
-    let MARKETS=[]; const NAME_KO=new Map(); const NAME_BY_SYM=new Map(); const SYM=m=>m.replace('KRW-','');
+    /* ===== 마켓 & 한글명 매핑 (영문 노출 차단) ===== */
+    let MARKETS=[]; 
+    const NAME_KO=new Map();         // KRW-ETH -> 이더리움
+    const NAME_BY_SYM=new Map();     // ETH -> 이더리움
+    const SYM=m=>m.replace('KRW-','');
+
+    // 사용자 정의 예외(혹시 업비트 리스트가 늦게 올 때 대비)
+    const CUSTOM_KO = {
+      'META':'메타디움','API3':'에이피아이쓰리','MNT':'맨틀','AUCTION':'바운스','ENA':'에테나','MIRA':'미라클','LA':'라티움'
+    };
+
+    function resolveKoreanName(symOrMarket){
+      // 마켓코드 or 심볼을 받아서 무조건 한글로 반환 (영문 절대 반환 X)
+      if(!symOrMarket) return '이름미정';
+      if(symOrMarket.startsWith('KRW-')) {
+        return NAME_KO.get(symOrMarket) || NAME_BY_SYM.get(SYM(symOrMarket)) || CUSTOM_KO[SYM(symOrMarket)] || '이름미정';
+      }
+      const s = symOrMarket.toUpperCase();
+      return NAME_BY_SYM.get(s) || CUSTOM_KO[s] || '이름미정';
+    }
+
     async function ensureMarkets(){
       if(MARKETS.length) return MARKETS;
       const all=await fetchJSON('https://api.upbit.com/v1/market/all?isDetails=false');
       MARKETS=all.filter(x=>x.market.startsWith('KRW-'));
       for(const m of MARKETS){
         const sym=SYM(m.market);
-        NAME_KO.set(m.market, m.korean_name || sym);
-        NAME_BY_SYM.set(sym, m.korean_name || sym); // ✅ 심볼→한글 매핑도 생성
+        const ko = (m.korean_name||'').trim() || CUSTOM_KO[sym] || '이름미정';
+        NAME_KO.set(m.market, ko);
+        NAME_BY_SYM.set(sym, ko);
       }
       return MARKETS;
     }
-    function koNameFromSym(sym){ return NAME_BY_SYM.get(sym) || sym; }
 
     /* ===== 검색 + WebSocket 실시간 ===== */
     let ws=null, wsTimer=null, wsHB=null, wsBackoff=1000;
@@ -159,22 +175,28 @@
       ws.onclose=()=>{ wsState('재연결 대기…'); wsTimer=setTimeout(()=>openWS(market), wsBackoff); wsBackoff=Math.min(wsBackoff*2,15000); };
       ws.onerror=()=>{ try{ws.close();}catch{} };
     }
+
     async function doSearch(){
       const err=$('searchError'); if(err) err.style.display='none';
-      const q=($('q')?.value||'').trim(); if(!q){$('q')?.focus();return;}
+      const q=($('q')?.value||'').trim();
+      if(!q){$('q')?.focus();return;}
       try{
         const list=await ensureMarkets(); const s=q.toLowerCase();
         const exact=list.find(x=>x.korean_name.toLowerCase()===s||(x.english_name||'').toLowerCase()===s||x.market.toLowerCase()===s||SYM(x.market).toLowerCase()===s);
         const coin=exact||list.find(x=>x.korean_name.toLowerCase().includes(s)||(x.english_name||'').toLowerCase().includes(s)||x.market.toLowerCase().includes(s)||SYM(x.market).toLowerCase().includes(s));
         if(!coin){ if(err){err.textContent='일치하는 코인을 못 찾았어. (예: 이더리움 / ETH / KRW-ETH)'; err.style.display='block';} return; }
-        $('result').style.display='block'; $('selName').textContent=coin.korean_name; $('selMarket').textContent=coin.market; wsState('연결 준비…'); openWS(coin.market);
+
+        $('result').style.display='block';
+        $('selName').textContent = resolveKoreanName(coin.market);
+        $('selMarket').textContent = coin.market; // 마켓코드는 상태뱃지 용도로만
+        wsState('연결 준비…'); openWS(coin.market);
       }catch(e){ console.error(e); if(err){err.textContent='업비트 연결에 문제가 있어. 잠시 후 다시 시도해줘!'; err.style.display='block';} }
     }
     $('btnSearch')?.addEventListener('click', doSearch);
     $('q')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
     $('btnClear')?.addEventListener('click', ()=>{ if($('q')) $('q').value=''; $('result').style.display='none'; $('searchError').style.display='none'; if(ws){try{ws.close();}catch{} ws=null;} });
 
-    /* ===== 급등 피드(한글/저장/재정렬/내구성) ===== */
+    /* ===== 급등 피드(한글만 표시, 저장/재정렬/내구성) ===== */
     const FEED_KEY='zzeol_hot_feed_v1', FEED_TTL_HOURS=24;
     const rowBySym=new Map(); let storeCache=[];
     function feedEl(){ return $('hotFeed'); }
@@ -183,7 +205,7 @@
     function renderFeed(items){
       const el=feedEl(); if(!el) return; el.innerHTML=''; rowBySym.clear();
       for(const it of items){
-        const nameKo = it.nameKo || koNameFromSym(it.sym); // ✅ 저장본도 한글 변환
+        const nameKo = resolveKoreanName(it.nameKo || it.sym);   // ✅ 항상 한글 변환, 심볼 절대 노출 X
         const tr=document.createElement('tr'); tr.style.textAlign='center';
         tr.innerHTML=`<td>💥 ${nameKo}</td><td>${it.price}</td><td>${it.buy}</td><td>${it.sell}</td><td>${it.stop}</td><td>${it.risk}</td><td>${it.comment}</td>`;
         el.appendChild(tr); rowBySym.set(it.sym,tr);
@@ -203,16 +225,17 @@
       const el=feedEl(); if(!el) return;
 
       for(const t of hot){
-        const market=t.market, sym=SYM(market), nameKo=NAME_KO.get(market)||koNameFromSym(sym)||sym;
+        const market=t.market, sym=SYM(market);
+        const nameKo = resolveKoreanName(market); // ✅ 한글 확정
         const p=t.trade_price, rate=t.signed_change_rate;
         const entry={ts:Date.now(), sym, nameKo, price:fmtKRW(p), buy:fmtKRW(p*0.988), sell:fmtKRW(p*1.012), stop:fmtKRW(p*0.975), risk:riskText(rate), comment:zzeolComment(rate)};
         if(rowBySym.has(sym)){
           const tr=rowBySym.get(sym);
-          tr.innerHTML=`<td>💥 ${entry.nameKo}</td><td>${entry.price}</td><td>${entry.buy}</td><td>${entry.sell}</td><td>${entry.stop}</td><td>${entry.risk}</td><td>${entry.comment}</td>`;
+          tr.innerHTML=`<td>💥 ${nameKo}</td><td>${entry.price}</td><td>${entry.buy}</td><td>${entry.sell}</td><td>${entry.stop}</td><td>${entry.risk}</td><td>${entry.comment}</td>`;
           tr.classList.add('flash'); el.prepend(tr); setTimeout(()=>tr.classList.remove('flash'),900); upsertFront(entry);
         }else{
           const tr=document.createElement('tr'); tr.style.textAlign='center'; tr.classList.add('flash');
-          tr.innerHTML=`<td>💥 ${entry.nameKo}</td><td>${entry.price}</td><td>${entry.buy}</td><td>${entry.sell}</td><td>${entry.stop}</td><td>${entry.risk}</td><td>${entry.comment}</td>`;
+          tr.innerHTML=`<td>💥 ${nameKo}</td><td>${entry.price}</td><td>${entry.buy}</td><td>${entry.sell}</td><td>${entry.stop}</td><td>${entry.risk}</td><td>${entry.comment}</td>`;
           el.prepend(tr); setTimeout(()=>tr.classList.remove('flash'),900); rowBySym.set(sym,tr); upsertFront(entry);
         }
       }
@@ -221,9 +244,9 @@
     /* ===== 부팅 순서 ===== */
     window.addEventListener('DOMContentLoaded', async ()=>{
       tick(); setInterval(tick,1000);
-      await ensureMarkets();                              // 한글명 맵 먼저
-      // ✅ 저장본 마이그레이션: 영문만 있던 기록도 한글명 채워 넣기
-      storeCache = loadStore().map(x => ({...x, nameKo: x.nameKo || koNameFromSym(x.sym)}));
+      await ensureMarkets();                               // 한글 맵 준비
+      // ✅ 저장본 마이그레이션: 영문만 있던 기록도 한글로 바꿔 저장
+      storeCache = loadStore().map(x => ({...x, nameKo: resolveKoreanName(x.nameKo || x.sym)}));
       saveStore(storeCache); renderFeed(storeCache);
       // 급등 감지 시작
       await loadHotOnce(); setInterval(loadHotOnce, 60000);
