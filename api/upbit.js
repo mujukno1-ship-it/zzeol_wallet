@@ -1,4 +1,4 @@
-// api/upbit.js  (루트/api 폴더!)
+// api/upbit.js  ← 루트/api 폴더에 있어야 함 (중요)
 export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') {
