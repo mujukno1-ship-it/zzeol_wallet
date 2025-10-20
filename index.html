@@ -349,20 +349,23 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px so
   });
 
 })();
- // --- 안정 연결 모듈 ---
-setInterval(() => {
-  fetch("https://api.upbit.com/v1/market/all")
-    .then(r => r.json())
-    .then(() => {
-      document.querySelector("body").classList.add("online");
-      document.querySelector(".status").textContent = "ONLINE";
-    })
-    .catch(() => {
-      document.querySelector(".status").textContent = "OFFLINE (재연결 중)";
-    });
-}, 10000); // 10초마다 확인 
+// 🔥 프록시 서버를 통한 업비트 데이터 안정 호출
+const UPBIT_API = "https://corsproxy.io/?https://api.upbit.com/v1/market/all";
+
+async function getMarkets() {
+  try {
+    const res = await fetch(UPBIT_API);
+    const data = await res.json();
+    return data.filter(m => m.market.includes("KRW-"));
+  } catch (err) {
+    console.error("업비트 API 오류:", err);
+    document.querySelector(".status").textContent = "OFFLINE (재시도중)";
+    return [];
+  }
+}
 </script>
 </body>
 </html>
+
 
 
