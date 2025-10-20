@@ -315,7 +315,140 @@ document.getElementById('btnClear').addEventListener('click',function(){ documen
 </script>
 <!-- 쩔어지갑 6.0 타점 로더 연결 -->
 <script type="module" src="/strategies/loader.js"></script>
+<script>
+/* ===== Upbit 실시간 동기화 모듈 =====
+   - WebSocket(업비트 공식)로 현재가를 실시간 반영
+   - 실패/차단 시 1초 REST 폴링으로 자동 폴백
+   - 기존 UI/함수(fmtKRW 등) 그대로 사용
+*/
+(function(){
+  const WS_URL = 'wss://api.upbit.com/websocket/v1';
+  let ws = null, alive = false, reconnectTimer = null, pollTimer = null;
+
+  // 현재 화면에서 구독해야 할 마켓 코드 수집
+  function collectMarkets(){
+    const set = new Set();
+
+    // 1) 검색 결과
+    const selMkt = document.getElementById('selMarket');
+    if (selMkt && selMkt.textContent && /^KRW-[A-Z0-9]+$/.test(selMkt.textContent)) {
+      set.add(selMkt.textContent.trim());
+    }
+
+    // 2) 급등/급락 표
+    document.querySelectorAll('#feedUp tr[data-market], #feedDown tr[data-market]').forEach(tr=>{
+      const m = tr.getAttribute('data-market');
+      if (m) set.add(m);
+    });
+
+    // 최대 100개까지만 (안전)
+    return Array.from(set).slice(0, 100);
+  }
+
+  // DOM 업데이트 (현재가 & 변동률)
+  function applyTicker(t){
+    const market = t.code || t.market;
+    const price  = t.trade_price;
+    const rate   = (t.signed_change_rate ?? 0);
+
+    // 1) 검색 카드
+    const selMkt = document.getElementById('selMarket');
+    if (selMkt && selMkt.textContent === market) {
+      const priceEl = document.getElementById('s_price');
+      const rateEl  = document.getElementById('s_rate');
+      if (priceEl) priceEl.textContent = (typeof fmtKRW==='function') ? fmtKRW(price) : price.toLocaleString('ko-KR');
+      if (rateEl)  rateEl.innerHTML = `<span class="chg ${rate>=0?'up':'down'}">${(rate*100).toFixed(2)}%</span>`;
+    }
+
+    // 2) 급등/급락 표
+    document.querySelectorAll(`tr[data-market="${market}"]`).forEach(tr=>{
+      const tds = tr.querySelectorAll('td');
+      // 컬럼: #, 코인(한글), 현재가, 변동률, 매수, 매도, 손절, 위험도, 한마디
+      if (tds.length >= 9) {
+        const pTxt = (typeof fmtKRW==='function') ? fmtKRW(price) : price.toLocaleString('ko-KR');
+        tds[2].textContent = pTxt;                                 // 현재가
+        tds[3].innerHTML   = `<span class="chg ${rate>=0?'up':'down'}">${(rate*100).toFixed(2)}%</span>`;
+        // 매수/매도/손절은 기존 고정식 기준 즉시 갱신(전략 주입 시 calcTradeLevels 사용)
+        const calc = (window.calcTradeLevels || function(p){return {buy:p*0.988, sell:p*1.012, stop:p*0.975};});
+        const L = calc(price, rate);
+        tds[4].textContent = (typeof fmtKRW==='function') ? fmtKRW(L.buy)  : Math.floor(L.buy);
+        tds[5].textContent = (typeof fmtKRW==='function') ? fmtKRW(L.sell) : Math.floor(L.sell);
+        tds[6].textContent = (typeof fmtKRW==='function') ? fmtKRW(L.stop) : Math.floor(L.stop);
+      }
+    });
+  }
+
+  // WebSocket 연결/구독
+  function connect(){
+    const codes = collectMarkets();
+    if (codes.length === 0) { startPolling(); return; } // 화면에 구독 대상 없으면 폴링로
+
+    try {
+      stopPolling();
+      if (ws) { try{ ws.close(); }catch(_){} ws=null; }
+      ws = new WebSocket(WS_URL);
+
+      ws.binaryType = 'blob';
+      ws.onopen = () => {
+        alive = true;
+        // 구독 메시지 전송
+        const msg = [
+          { ticket: 'zzeol-wallet' },
+          { type: 'ticker', codes, isOnlyRealtime: true }
+        ];
+        ws.send(JSON.stringify(msg));
+        // 상태표시
+        const n=document.getElementById('net'); if(n){ n.textContent='ONLINE'; n.style.background='#123922'; }
+      };
+      ws.onmessage = async (e) => {
+        // Upbit WS는 Blob(JSON)로 옴
+        const text = await e.data.text();
+        try { const data = JSON.parse(text); applyTicker(data); } catch (_){}
+      };
+      ws.onclose = () => { alive = false; scheduleReconnect(); };
+      ws.onerror = () => { alive = false; scheduleReconnect(); };
+    } catch (_) {
+      scheduleReconnect();
+    }
+  }
+
+  // 재연결
+  function scheduleReconnect(){
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(()=>{ reconnectTimer=null; connect(); }, 1500);
+    startPolling(); // WS 안될 때 즉시 폴백
+    const n=document.getElementById('net'); if(n){ n.textContent='OFFLINE (재시도)'; n.style.background='#3a1a1a'; }
+  }
+
+  // 1초 REST 폴링(WS 차단/실패 폴백)
+  function startPolling(){
+    if (pollTimer) return;
+    const api = 'https://api.upbit.com/v1/ticker?markets=';
+    pollTimer = setInterval(async ()=>{
+      const mkts = collectMarkets();
+      if (mkts.length===0) return;
+      try{
+        const r = await fetch(api + encodeURIComponent(mkts.join(',')), { cache:'no-store' });
+        if(!r.ok) throw 0;
+        const arr = await r.json();
+        arr.forEach(applyTicker);
+      }catch(_){}
+    }, 1000);
+  }
+  function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+
+  // 최초 연결 & 주기적 재구독 (리스트 바뀔 수 있으니)
+  connect();
+  setInterval(()=>{
+    // 리스트 변동 감지용: 간단히 재연결
+    if (alive) { try{ ws.close(); }catch(_){} }
+    connect();
+  }, 60*1000); // 1분마다 구독 갱신
+})();
+</script>
+
 </body>
 </html>
+
 
 
