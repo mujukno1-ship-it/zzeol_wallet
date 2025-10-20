@@ -213,5 +213,13 @@
       await loadHotOnce(); setInterval(loadHotOnce, 60000);      // 급등 감지
     });
   </script>
+ // === [기존] ensureMarkets 함수의 마지막에 아래 4줄을 추가 ===
+const NAME_BY_SYM = new Map();           // KRW-BTC -> 비트코인 과 별개로, BTC -> 비트코인 맵
+for (const m of MARKETS) {
+  const sym = m.market.replace('KRW-','');
+  NAME_BY_SYM.set(sym, m.korean_name || sym);
+}
+ 
 </body>
 </html>
+
