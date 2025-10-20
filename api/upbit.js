@@ -5,11 +5,14 @@ export default async function handler(req, res) {
       return;
     }
 
-    const path = req.query.path || '';
+    let path = req.query.path || '';
     if (typeof path !== 'string' || !path.startsWith('/v1/')) {
       res.status(400).json({ error: 'Bad path' });
       return;
     }
+
+    // ✅ 경로 보정
+    path = decodeURIComponent(path);
 
     const upstream = 'https://api.upbit.com' + path;
     const r = await fetch(upstream, {
