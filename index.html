@@ -833,9 +833,202 @@ setInterval(()=>{
 })();
 </script>
 <!-- ===== END: 검색 강화 + 화면 흔들림 방지 패치 ===== -->
+<!-- ===== BEGIN: 검색 강화 + 자동완성 드롭다운 v6.3-autocomplete ===== -->
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
 
+  /* 0) 스타일 주입 (드롭다운) */
+  (function injectStyle(){
+    const css = `
+    .zz-ac-wrap{position:relative}
+    .zz-ac{position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#0e1620;border:1px solid #1b2633;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.35);z-index:9999;max-height:260px;overflow:auto;display:none}
+    .zz-ac-item{padding:10px 12px;display:flex;gap:10px;align-items:center;cursor:pointer}
+    .zz-ac-item:hover,.zz-ac-item.active{background:#121c27}
+    .zz-ac-sym{font-weight:800;min-width:64px}
+    .zz-ac-ko{color:#9fb1c3;flex:1}
+    .zz-ac-mkt{color:#7c8fa2}
+    `;
+    const st = document.createElement('style');
+    st.textContent = css;
+    document.head.appendChild(st);
+  })();
+
+  /* 1) 입력창 감싸기 + 드롭다운 DOM 만들기 */
+  const q = document.getElementById('q');
+  const btn = document.getElementById('btnSearch');
+  if (!q || !btn) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'zz-ac-wrap';
+  q.parentElement.insertBefore(wrap, q);
+  wrap.appendChild(q);
+
+  const ac = document.createElement('div');
+  ac.className = 'zz-ac';
+  wrap.appendChild(ac);
+
+  let items = [];       // [{market, symbol, ko}]
+  let filtered = [];    // 현재 필터 결과
+  let activeIdx = -1;   // 키보드 선택 인덱스
+  let READY = false;
+
+  /* 2) 인덱스 준비: state.markets / nameMap 기반 */
+  function buildIndex(){
+    if (!window.state) return false;
+    const mks = state.markets?.length ? state.markets : [];
+    const map = state.nameMap || {};
+    if (!mks.length) return false;
+
+    items = mks.map(row=>{
+      const sym = row.market.split('-')[1];
+      const ko  = map[sym] || row.korean_name || sym;
+      return { market: row.market || row, symbol: sym, ko: ko };
+    });
+    // BTC 한글명 보강
+    const btc = items.find(x=>x.symbol==='BTC');
+    if (btc && !btc.ko) btc.ko = '비트코인';
+    READY = true;
+    return true;
+  }
+
+  // state가 늦게 채워지면 재시도
+  (function waitReady(){
+    if (buildIndex()) return;
+    const t = setInterval(()=>{
+      if (buildIndex()){ clearInterval(t); }
+    }, 500);
+    setTimeout(()=>clearInterval(t), 15000);
+  })();
+
+  /* 3) 검색어 → 마켓코드 찾기 */
+  const ENMAP = { BITCOIN:'BTC', ETHEREUM:'ETH', RIPPLE:'XRP', CARDANO:'ADA', DOGECOIN:'DOGE', LITECOIN:'LTC', SOLANA:'SOL', POLKADOT:'DOT', CHAINLINK:'LINK' };
+  function norm(s){ return (s||'').toString().trim().toUpperCase().replace(/\s+/g,''); }
+  function findMarketByQuery(qv){
+    const Q = norm(qv);
+    if (!Q) return null;
+    if (!READY) buildIndex();
+
+    // 1) KRW-XXX
+    if (Q.startsWith('KRW-')) {
+      const hit = items.find(x=>x.market===Q);
+      return hit ? hit.market : null;
+    }
+    // 2) 영문명 매핑
+    const sym2 = ENMAP[Q] || Q;
+
+    // 3) 심볼 완전일치
+    const hitSym = items.find(x=>x.symbol===sym2);
+    if (hitSym) return hitSym.market;
+
+    // 4) 한글명 완전일치(공백 제거)
+    const tgt = Q.replace(/\s/g,'');
+    const hitKo = items.find(x=>x.ko && x.ko.toUpperCase().replace(/\s/g,'')===tgt);
+    if (hitKo) return hitKo.market;
+
+    // 5) 부분 포함
+    const like = items.find(x=>
+      (x.ko||'').toUpperCase().includes(Q) ||
+      x.symbol.includes(Q) ||
+      x.market.includes(Q)
+    );
+    return like ? like.market : null;
+  }
+
+  /* 4) 자동완성 필터/표시 */
+  function renderList(query){
+    ac.innerHTML = '';
+    if (!READY || !query){ ac.style.display='none'; return; }
+    const Q = norm(query);
+
+    filtered = items.filter(x=>{
+      return x.market.includes(Q) ||
+             x.symbol.includes(Q) ||
+             (x.ko||'').toUpperCase().includes(Q);
+    }).slice(0, 30);
+
+    if (!filtered.length){ ac.style.display='none'; return; }
+
+    filtered.forEach((it, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'zz-ac-item';
+      row.innerHTML = `
+        <div class="zz-ac-sym">${it.symbol}</div>
+        <div class="zz-ac-ko">${it.ko}</div>
+        <div class="zz-ac-mkt">${it.market}</div>
+      `;
+      row.addEventListener('mouseenter', ()=> setActive(idx));
+      row.addEventListener('mouseleave', ()=> setActive(-1));
+      row.addEventListener('mousedown', (e)=>{ e.preventDefault(); choose(idx); });
+      ac.appendChild(row);
+    });
+    activeIdx = -1;
+    ac.style.display='block';
+  }
+
+  function setActive(i){
+    activeIdx = i;
+    [...ac.children].forEach((el, k)=>{
+      if (k===i) el.classList.add('active'); else el.classList.remove('active');
+    });
+  }
+
+  function choose(i){
+    if (i<0 || i>=filtered.length) return;
+    const m = filtered[i].market;
+    q.value = filtered[i].ko || filtered[i].symbol;
+    ac.style.display='none';
+    selectMarket(m);
+  }
+
+  /* 5) 실제 선택 → 기존 renderSelected 활용 */
+  function selectMarket(market){
+    if (!window.state) return;
+    const tk = (state.tickers||[]).find(x=>x.market===market);
+    if (!tk){ alert('데이터 준비 중입니다. 잠시 후 다시 시도해주세요.'); return; }
+    if (typeof window.renderSelected === 'function'){
+      window.renderSelected(tk);
+    } else {
+      state.selected = tk;
+      const sel = document.getElementById('selName');
+      if (sel){
+        const sym = market.split('-')[1];
+        const name = (state.nameMap||{})[sym] || sym;
+        sel.textContent = `${name}  ${market}`;
+      }
+    }
+  }
+
+  /* 6) 이벤트: 입력/키/버튼 */
+  q.addEventListener('input', ()=> renderList(q.value));
+  q.addEventListener('focus', ()=> renderList(q.value));
+  q.addEventListener('blur',  ()=> setTimeout(()=> ac.style.display='none', 120));
+
+  q.addEventListener('keydown', (e)=>{
+    if (ac.style.display!=='block') {
+      if (e.key==='Enter'){ btn.click(); }
+      return;
+    }
+    if (e.key==='ArrowDown'){ e.preventDefault(); setActive(Math.min(activeIdx+1, filtered.length-1)); }
+    else if (e.key==='ArrowUp'){ e.preventDefault(); setActive(Math.max(activeIdx-1, 0)); }
+    else if (e.key==='Enter'){ e.preventDefault(); if (activeIdx>=0) choose(activeIdx); else btn.click(); }
+    else if (e.key==='Escape'){ ac.style.display='none'; }
+  });
+
+  btn.onclick = ()=>{
+    const m = findMarketByQuery(q.value);
+    if (!m){ alert('해당 코인을 찾지 못했습니다. (예: 비트코인 / BTC / KRW-BTC)'); return; }
+    selectMarket(m);
+  };
+
+  // 최초 한 번 인덱스 시도
+  buildIndex();
+})();
+</script>
+<!-- ===== END: 검색 강화 + 자동완성 드롭다운 ===== -->
 </body>
 </html>
+
 
 
 
