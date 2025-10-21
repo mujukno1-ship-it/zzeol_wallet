@@ -1,28 +1,31 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>쩔어지갑 v7.2 안정판 (즉시검색형)</title>
-  <style>
-    body { background:#0d0f14; color:#fff; font-family: Pretendard, sans-serif; margin:0; padding:0; }
-    .container { max-width:1200px; margin:20px auto; padding:20px; }
-    h1 { color:#00ffa0; text-align:center; }
-    input { width:300px; padding:8px; border-radius:5px; border:none; margin-right:5px; }
-    button { background:#00ffa0; color:#000; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; }
-    table { width:100%; border-collapse:collapse; margin-top:20px; }
-    th, td { border-bottom:1px solid #222; text-align:center; padding:8px; }
-    .up { color:#00ff88; } .down { color:#ff4b4b; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>쩔어지갑 v7.3 안정판 💎</title>
+<style>
+  body { background:#0d0f14; color:#fff; font-family: Pretendard, sans-serif; margin:0; padding:0; }
+  .container { max-width:1200px; margin:20px auto; padding:20px; }
+  h1 { color:#00ffa0; text-align:center; }
+  input { width:300px; padding:8px; border-radius:5px; border:none; margin-right:5px; }
+  button { background:#00ffa0; color:#000; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; }
+  table { width:100%; border-collapse:collapse; margin-top:20px; }
+  th, td { border-bottom:1px solid #222; text-align:center; padding:8px; }
+  .up { color:#00ff88; } .down { color:#ff4b4b; }
+  #result-box { background:#1a1d24; border-radius:10px; margin-top:15px; padding:10px; display:none; }
+</style>
 </head>
 <body>
   <div class="container">
-    <h1>쩔어지갑 v7.2 안정판 💎</h1>
+    <h1>쩔어지갑 v7.3 안정판 💎 (검색결과 실시간 표시)</h1>
     <div style="text-align:center;">
-      <input id="search" placeholder="코인명 또는 심볼 입력 (예: 비트코인 / BTC)" />
+      <input id="search" placeholder="코인명 또는 심볼 입력 (예: 이더리움 / ETH)" />
       <button onclick="searchCoin()">검색</button>
       <button onclick="reset()">초기화</button>
     </div>
+
+    <div id="result-box"></div>
 
     <h2>🔥 급등코인 Top 10</h2>
     <table id="up-table">
@@ -76,7 +79,6 @@
         const color = isUp ? "up" : "down";
         const risk = isUp ? "3(주의)" : "2(보통)";
         const msg = isUp ? "🚀 폭등 신호!" : "💀 낙폭경계";
-
         tbody.innerHTML += `
           <tr>
             <td>${i+1}</td>
@@ -94,21 +96,38 @@
 
     async function searchCoin() {
       const q = document.getElementById("search").value.trim();
+      const box = document.getElementById("result-box");
+      box.style.display = "none";
       if (!q) return alert("검색어를 입력하세요.");
+
       const found = marketList.find(m =>
         m.korean_name.includes(q) || m.market.includes(q.toUpperCase())
       );
-      if (!found) return alert("코인을 찾지 못했습니다.");
+      if (!found) {
+        box.style.display = "block";
+        box.innerHTML = `<p>❌ 코인을 찾을 수 없습니다.</p>`;
+        return;
+      }
+
       const res = await fetch(API_URL + found.market);
       const data = await res.json();
       const coin = data[0];
-      alert(`${found.korean_name} (${found.market}) 현재가: ${coin.trade_price.toLocaleString()}원, 변동률: ${(coin.signed_change_rate*100).toFixed(2)}%`);
+      const msg = `
+        <p><strong>${found.korean_name}</strong> (${found.market})</p>
+        <p>현재가: ${coin.trade_price.toLocaleString()}원</p>
+        <p>매수: ${(coin.trade_price * 0.995).toLocaleString()} / 매도: ${(coin.trade_price * 1.005).toLocaleString()}</p>
+        <p>손절: ${(coin.trade_price * 0.985).toLocaleString()}</p>
+        <p>위험도: 1(안정)</p>
+        <p>쩔어한마디: 관망</p>
+      `;
+      box.innerHTML = msg;
+      box.style.display = "block";
     }
 
     function reset() { location.reload(); }
 
     loadMarkets().then(renderCoins);
-    setInterval(renderCoins, 3000); // 3초마다 갱신
+    setInterval(renderCoins, 3000);
   </script>
 </body>
 </html>
