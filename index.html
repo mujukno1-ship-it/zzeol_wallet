@@ -460,5 +460,25 @@ $('#btnRefreshUp').onclick = ()=>preserveScroll(renderTables);
 $('#btnRefreshDown').onclick = ()=>preserveScroll(renderTables);
 
 </script>
+ <!-- ===== 검색 오류 수정 (이더리움/심볼 중복 대응) ===== -->
+<script>
+(function fixSearch(){
+  if(!window.state || !state.markets) return;
+  const fixList = [
+    { symbol: 'ETH', korean_name: '이더리움', market: 'KRW-ETH' },
+    { symbol: 'ETC', korean_name: '이더리움클래식', market: 'KRW-ETC' }
+  ];
+  const symset = new Set(state.markets.map(m=>m.market));
+  for(const f of fixList){
+    if(!symset.has(f.market)){
+      state.markets.push({market:f.market,korean_name:f.korean_name});
+      state.nameMap[f.symbol]=f.korean_name;
+    }
+  }
+  console.log('✅ 이더리움 검색패치 적용 완료');
+})();
+</script>
+<!-- ===== END 검색 오류 수정 ===== --> 
 </body>
 </html>
+
