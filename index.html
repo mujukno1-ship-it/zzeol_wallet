@@ -244,23 +244,49 @@
     return '👀 관망';
   }
   function priceStep(p){
-    // 업비트 KRW 호가단위 근사
-    if(p>=2_000_000) return 1000;
-    if(p>=1_000_000) return 500;
-    if(p>=500_000) return 100;
-    if(p>=100_000) return 50;
-    if(p>=10_000) return 10;
-    if(p>=1000) return 1;
-    if(p>=100) return 0.1;
-    if(p>=10) return 0.01;
-    return 0.001;
-  }
-  function roundToStep(x, step, dir=0){
-    // dir: -1 내림(매수), 0 반올림(손절), +1 올림(매도)
-    const k = Math.round(x/step);
-    if(dir<0) return Math.floor(x/step)*step;
-    if(dir>0) return Math.ceil(x/step)*step;
-    return k*step;
+  // ===== 업비트 호가단위 완전반영 =====
+function priceStep(p){
+  if (p >= 2000000) return 1000;
+  if (p >= 1000000) return 500;
+  if (p >= 500000) return 100;
+  if (p >= 100000) return 50;
+  if (p >= 10000) return 10;
+  if (p >= 1000) return 1;
+  if (p >= 100) return 0.1;
+  if (p >= 10) return 0.01;
+  if (p >= 1) return 0.001;
+  if (p >= 0.1) return 0.0001;
+  if (p >= 0.01) return 0.00001;
+  return 0.000001; // 극저가코인(시바이누 등)
+}
+
+// ===== 표시 자리수 자동판별 =====
+function fmtPrice(p){
+  if(p >= 1000) return p.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
+  if(p >= 100) return p.toFixed(1);
+  if(p >= 10) return p.toFixed(2);
+  if(p >= 1) return p.toFixed(3);
+  if(p >= 0.1) return p.toFixed(4);
+  if(p >= 0.01) return p.toFixed(5);
+  return p.toFixed(6);
+}
+
+// ===== 매수·매도·손절 계산 =====
+function roundToStep(x, step, dir=0){
+  const factor = 1 / step;
+  if (dir < 0) return Math.floor(x * factor) / factor;
+  if (dir > 0) return Math.ceil(x * factor) / factor;
+  return Math.round(x * factor) / factor;
+}
+
+function computeTap(t){
+  const p = t.trade_price || 0;
+  const step = priceStep(p);
+  const bid = roundToStep(p * 0.998, step, -1); // 매수 -0.2%
+  const ask = roundToStep(p * 1.002, step, +1); // 매도 +0.2%
+  const cut = roundToStep(p * 0.98, step, 0);   // 손절 -2%
+  return { bid, ask, cut };
+}
   }
   function computeTap(t){
     const p = t.trade_price||0;
@@ -356,3 +382,4 @@
 </script>
 </body>
 </html>
+
