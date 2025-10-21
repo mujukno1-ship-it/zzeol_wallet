@@ -1,4 +1,4 @@
-// /api/upbit.js
+// /api/upbit.js  — zzeolwallet v6.5 Proxy
 export default async function handler(req, res) {
   try {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -12,15 +12,9 @@ export default async function handler(req, res) {
     }
 
     const upstream = 'https://api.upbit.com' + path;
-
     const r = await fetch(upstream, {
-      headers: {
-        'User-Agent': 'zzeolwallet/6.3',
-        'Accept': 'application/json'
-      },
+      headers: { 'User-Agent': 'zzeolwallet/6.5', 'Accept': 'application/json' },
       cache: 'no-store',
-      // 레이트리밋 대응: 4초 타임아웃
-      next: { revalidate: 0 }
     });
 
     const text = await r.text();
