@@ -1026,8 +1026,134 @@ setInterval(()=>{
 })();
 </script>
 <!-- ===== END: 검색 강화 + 자동완성 드롭다운 ===== -->
+ <!-- ===== 쩔어지갑 v6.3 검색+자동완성+화면고정 패치 ===== -->
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+
+  // ⚙ 기본 DOM 가져오기
+  const q = document.getElementById('q');
+  const btn = document.getElementById('btnSearch');
+  if (!q || !btn) return;
+
+  // 🔹 드롭다운 스타일
+  const style = document.createElement('style');
+  style.textContent = `
+  .zzac-wrap{position:relative;display:inline-block;width:100%;}
+  .zzac-list{position:absolute;top:100%;left:0;right:0;background:#0d1117;border:1px solid #1f2937;border-radius:8px;overflow:auto;max-height:240px;z-index:9999;display:none;}
+  .zzac-item{padding:8px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;}
+  .zzac-item:hover{background:#111c28;}
+  .zzac-sym{font-weight:bold;color:#fff;}
+  .zzac-ko{color:#9ca3af;}
+  `;
+  document.head.appendChild(style);
+
+  // ⚙️ 드롭다운 요소 만들기
+  const wrap = document.createElement('div');
+  wrap.className = 'zzac-wrap';
+  q.parentNode.insertBefore(wrap, q);
+  wrap.appendChild(q);
+  const list = document.createElement('div');
+  list.className = 'zzac-list';
+  wrap.appendChild(list);
+
+  let index = [];
+  let filtered = [];
+  let READY = false;
+
+  // 📊 인덱스 생성 (state.markets, nameMap)
+  function buildIndex(){
+    if (!window.state || !state.markets) return;
+    const mks = state.markets;
+    const map = state.nameMap || {};
+    index = mks.map(m=>{
+      const sym = m.market.split('-')[1];
+      const ko = map[sym] || m.korean_name || sym;
+      return { market:m.market, symbol:sym, ko };
+    });
+    const btc = index.find(x=>x.symbol==='BTC');
+    if (btc) btc.ko='비트코인';
+    READY = true;
+  }
+
+  // 자동으로 state 준비될 때까지 대기
+  const t = setInterval(()=>{ if(!READY) buildIndex(); }, 500);
+  setTimeout(()=>clearInterval(t), 10000);
+
+  // 🔎 검색 로직
+  function normalize(v){return (v||'').trim().toUpperCase();}
+  function findMarket(qv){
+    if (!READY) buildIndex();
+    const Q = normalize(qv);
+    if (!Q) return null;
+    if (Q.startsWith('KRW-')) return Q;
+    const found = index.find(x =>
+      x.market===Q ||
+      x.symbol===Q ||
+      (x.ko||'').toUpperCase().includes(Q)
+    );
+    return found ? found.market : null;
+  }
+
+  // 📋 자동완성 표시
+  function showList(v){
+    list.innerHTML = '';
+    const Q = normalize(v);
+    if (!Q || !READY){ list.style.display='none'; return; }
+    filtered = index.filter(x =>
+      x.market.includes(Q) || x.symbol.includes(Q) ||
+      (x.ko||'').toUpperCase().includes(Q)
+    ).slice(0,20);
+    if (!filtered.length){ list.style.display='none'; return; }
+    filtered.forEach(f=>{
+      const d = document.createElement('div');
+      d.className='zzac-item';
+      d.innerHTML=`<div class="zzac-sym">${f.symbol}</div><div class="zzac-ko">${f.ko}</div>`;
+      d.onclick=()=>select(f.market);
+      list.appendChild(d);
+    });
+    list.style.display='block';
+  }
+
+  function select(m){
+    list.style.display='none';
+    const tk = (state.tickers||[]).find(x=>x.market===m);
+    if(!tk){ alert('데이터 준비 중입니다.'); return; }
+    if(typeof window.renderSelected==='function'){ renderSelected(tk); }
+    else state.selected=tk;
+  }
+
+  // 이벤트
+  q.addEventListener('input',()=>showList(q.value));
+  q.addEventListener('focus',()=>showList(q.value));
+  q.addEventListener('blur',()=>setTimeout(()=>list.style.display='none',150));
+  q.addEventListener('keydown',(e)=>{
+    if(e.key==='Enter'){ const m=findMarket(q.value); if(m) select(m); else alert('검색결과 없음');}
+  });
+  btn.onclick=()=>{ const m=findMarket(q.value); if(m) select(m); else alert('검색결과 없음'); };
+
+  // 화면 덜컥 방지 (스크롤 고정)
+  const stabilize = fn=>{
+    try{
+      const up=$('#tblUp')?.parentElement, dn=$('#tblDown')?.parentElement;
+      const ut=up?.scrollTop, dt=dn?.scrollTop;
+      fn();
+      if(up&&ut!=null) up.scrollTop=ut;
+      if(dn&&dt!=null) dn.scrollTop=dt;
+    }catch(e){fn();}
+  };
+  if(typeof window.renderTables==='function'){
+    const orig=window.renderTables;
+    window.renderTables=function(...a){ stabilize(()=>orig.apply(this,a)); };
+  }
+
+})();
+</script>
+<!-- ===== END: 쩔어지갑 v6.3 검색+자동완성+화면고정 ===== -->
+ 
 </body>
 </html>
+
 
 
 
