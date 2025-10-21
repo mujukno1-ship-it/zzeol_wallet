@@ -361,7 +361,135 @@ async function boot(){
 boot();
 </script>
 <script src="strategies/exploder.js"></script>  
+<!-- ===== BEGIN: Upbit 분석(캔들) + 타점 연결 패치 ===== -->
+<script>
+/* 0) 안전 유틸 */
+const zzSleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+async function zzFetchJSON(url, tries=4){
+  for(let i=0;i<tries;i++){
+    try{
+      const r = await fetch(url, {cache:'no-store'});
+      if (r.status===429) { await zzSleep(600*(i+1)); continue; }
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      return await r.json();
+    }catch(e){ if(i===tries-1) throw e; }
+  }
+}
+
+/* 1) 캔들 불러오기 (Upbit → 분봉 1m 기준 120개) */
+async function getCandles(market, minutes=1, count=120){
+  const path = `/v1/candles/minutes/${minutes}?market=${encodeURIComponent(market)}&count=${count}`;
+  return await zzFetchJSON(`/api/upbit?path=${encodeURIComponent(path)}&ts=${Date.now()}`);
+}
+
+/* 2) 타점 계산기 (EMA21/55 + VWAP + ATR)  — UI/기능 안건드림 */
+function zzComputeSignals(candles){
+  if (!Array.isArray(candles) || candles.length<60) return null;
+  // upbit 분봉 포맷 → 통일
+  const cs = candles.slice().reverse().map(c=>({
+    t: new Date(c.timestamp||c.candle_date_time_kst).getTime(),
+    o: c.opening_price, h: c.high_price, l: c.low_price, c: c.trade_price, v: c.candle_acc_trade_volume
+  }));
+  const C = cs.map(x=>x.c), H=cs.map(x=>x.h), L=cs.map(x=>x.l), V=cs.map(x=>x.v);
+  const i = C.length-1;
+
+  // EMA
+  const ema=(arr,n)=>{ const k=2/(n+1); let e=arr[0]; for(let j=1;j<arr.length;j++) e=arr[j]*k+e*(1-k); return e; };
+  const EMA21 = ema(C,21), EMA55 = ema(C,55);
+
+  // ATR(14)
+  const tr=[]; for(let j=0;j<cs.length;j++){ if(j===0){tr.push(H[j]-L[j]); continue;}
+    tr.push(Math.max(H[j]-L[j], Math.abs(H[j]-C[j-1]), Math.abs(L[j]-C[j-1]))); }
+  const n=14; let ATR = tr.slice(-n).reduce((a,b)=>a+b,0)/n;
+
+  // 당일 VWAP(간단)
+  const day = cs.slice(-360);
+  const pv = day.reduce((s,x)=>s + ((x.h+x.l+x.c)/3)*(x.v||0),0);
+  const vv = day.reduce((s,x)=>s + (x.v||0),0);
+  const VWAP = vv ? pv/vv : C[i];
+
+  const up   = (C[i]>EMA21 && EMA21>EMA55 && C[i]>VWAP);
+  const down = (C[i]<EMA21 && EMA21<EMA55 && C[i]<VWAP);
+  const R = ATR; // 리스크 단위
+
+  const high60 = Math.max(...H.slice(-60));
+  const low60  = Math.min(...L.slice(-60));
+  const swingLow  = Math.min(...L.slice(-10));
+  const swingHigh = Math.max(...H.slice(-10));
+
+  // 레벨
+  let buy=null, sell=null, stop=null, risk='1(안정)', zmsg='👀 관망';
+  const atrPct = (R/(C[i]||1))*100;
+  if (atrPct>7) risk='3(주의)'; else if (atrPct>3.5) risk='2(보통)';
+
+  if (up){
+    // 조정매수(EMA21-0.5R~EMA21), 돌파매수(high60+0.25R)
+    buy  = Math.round(EMA21); // 요약 표시는 중앙값 하나로
+    sell = null;
+    stop = Math.max(swingLow - 1*R, 0);
+    zmsg = (C[i] > high60+0.25*R) ? '🚀 폭등 모드!' : '🔥 불장 신호!';
+  } else if (down){
+    buy  = null;
+    sell = Math.round(EMA21);
+    stop = Math.round(swingHigh + 1*R);
+    zmsg = (C[i] < low60-0.25*R) ? '⚠️ 낙폭주의' : '😬 조정권';
+  }
+
+  return { price:C[i], ema21:EMA21, ema55:EMA55, vwap:VWAP, atr:R, buy, sell, stop, risk, zmsg };
+}
+
+/* 3) 선택 코인에 분석 바인딩 (상단 카드에 값 꽂기) */
+async function zzAnalyzeSelected(ticker){
+  try{
+    const mkt = ticker.market;                 // KRW-ETH 등
+    const candles = await getCandles(mkt, 1, 120);
+    const sig = zzComputeSignals(candles);
+    if(!sig) return;
+
+    // 상단 카드 id는 v6.3 기준 (없으면 무시)
+    const $id = (x)=>document.getElementById(x);
+    if ($id('k_now'))  $id('k_now').textContent  = sig.price?.toLocaleString('ko-KR') ?? '—';
+    if ($id('k_buy'))  $id('k_buy').textContent  = sig.buy  ? Math.round(sig.buy).toLocaleString('ko-KR')  : '—';
+    if ($id('k_sell')) $id('k_sell').textContent = sig.sell ? Math.round(sig.sell).toLocaleString('ko-KR') : '—';
+    if ($id('k_stop')) $id('k_stop').textContent = sig.stop ? Math.round(sig.stop).toLocaleString('ko-KR') : '—';
+    if ($id('k_risk')) $id('k_risk').textContent = sig.risk;
+    if ($id('k_say'))  $id('k_say').textContent  = sig.zmsg;
+    if ($id('k_pct') && typeof ticker.signed_change_rate==='number'){
+      $id('k_pct').innerHTML = `<span class="${ticker.signed_change_rate>=0?'pos':'neg'}">${(ticker.signed_change_rate*100).toFixed(2)}%</span>`;
+    }
+    if ($id('k_net'))  $id('k_net').textContent  = '연결됨(분석)';
+  }catch(e){
+    console.warn('분석 실패:', e);
+    const k = document.getElementById('k_net');
+    if (k) k.textContent = '분석 재시도 대기';
+  }
+}
+
+/* 4) 기존 선택 로직에 “후킹” (renderSelected가 있으면 끝나고 분석 호출) */
+(function(){
+  if (typeof window.renderSelected === 'function'){
+    const _orig = window.renderSelected;
+    window.renderSelected = function(tk, ...rest){
+      const r = _orig.call(this, tk, ...rest);
+      try{ zzAnalyzeSelected(tk); }catch(_){}
+      return r;
+    };
+  } else {
+    // renderSelected가 없다면, 전역 선택 바뀔 때 직접 호출할 수 있도록 공개
+    window.zzAnalyzeSelected = zzAnalyzeSelected;
+  }
+})();
+
+/* 5) 검색/행클릭으로 선택된 경우도 15초마다 자동 재분석 */
+setInterval(()=>{
+  if (window.state && window.state.selected){
+    zzAnalyzeSelected(window.state.selected);
+  }
+}, 15000);
+</script>
+<!-- ===== END: 분석(캔들) + 타점 연결 패치 ===== -->
 </body>
 </html>
+
 
 
