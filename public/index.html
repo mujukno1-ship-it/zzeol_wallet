@@ -2,66 +2,113 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 v6.3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>쩔어지갑 v7.2 안정판 (즉시검색형)</title>
   <style>
-    body { background:#0f141a; color:#e6edf3; font-family: system-ui, "Noto Sans KR", sans-serif; margin:0; padding:20px; }
-    h1 { font-size:20px; }
-    .status { padding:6px 12px; border-radius:8px; display:inline-block; background:#222; color:#f78166; margin-bottom:10px; }
-    table { width:100%; border-collapse:collapse; margin-top:10px; }
-    th, td { border-bottom:1px solid #222; padding:6px; text-align:right; }
-    th:first-child, td:first-child { text-align:left; }
-    .up { color:#3fb950; } .down { color:#f85149; }
+    body { background:#0d0f14; color:#fff; font-family: Pretendard, sans-serif; margin:0; padding:0; }
+    .container { max-width:1200px; margin:20px auto; padding:20px; }
+    h1 { color:#00ffa0; text-align:center; }
+    input { width:300px; padding:8px; border-radius:5px; border:none; margin-right:5px; }
+    button { background:#00ffa0; color:#000; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; }
+    table { width:100%; border-collapse:collapse; margin-top:20px; }
+    th, td { border-bottom:1px solid #222; text-align:center; padding:8px; }
+    .up { color:#00ff88; } .down { color:#ff4b4b; }
   </style>
 </head>
 <body>
-  <h1>🔥 쩔어지갑 v6.3 (정상버전)</h1>
-  <div class="status" id="state">확인중...</div>
-  <div>급등 Top10 / 급락 Top10 자동 표시 중...</div>
-  <table id="up">
-    <thead><tr><th>코인명</th><th>현재가</th><th>변동률</th></tr></thead>
-    <tbody></tbody>
-  </table>
-  <table id="down">
-    <thead><tr><th>코인명</th><th>현재가</th><th>변동률</th></tr></thead>
-    <tbody></tbody>
-  </table>
+  <div class="container">
+    <h1>쩔어지갑 v7.2 안정판 💎</h1>
+    <div style="text-align:center;">
+      <input id="search" placeholder="코인명 또는 심볼 입력 (예: 비트코인 / BTC)" />
+      <button onclick="searchCoin()">검색</button>
+      <button onclick="reset()">초기화</button>
+    </div>
 
-<script>
-const API = (p)=>`/api/upbit?path=${encodeURIComponent(p)}`;
-const state=document.getElementById('state');
-const upT=document.querySelector('#up tbody');
-const downT=document.querySelector('#down tbody');
+    <h2>🔥 급등코인 Top 10</h2>
+    <table id="up-table">
+      <thead>
+        <tr><th>#</th><th>코인명</th><th>현재가</th><th>변동률</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
 
-async function loadAll(){
-  try{
-    const markets=await (await fetch(API('/v1/market/all'))).json();
-    const krw=markets.filter(m=>m.market.startsWith('KRW-'));
-    const codes=krw.map(m=>m.market).join(',');
-    const tick=await (await fetch(API('/v1/ticker?markets='+codes))).json();
+    <h2>💧 급락코인 Top 10</h2>
+    <table id="down-table">
+      <thead>
+        <tr><th>#</th><th>코인명</th><th>현재가</th><th>변동률</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
-    const merged=tick.map(x=>({
-      name:krw.find(m=>m.market===x.market)?.korean_name||x.market,
-      price:x.trade_price, rate:x.signed_change_rate
-    }));
-    const up=[...merged].sort((a,b)=>b.rate-a.rate).slice(0,10);
-    const down=[...merged].sort((a,b)=>a.rate-b.rate).slice(0,10);
+  <script>
+    const API_URL = "https://api.upbit.com/v1/ticker?markets=";
+    const MARKETS_URL = "https://api.upbit.com/v1/market/all";
+    let marketList = [];
 
-    upT.innerHTML=up.map(c=>`<tr><td>${c.name}</td><td>${c.price.toLocaleString()}</td><td class="up">+${(c.rate*100).toFixed(2)}%</td></tr>`).join('');
-    downT.innerHTML=down.map(c=>`<tr><td>${c.name}</td><td>${c.price.toLocaleString()}</td><td class="down">${(c.rate*100).toFixed(2)}%</td></tr>`).join('');
+    async function loadMarkets() {
+      const res = await fetch(MARKETS_URL);
+      marketList = await res.json();
+    }
 
-    state.textContent='ONLINE';
-    state.style.background='#15361f';
-    state.style.color='#3fb950';
-  }catch(e){
-    state.textContent='OFFLINE';
-    state.style.background='#3a1a1a';
-    state.style.color='#f78166';
-    console.error(e);
-  }
-}
-loadAll();
-setInterval(loadAll,20000);
-</script>
+    async function fetchTicker(markets) {
+      const res = await fetch(API_URL + markets.join(","));
+      return await res.json();
+    }
+
+    async function renderCoins() {
+      const krwMarkets = marketList.filter(m => m.market.startsWith("KRW-")).slice(0, 80);
+      const tickers = await fetchTicker(krwMarkets.map(m => m.market));
+
+      const up = tickers.filter(t => t.signed_change_rate > 0.05).sort((a,b) => b.signed_change_rate - a.signed_change_rate).slice(0,10);
+      const down = tickers.filter(t => t.signed_change_rate < -0.05).sort((a,b) => a.signed_change_rate - b.signed_change_rate).slice(0,10);
+
+      fillTable(up, "up-table", true);
+      fillTable(down, "down-table", false);
+    }
+
+    function fillTable(list, tableId, isUp) {
+      const tbody = document.querySelector(`#${tableId} tbody`);
+      tbody.innerHTML = "";
+      list.forEach((coin, i) => {
+        const name = marketList.find(m => m.market === coin.market)?.korean_name || coin.market;
+        const rate = (coin.signed_change_rate * 100).toFixed(2);
+        const color = isUp ? "up" : "down";
+        const risk = isUp ? "3(주의)" : "2(보통)";
+        const msg = isUp ? "🚀 폭등 신호!" : "💀 낙폭경계";
+
+        tbody.innerHTML += `
+          <tr>
+            <td>${i+1}</td>
+            <td>${name} (${coin.market})</td>
+            <td>${coin.trade_price.toLocaleString()}</td>
+            <td class="${color}">${rate}%</td>
+            <td>${(coin.trade_price * 0.995).toLocaleString()}</td>
+            <td>${(coin.trade_price * 1.005).toLocaleString()}</td>
+            <td>${(coin.trade_price * 0.985).toLocaleString()}</td>
+            <td>${risk}</td>
+            <td>${msg}</td>
+          </tr>`;
+      });
+    }
+
+    async function searchCoin() {
+      const q = document.getElementById("search").value.trim();
+      if (!q) return alert("검색어를 입력하세요.");
+      const found = marketList.find(m =>
+        m.korean_name.includes(q) || m.market.includes(q.toUpperCase())
+      );
+      if (!found) return alert("코인을 찾지 못했습니다.");
+      const res = await fetch(API_URL + found.market);
+      const data = await res.json();
+      const coin = data[0];
+      alert(`${found.korean_name} (${found.market}) 현재가: ${coin.trade_price.toLocaleString()}원, 변동률: ${(coin.signed_change_rate*100).toFixed(2)}%`);
+    }
+
+    function reset() { location.reload(); }
+
+    loadMarkets().then(renderCoins);
+    setInterval(renderCoins, 3000); // 3초마다 갱신
+  </script>
 </body>
 </html>
