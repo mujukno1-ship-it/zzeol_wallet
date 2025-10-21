@@ -2,6 +2,12 @@
 <!doctype html>
 <html lang="ko">
 <head>
+<style>
+  .search-row .col-12 > .text-muted.small span { display:inline-block; }
+  #search-suggest { box-shadow:0 6px 16px rgba(0,0,0,.18); }
+  #search-suggest .list-group-item { padding:.5rem .75rem; }
+</style>
+  
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>쩔어지갑 v7.3 안정판 (실시간 급등형)</title>
@@ -81,6 +87,27 @@
     <button class="btn" id="searchBtn">검색</button>
     <button class="btn btn-ghost" id="resetBtn">초기화</button>
   </div>
+  <!-- 검색 결과 한 줄 표시 -->
+<div id="search-result-row" class="search-row" style="display:none;margin-top:8px">
+  <div class="row g-2">
+    <div class="col-12 d-flex gap-2 align-items-center text-muted small">
+      <span style="width:80px">코인명</span>
+      <span style="width:80px">현재가</span>
+      <span style="width:80px">변동률</span>
+      <span style="width:80px">매수</span>
+      <span style="width:80px">매도</span>
+      <span style="width:80px">손절</span>
+      <span style="width:80px">위험도</span>
+      <span style="flex:1">쩔어한마디</span>
+    </div>
+    <div id="search-result" class="col-12"></div>
+  </div>
+</div>
+
+<!-- 자동완성 리스트 -->
+<ul id="search-suggest" class="list-group position-absolute"
+    style="z-index:50;max-height:320px;overflow:auto;display:none;width:100%;"></ul>
+
 
   <!-- 선택 코인 한 줄 요약 -->
   <div id="selectedBox" class="panel" style="display:none;">
@@ -134,206 +161,184 @@
 </div>
 
 <script>
-const $ = sel => document.querySelector(sel);
-const upGrid = $('#upGrid');
-const downGrid = $('#downGrid');
-const upEmpty = $('#upEmpty');
-const downEmpty = $('#downEmpty');
-const updatedAt = $('#updatedAt');
-const q = $('#q');
-const selectedBox = $('#selectedBox');
-const selectedChips = $('#selectedChips');
-const API = (path) => `/api/upbit?path=${encodeURIComponent(path)}`;
+/* === zzeol v7.x 검색 모듈(한방 교체) ============================= */
 
-// 상태
-let markets = [];           // KRW- 마켓 배열
-let nameMap = {};           // market -> { kr, en, sym }
-let timer = null;
+/* 1) 업비트 마켓목록을 1회만 로드 (KRW만, 한글/영문/코드 모두 검색 가능) */
+const marketsPromise = (async () => {
+  const url = '/api/upbit?path=/v1/market/all?isDetails=true';
+  const res = await fetch(url, { headers: { 'cache-control': 'no-store' }});
+  if (!res.ok) throw new Error('마켓목록 로드 실패');
+  const all = await res.json();
+  return all
+    .filter(x => (x.market || '').startsWith('KRW-'))
+    .map(x => ({
+      market: x.market,                          // KRW-ETH
+      code: (x.market || '').replace('KRW-',''), // ETH
+      ko: x.korean_name || '',
+      en: x.english_name || ''
+    }))
+    .sort((a,b)=>a.ko.localeCompare(b.ko,'ko'));
+})();
 
-// 유틸
-const fmt = (n, d=0) => Number(n).toLocaleString('ko-KR', {maximumFractionDigits:d});
-const nowKST = () => {
-  const k = new Date(Date.now() + 9*3600*1000);
-  return `${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}:${String(k.getUTCSeconds()).padStart(2,'0')}`;
-};
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const pickRisk = (vol) => { // vol: 0~?
-  if (vol < 0.02) return {txt:'1(안정)', cls:'ok'};
-  if (vol < 0.06) return {txt:'2(보통)', cls:'warn'};
-  return {txt:'3(주의)', cls:'danger'};
-};
-const say = (chg, vol) => {
-  if (chg >= 0.07 && vol > 0.05) return '🚀 폭등';
-  if (chg <= -0.07) return '📉 낙폭경계';
-  if (chg > 0.02) return '📈 상승중';
-  if (chg < -0.02) return '📉 하락중';
-  return '👀 관망';
-};
+/* 2) DOM 참조 */
+const $input   = document.querySelector('#search');          // ← 검색 input
+const $suggest = document.querySelector('#search-suggest');  // 자동완성
+const $rowWrap = document.querySelector('#search-result-row');// 한 줄 전체 래퍼
+const $row     = document.querySelector('#search-result');   // 한 줄 내용
 
-// 1) 마켓 불러오기
-async function loadMarkets(){
-  const res = await fetch(API('/v1/market/all?isDetails=true'), {cache:'no-store'});
-  const data = await res.json();
-  markets = data.filter(m => m.market?.startsWith('KRW-'));
-  nameMap = {};
-  markets.forEach(m=>{
-    const sym = m.market.split('-')[1];
-    nameMap[m.market] = {kr:m.korean_name, en:m.english_name, sym};
+if (!$input) console.warn('검색 input(#search)을 찾지 못했습니다. id를 확인하세요.');
+
+/* 3) 유틸리티 */
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const debouncer = (fn, ms=120) => { let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms);} }
+const norm = s => (s||'').toString().trim().toLowerCase();
+
+/* 4) IME(한글 조합) 대응 */
+let composing = false;
+$input?.addEventListener('compositionstart', ()=> composing = true);
+$input?.addEventListener('compositionend',   ()=> { composing = false; onInput(); });
+
+/* 5) 인덱스 로드 */
+let markets = [];
+(async () => {
+  try { markets = await marketsPromise; }
+  catch(e) { console.error(e); }
+})();
+
+/* 6) 입력 핸들링 */
+const onInput = debouncer(() => {
+  if (composing) return;
+  const q = norm($input.value);
+  if (!q) { hideSuggest(); clearRow(); return; }
+
+  const hits = markets.filter(m =>
+    norm(m.ko).includes(q) || norm(m.en).includes(q) ||
+    norm(m.code).includes(q) || norm(m.market).includes(q)
+  ).slice(0, 20);
+
+  if (!hits.length) { showSuggest([]); clearRow('결과 없음'); return; }
+  showSuggest(hits);
+}, 0);
+
+$input?.addEventListener('input', onInput);
+$input?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const first = $suggest.querySelector('li[data-market]');
+    if (first) { e.preventDefault(); selectMarket(first.getAttribute('data-market')); }
+  }
+});
+
+/* 7) 자동완성 */
+function showSuggest(list) {
+  if (!list.length) { hideSuggest(); return; }
+  $suggest.innerHTML = list.map(m => `
+    <li class="list-group-item list-group-item-action d-flex justify-content-between"
+        data-market="${m.market}" style="cursor:pointer">
+      <span>${m.ko} <span class="text-muted">(${m.code})</span></span>
+      <span class="text-muted">${m.market}</span>
+    </li>
+  `).join('');
+  $suggest.style.display = 'block';
+  [...$suggest.querySelectorAll('li[data-market]')].forEach(li=>{
+    li.onclick = () => selectMarket(li.getAttribute('data-market'));
   });
 }
+function hideSuggest(){ $suggest.style.display='none'; }
 
-// 2) 티커 일괄 조회 (배치)
-async function loadTickers(mkts){
-  const out = [];
-  const size = 90;
-  for(let i=0;i<mkts.length;i+=size){
-    const slice = mkts.slice(i,i+size).map(m=>m.market || m);
-    const res = await fetch(API(`/v1/ticker?markets=${slice.join(',')}`), {cache:'no-store'});
-    out.push(...await res.json());
-  }
-  return out;
+/* 8) 검색 결과 한 줄 표시/초기화 */
+function clearRow(msg){
+  $rowWrap.style.display = 'block';
+  if (!msg) { $rowWrap.style.display='none'; $row.innerHTML=''; return; }
+  $row.innerHTML = `<div class="text-muted small px-2 py-1">${msg}</div>`;
 }
 
-// 3) 계산: 포인트/위험/메시지
-function makeRow(t){
-  const m = t.market;
-  const nm = nameMap[m] || {kr:m, en:m, sym:m.split('-')[1]};
-  const price = t.trade_price;
-  const change = t.signed_change_rate ?? 0;    // -0.05 ~ +0.05
-  const chg = change; // 비율(소수), 화면은 %
-  const high = t.high_price ?? price;
-  const low  = t.low_price  ?? price;
-  const vol  = (high-low) / (t.prev_closing_price || price); // 대략적 변동성
-  const risk = pickRisk(vol);
-  // 간단한 타점 모델 (타협형)
-  const riskK = risk.txt.startsWith('3') ? 1.15 : risk.txt.startsWith('2') ? 1.0 : 0.85;
-  const buy  = price * (1 - 0.0065 * riskK);
-  const sell = price * (1 + 0.0075 * riskK);
-  const stop = price * (1 - 0.020 * riskK);
-  const remark = say(chg, vol);
+/* 9) 마켓 선택 → 티커 조회 후 라인 렌더 */
+async function selectMarket(market) {
+  try {
+    hideSuggest();
+    $input.value = market;
 
-  return {
-    market:m, name:nm.kr, sym:nm.sym, price, chg, buy, sell, stop, risk, remark
-  };
-}
-
-// 4) 렌더
-function renderList(container, list){
-  // 기존 행 제거
-  container.querySelectorAll('.trow').forEach(el=>el.remove());
-  if (!list.length){
-    (container===upGrid?upEmpty:downEmpty).style.display='block';
-    return;
-  }
-  (container===upGrid?upEmpty:downEmpty).style.display='none';
-
-  list.forEach((r, idx)=>{
-    const row = document.createElement('div');
-    row.className = 'trow';
-    row.innerHTML = `
-      <div class="td num">${idx+1}</div>
-      <div class="td"><span class="muted">${r.sym}</span> ${r.name}</div>
-      <div class="td num right">${fmt(r.price, r.price>=1000?0:2)}</div>
-      <div class="td num right ${r.chg>=0?'up':'down'}">${(r.chg*100).toFixed(2)}%</div>
-      <div class="td num right">${fmt(r.buy, r.price>=1000?0:2)}</div>
-      <div class="td num right">${fmt(r.sell, r.price>=1000?0:2)}</div>
-      <div class="td num right">${fmt(r.stop, r.price>=1000?0:2)}</div>
-      <div class="td right"><span class="pill ${r.risk.cls}">${r.risk.txt}</span></div>
-      <div class="td right"><span class="pill">${r.remark}</span></div>
-    `;
-    row.addEventListener('click', ()=>showSelected(r));
-    container.appendChild(row);
-  });
-}
-
-// 5) 선택 코인 요약
-function showSelected(r){
-  selectedChips.innerHTML = `
-    <span class="chip"><strong>${r.name}</strong> (${r.market})</span>
-    <span class="chip">현재가 <strong>${fmt(r.price, r.price>=1000?0:2)}</strong></span>
-    <span class="chip">변동률 <strong class="${r.chg>=0?'up':'down'}">${(r.chg*100).toFixed(2)}%</strong></span>
-    <span class="chip">매수 <strong>${fmt(r.buy, r.price>=1000?0:2)}</strong></span>
-    <span class="chip">매도 <strong>${fmt(r.sell, r.price>=1000?0:2)}</strong></span>
-    <span class="chip">손절 <strong>${fmt(r.stop, r.price>=1000?0:2)}</strong></span>
-    <span class="chip">위험도 <strong>${r.risk.txt}</strong></span>
-    <span class="chip">쩔어한마디 <strong>${r.remark}</strong></span>
-  `;
-  selectedBox.style.display = 'block';
-  window.scrollTo({top:0,behavior:'smooth'});
-}
-
-// 6) 검색
-function doSearch(tickers){
-  const kw = (q.value||'').trim().toLowerCase();
-  if (!kw){ alert('검색어를 입력하세요. (한글/영문/심볼/마켓코드)'); return; }
-  // 매칭: 한글/영문/심볼/마켓코드
-  const found = tickers
-    .map(makeRow)
-    .find(r=>{
-      const nm = r.name.toLowerCase();
-      const sym = r.sym.toLowerCase();
-      const code = r.market.toLowerCase();
-      return nm.includes(kw) || sym.includes(kw) || code.includes(kw);
+    // 현재가(티커)
+    const res = await fetch(`/api/upbit?path=/v1/ticker?markets=${encodeURIComponent(market)}`, {
+      headers: { 'cache-control': 'no-store' }
     });
-  if (!found){
-    alert('코인을 찾지 못했습니다.');
-    return;
-  }
-  showSelected(found);
-}
+    if (!res.ok) throw new Error('티커 조회 실패');
+    const [t] = await res.json();
 
-// 7) 메인 로드 & 주기 갱신
-async function refresh(){
-  try{
-    if (!markets.length) await loadMarkets();
-    const tickers = await loadTickers(markets.map(m=>m.market));
-    // 상하위 정렬
-    const rows = tickers.map(makeRow);
-    const ups = rows.filter(r=>r.chg>0).sort((a,b)=>b.chg-a.chg).slice(0,10);
-    const downs = rows.filter(r=>r.chg<0).sort((a,b)=>a.chg-b.chg).slice(0,10);
+    const price = t.trade_price;                      // 현재가
+    const chgRt = ((t.signed_change_rate||0) * 100);  // 변동률(%)
 
-    renderList(upGrid, ups);
-    renderList(downGrid, downs);
-    updatedAt.textContent = `업데이트: ${nowKST()}`;
-  }catch(e){
+    // 호가단위 근사(업비트 룰 따라가기)
+    const buy  = fixUnit(price * 0.985);  // -1.5%
+    const sell = fixUnit(price * 1.015);  // +1.5%
+    const cut  = fixUnit(price * 0.97);   // -3%
+
+    const risk = riskBadge(chgRt);        // 3(주의)/2(보통)/1(안정)
+    const say  = zzeolOneLiner(chgRt);    // 쩔어한마디(기존 톤 유지)
+
+    $row.innerHTML = renderRow({ market, price, chgRt, buy, sell, cut, risk, say });
+    $rowWrap.style.display = 'block';
+
+  } catch(e) {
     console.error(e);
-    alert('데이터를 불러오지 못했습니다.');
+    clearRow('조회 실패');
   }
 }
 
-// 이벤트
-$('#searchBtn').addEventListener('click', async ()=>{
-  if (!markets.length) await loadMarkets();
-  const tickers = await loadTickers(markets.map(m=>m.market));
-  doSearch(tickers);
-});
-q.addEventListener('keydown', async (e)=>{
-  if (e.key === 'Enter'){
-    if (!markets.length) await loadMarkets();
-    const tickers = await loadTickers(markets.map(m=>m.market));
-    doSearch(tickers);
-  }
-});
-$('#resetBtn').addEventListener('click', ()=>{
-  q.value=''; selectedBox.style.display='none';
-});
-$('#refreshBtn').addEventListener('click', refresh);
-$('#autoTick').addEventListener('change', e=>{
-  if (e.target.checked){
-    if (timer) clearInterval(timer);
-    timer = setInterval(refresh, 60000);
-  }else{
-    if (timer) clearInterval(timer);
-    timer = null;
-  }
-});
+/* 10) 호가단위/포맷/라벨 */
+function tickUnit(p){
+  if (p >= 2_000_000) return 1000;
+  if (p >=   200_000) return  500;
+  if (p >=    10_000) return  100;
+  if (p >=     1_000) return   50;
+  if (p >=       100) return   10;
+  if (p >=        10) return    1;
+  if (p >=         1) return  0.1;
+  return 0.01;
+}
+function fixUnit(p){ const u=tickUnit(p); return Math.round(p/u)*u; }
+function fmt(n){ return typeof n==='number' ? n.toLocaleString('ko-KR') : n; }
 
-// 시계
-setInterval(()=>{ $('#clock').textContent='KST — ' + nowKST(); }, 1000);
+function riskBadge(chg){
+  const a = Math.abs(chg);
+  if (a >= 10) return '3(주의)';
+  if (a >=  5) return '2(보통)';
+  return '1(안정)';
+}
+function zzeolOneLiner(chg){
+  if (chg >= 15) return '🚀 폭등';
+  if (chg >=  5) return '🔥 불장 신호!';
+  if (chg <= -10) return '📉 낙폭경계';
+  if (chg <=  -5) return '⚠️ 조정 구간';
+  return '👀 관망';
+}
+function renderRow({ market, price, chgRt, buy, sell, cut, risk, say }){
+  return `
+  <div class="d-flex gap-2 align-items-center px-2 py-1">
+    <span style="width:80px">${market}</span>
+    <span style="width:80px">${fmt(price)}</span>
+    <span style="width:80px" class="${chgRt>=0?'text-success':'text-danger'}">${chgRt.toFixed(2)}%</span>
+    <span style="width:80px">${fmt(buy)}</span>
+    <span style="width:80px">${fmt(sell)}</span>
+    <span style="width:80px">${fmt(cut)}</span>
+    <span style="width:80px">${risk}</span>
+    <span style="flex:1">${say}</span>
+  </div>`;
+}
 
-// 첫 로드
-refresh();
+/* 11) 바깥 클릭 시 자동완성 닫기 + 포커스 제안 */
+document.addEventListener('click', (e)=>{
+  if (!($suggest.contains(e.target) || $input.contains(e.target))) hideSuggest();
+});
+(async () => {
+  await marketsPromise.catch(()=>{});
+  $input?.addEventListener('focus', ()=>{
+    const q = norm($input.value);
+    if (!q && markets.length) showSuggest(markets.slice(0,10));
+  });
+})();
+
+/* ============================================================= */
 </script>
-</body>
-</html>
+
 
