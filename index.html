@@ -479,6 +479,92 @@ $('#btnRefreshDown').onclick = ()=>preserveScroll(renderTables);
 })();
 </script>
 <!-- ===== END 검색 오류 수정 ===== --> 
+<!-- ===== 검색 정확도 패치: 이더리움(ETH) 우선/정상 노출 ===== -->
+<script>
+(function () {
+  // 안전가드: 필수 상태 없으면 패치 생략
+  if (!window.state || !Array.isArray(state.markets)) return;
+
+  // (1) 정규화 유틸: 대소문자/공백 제거, 한글도 일관 비교
+  const normalize = s => String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .normalize('NFC');
+
+  // (2) 결과 스코어링: 정확히 "이더리움/ETH" 먼저, startsWith, includes 순
+  function scoreMarket(m, nq) {
+    const name = normalize(m.korean_name);
+    const market = String(m.market || '');
+    const sym = market.split('-')[1] ? market.split('-')[1].toLowerCase() : '';
+
+    // 최우선: 완전 일치
+    if (nq === name) return 100;       // 한글명 정확히 동일 (예: 이더리움)
+    if (nq === sym) return 95;         // 심볼 정확히 동일 (예: eth)
+    if (name.startsWith(nq)) return 85;
+    if (sym.startsWith(nq))  return 80;
+    if (name.includes(nq))   return 70;
+    if (market.toLowerCase().includes(nq)) return 60;
+
+    return -1; // 매칭 안 됨
+  }
+
+  // (3) 검색 함수 오버라이드(기존 검색을 대체). KRW-우선, 짧은 이름 우선.
+  function findMarketsSmart(query) {
+    const nq = normalize(query);
+    const items = state.markets.map(m => ({
+      market: m.market,
+      korean_name: m.korean_name || state.nameMap?.[m.market.split('-')[1]] || ''
+    }));
+
+    // 스코어링
+    const scored = [];
+    for (const m of items) {
+      const s = scoreMarket(m, nq);
+      if (s >= 0) scored.push({ m, s });
+    }
+
+    // 우선순위 정렬:
+    // 1) 스코어 높은 순
+    // 2) KRW- 마켓 우선
+    // 3) 이름이 짧은 것(이더리움 vs 이더리움클래식)
+    scored.sort((a, b) => {
+      if (b.s !== a.s) return b.s - a.s;
+      const ak = a.m.market.startsWith('KRW-') ? 1 : 0;
+      const bk = b.m.market.startsWith('KRW-') ? 1 : 0;
+      if (bk !== ak) return bk - ak;
+      return a.m.korean_name.length - b.m.korean_name.length;
+    });
+
+    // 중복 제거
+    const seen = new Set();
+    const result = [];
+    for (const r of scored) {
+      if (!seen.has(r.m.market)) {
+        seen.add(r.m.market);
+        result.push(r.m);
+      }
+      if (result.length >= 30) break;
+    }
+
+    // ⚠️ ‘이더리움’ 쿼리인데 KRW-ETH가 없다면 강제 주입 (방어막)
+    if ((nq === normalize('이더리움') || nq === 'eth') &&
+        !result.some(x => x.market === 'KRW-ETH')) {
+      const forced = state.markets.find(x => x.market === 'KRW-ETH');
+      if (forced) result.unshift(forced);
+    }
+
+    return result;
+  }
+
+  // (4) 앱의 기존 검색 함수가 있다면 교체(없으면 전역 함수로 제공)
+  //    searchMarkets(query) 같은 훅을 썼다면 아래 한 줄만 교체하면 끝.
+  window.searchMarkets = findMarketsSmart;
+
+  console.log('✅ 검색 패치 적용: ETH/이더리움 우선 노출 & 겹침 이슈 해결');
+})();
+</script>
+<!-- ===== END 검색 정확도 패치 ===== -->  
 </body>
 </html>
+
 
