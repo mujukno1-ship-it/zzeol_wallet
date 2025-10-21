@@ -10,7 +10,7 @@
     --up:#2dd4bf;--down:#fb7185;--warn:#f59e0b;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 ui-sans-serif,system-ui,Apple SD Gothic Neo,"맑은 고딕",Segoe UI,Roboto}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 ui-sans-serif,system-ui,Apple SD Gothic Neo,Malgun Gothic,Segoe UI,Roboto}
   .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .badge{padding:3px 8px;border-radius:999px;background:#132033;color:#9fb7d5;font-weight:700;font-size:12px}
@@ -115,14 +115,41 @@
 <script>
 /* ===== 공통 유틸 ===== */
 const $ = (s)=>document.querySelector(s);
-const fmt = (n)=> (n==null||isNaN(n)) ? '—' : (n>=1000? Math.round(n).toLocaleString('ko-KR') : (''+(+n).toFixed(6)).replace(/\.0+$/,''));
+const API = (p)=>`/api/upbit?path=${encodeURIComponent(p)}&ts=${Date.now()}`;
+const upbit = (p)=> fetch(API(p), {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('Upbit '+r.status); return r.json(); });
+
+/* 호가단위(업비트 KRW 공식 테이블) + 스냅/포맷 */
+function upbitTick(p){
+  if (p >= 2000000) return 1000;
+  if (p >= 1000000) return 500;
+  if (p >=  500000) return 100;
+  if (p >=  100000) return 50;
+  if (p >=   10000) return 10;
+  if (p >=    1000) return 1;
+  if (p >=     100) return 0.1;
+  if (p >=      10) return 0.01;
+  if (p >=       1) return 0.001;
+  if (p >=     0.1) return 0.0001;
+  if (p >=    0.01) return 0.00001;
+  return 0.000001;
+}
+const qRound = (x,u)=> Math.round(x/u)*u;
+const qFloor = (x,u)=> Math.floor(x/u)*u;
+const qCeil  = (x,u)=> Math.ceil (x/u)*u;
+
+function fmtKRW(x){
+  const u = upbitTick(x);
+  const decimals = (u < 1) ? (u.toString().split('.')[1]||'').length : 0;
+  const n = Number.isFinite(+x) ? +x : 0;
+  const s = n.toFixed(decimals);
+  const [a,b] = s.split('.');
+  return a.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (b?'.'+b:'');
+}
 const rateSpan = (r)=>{
   if (r==null || isNaN(r)) return '—';
   const p = (r*100).toFixed(2)+'%';
   return r>=0? `<span class="pill up">${p}</span>` : `<span class="pill down">${p}</span>`;
 };
-const API = (p)=>`/api/upbit?path=${encodeURIComponent(p)}&ts=${Date.now()}`;
-const upbit = (p)=> fetch(API(p), {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('Upbit '+r.status); return r.json(); });
 
 /* ===== 상태/시계 ===== */
 const state={online:false,markets:[],krw:[],nameMap:{},tickers:[],selected:null};
@@ -152,7 +179,6 @@ function resolveMarket(input){
   if (COIN_ALIASES[q]) return COIN_ALIASES[q];
   if (/^[a-z]{3,4}-[a-z0-9]{2,10}$/i.test(input)) return input.toUpperCase();
   if (/^[a-z]{3,4}[a-z0-9]{2,10}$/i.test(q)) return (q.slice(0,3)+'-'+q.slice(3)).toUpperCase();
-  // 한글/영문/심볼 부분일치 (KRW 우선)
   const cand=state.markets.filter(m=>m.market.startsWith('KRW-'));
   const score=(m)=>{const ko=_norm(m.korean_name), en=_norm(m.english_name), sym=m.market.split('-')[1].toLowerCase();
     if(ko===q||en===q||sym===q) return 3;
@@ -163,44 +189,38 @@ function resolveMarket(input){
   return best? best.market : null;
 }
 
-/* ===== 호가단위/라운딩 ===== */
-function priceUnit(p){
-  if(p>=2_000_000) return 1000;
-  if(p>=1_000_000) return 500;
-  if(p>=500_000)  return 100;
-  if(p>=100_000)  return 50;
-  if(p>=10_000)   return 10;
-  if(p>=1_000)    return 1;
-  if(p>=100)      return 0.1;
-  if(p>=10)       return 0.01;
-  if(p>=1)        return 0.001;
-  if(p>=0.1)      return 0.0001;
-  return 0.00001;
-}
-const roundToUnit=(x,u)=> Math.round(x/u)*u;
-
-/* ===== 저가코인 타점 보정 (항상 매수/매도 분리) ===== */
+/* ===== 저가코인/변동성 기반 타점 + 업비트 틱 스냅 ===== */
 function calcSpreadPct(t){
   const price=t.trade_price;
-  const range=Math.max((t.high_price - t.low_price)/Math.max(price,1e-9),0); // 24h 폭
-  return Math.min(0.02, Math.max(0.003, range*0.25)); // 0.30% ~ 2.00%
+  const range=Math.max((t.high_price - t.low_price)/Math.max(price,1e-9),0);
+  return Math.min(0.02, Math.max(0.003, range*0.25)); // 0.30%~2.00%
 }
 function computeTapPoints(t){
-  const price=t.trade_price, unit=priceUnit(price);
-  let spreadPct=calcSpreadPct(t);
-  let buy=price*(1-spreadPct), sell=price*(1+spreadPct);
-  buy=roundToUnit(buy,unit); sell=roundToUnit(sell,unit);
-  const minSep=Math.max(unit*2, price*0.002); // 최소 0.2% 또는 호가×2
+  const price=t.trade_price, unit=upbitTick(price);
+  const spreadPct=calcSpreadPct(t);
+
+  let rawBuy  = price * (1 - spreadPct);
+  let rawSell = price * (1 + spreadPct);
+
+  // 업비트 호가단위로 스냅: 매수=내림, 매도=올림
+  let buy  = qFloor(rawBuy,  unit);
+  let sell = qCeil (rawSell, unit);
+
+  // 최소 간격(저가코인 겹침 방지)
+  const minSep = Math.max(unit*2, price*0.002); // 0.2% 또는 호가×2
   if (sell - buy < minSep){
     const c=price;
-    buy = roundToUnit(c - minSep/2, unit);
-    sell= roundToUnit(c + minSep/2, unit);
+    buy  = qFloor(c - minSep/2, unit);
+    sell = qCeil (c + minSep/2, unit);
     if (sell<=buy) sell=buy+unit*2;
   }
-  const stopPct=Math.min(0.04, Math.max(0.01, spreadPct*1.5));
-  let stop=roundToUnit(buy*(1-stopPct), unit);
-  if (stop>=buy) stop=buy-unit*2;
-  // 위험도/멘트(간단)
+
+  // 손절(매수 아래, 틱 스냅)
+  const stopPct = Math.min(0.04, Math.max(0.01, spreadPct*1.5));
+  let stop = qFloor(buy * (1 - stopPct), unit);
+  if (stop >= buy) stop = buy - unit*2;
+
+  // 위험도/멘트
   const ch=t.signed_change_rate||0;
   const risk = Math.min(0.5, Math.abs(ch) + (t.high_price&&t.low_price ? (t.high_price - t.low_price)/price : 0));
   let pep='👀 관망';
@@ -208,6 +228,7 @@ function computeTapPoints(t){
   else if (ch>0.03) pep='🔥 불장 신호!';
   else if (ch<-0.06) pep='🧯 낙폭경계';
   else if (risk>0.25) pep='⚠️ 변동 주의';
+
   return {buy,sell,stop,risk,pep};
 }
 
@@ -226,7 +247,7 @@ async function loadTickers(){
     const slice=mk.slice(i,i+batch);
     const d=await upbit('/v1/ticker?markets='+slice.join(','));
     out.push(...d);
-    await new Promise(r=>setTimeout(r,220)); // 과호출 완화
+    await new Promise(r=>setTimeout(r,220)); // 429 완화
   }
   state.tickers=out; state.online=true;
 }
@@ -237,16 +258,16 @@ function renderSelected(tk){
   if(!tk){ row.innerHTML=`<div class="cell">없음 —</div><div class="cell">—</div><div class="cell">—</div><div class="cell">—</div><div class="cell">—</div><div class="cell">—</div><div class="cell">—</div><div class="cell">—</div>`; return; }
   const sym=tk.market.split('-')[1];
   const name=state.nameMap[sym]||sym;
-  const p=computeTapPoints(tk);
+  const P=computeTapPoints(tk);
   row.innerHTML = `
     <div class="cell"><b>${name}</b> <span class="muted">(${tk.market})</span></div>
-    <div class="cell">${fmt(tk.trade_price)}</div>
+    <div class="cell">${fmtKRW(tk.trade_price)}</div>
     <div class="cell">${rateSpan(tk.signed_change_rate)}</div>
-    <div class="cell">${fmt(p.buy)}</div>
-    <div class="cell">${fmt(p.sell)}</div>
-    <div class="cell">${fmt(p.stop)}</div>
-    <div class="cell">${p.risk>0.25? '3(주의)': p.risk>0.12? '2(보통)': '1(안정)'}</div>
-    <div class="cell">${p.pep}</div>
+    <div class="cell">${fmtKRW(P.buy)}</div>
+    <div class="cell">${fmtKRW(P.sell)}</div>
+    <div class="cell">${fmtKRW(P.stop)}</div>
+    <div class="cell">${P.risk>0.25? '3(주의)': P.risk>0.12? '2(보통)': '1(안정)'}</div>
+    <div class="cell">${P.pep}</div>
   `;
 }
 function renderTables(){
@@ -262,11 +283,11 @@ function renderTables(){
     return `<tr data-m="${t.market}">
       <td class="muted">${i+1}</td>
       <td><b>${t._ko}</b> <span class="muted">(${t.market})</span></td>
-      <td class="num">${fmt(t.trade_price)}</td>
+      <td class="num">${fmtKRW(t.trade_price)}</td>
       <td class="num">${rateSpan(t.signed_change_rate)}</td>
-      <td class="num">${fmt(P.buy)}</td>
-      <td class="num">${fmt(P.sell)}</td>
-      <td class="num">${fmt(P.stop)}</td>
+      <td class="num">${fmtKRW(P.buy)}</td>
+      <td class="num">${fmtKRW(P.sell)}</td>
+      <td class="num">${fmtKRW(P.stop)}</td>
       <td class="num">${P.risk>0.25? '3(주의)': P.risk>0.12? '2(보통)': '1(안정)'}</td>
       <td>${P.pep}</td>
     </tr>`;
@@ -297,14 +318,16 @@ $('#btnSearch').onclick = ()=>doSearch();
 $('#btnReset').onclick  = ()=>{ $('#q').value=''; renderSelected(null); };
 $('#q').addEventListener('input', ()=>{
   clearTimeout(searchTimer);
-  searchTimer=setTimeout(doSearch, 600); // 디바운스
+  searchTimer=setTimeout(doSearch, 600); // 디바운스 (429 완화)
 });
 
 /* ===== 루프 ===== */
 function preserveScroll(fn){
   try{
-    const u=document.querySelector('.tbl-wrap:nth-of-type(1)'); const d=document.querySelector('.tbl-wrap:nth-of-type(2)');
-    const ut=u?.scrollTop||0, dt=d?.scrollTop||0; fn(); if(u)u.scrollTop=ut; if(d)d.scrollTop=dt;
+    const wraps=[...document.querySelectorAll('.tbl-wrap')];
+    const pos=wraps.map(w=>w.scrollTop);
+    fn();
+    wraps.forEach((w,i)=> w.scrollTop=pos[i]||0);
   }catch(e){ fn(); }
 }
 async function loop(){
