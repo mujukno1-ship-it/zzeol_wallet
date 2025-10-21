@@ -330,5 +330,120 @@ $('#btnRefresh').onclick = ()=>refreshAll(true);
   pollingTimer = setInterval(refreshAll, 60000);
 })();
 </script>
+<script>
+// =========================
+// 1) 검색어 → 마켓코드 해석기
+// =========================
+
+// 자주 쓰는 별칭/동의어 매핑 (원하는 만큼 추가 가능)
+const COIN_ALIASES = {
+  // 한글명
+  '비트코인': 'KRW-BTC',
+  '이더리움': 'KRW-ETH',
+  '이더리움클래식': 'KRW-ETC',
+  '리플': 'KRW-XRP',
+  '도지': 'KRW-DOGE',
+  '도지코인': 'KRW-DOGE',
+  '시바이누': 'KRW-SHIB',
+  '폴리곤': 'KRW-MATIC',
+  '카르다노': 'KRW-ADA',
+  '솔라나': 'KRW-SOL',
+
+  // 영문 심볼
+  'btc': 'KRW-BTC',
+  'eth': 'KRW-ETH',
+  'etc': 'KRW-ETC',
+  'xrp': 'KRW-XRP',
+  'doge': 'KRW-DOGE',
+  'shib': 'KRW-SHIB',
+  'matic': 'KRW-MATIC',
+  'ada': 'KRW-ADA',
+  'sol': 'KRW-SOL',
+
+  // 마켓코드 축약형 (하이픈 없는 입력도 허용)
+  'krwbtc': 'KRW-BTC',
+  'krweth': 'KRW-ETH',
+  'krwetc': 'KRW-ETC',
+  'krwxrp': 'KRW-XRP',
+  'krwdoge': 'KRW-DOGE',
+  'krwshib': 'KRW-SHIB',
+  'krwmatic': 'KRW-MATIC',
+  'krwada': 'KRW-ADA',
+  'krwsol': 'KRW-SOL',
+};
+
+// 업비트 마켓 목록(이미 다른 곳에서 불러오고 있다면 그 배열을 사용하세요)
+let ALL_MARKETS = []; // 예: [{market:'KRW-ETH', korean_name:'이더리움', english_name:'Ethereum'}, ...]
+
+// 검색어 전처리
+function _norm(s) {
+  return (s || '').toString().trim().toLowerCase().replace(/\s+/g, '');
+}
+
+// 검색어 → 마켓코드 해석
+function resolveMarket(input) {
+  const q = _norm(input);
+  if (!q) return null;
+
+  // 0) 별칭 테이블 우선
+  if (COIN_ALIASES[q]) return COIN_ALIASES[q];
+
+  // 1) “KRW-ETH” / “BTC-ETH” 같은 정식 마켓코드 그대로 입력한 경우
+  if (/^[a-z]{3,4}-[a-z0-9]{2,10}$/i.test(input)) return input.toUpperCase();
+
+  // 2) 하이픈 없는 "krweth" 형태
+  if (/^[a-z]{3,4}[a-z0-9]{2,10}$/i.test(q)) {
+    const base = q.slice(0,3).toUpperCase();
+    const sym  = q.slice(3).toUpperCase();
+    return `${base}-${sym}`;
+  }
+
+  // 3) 마켓 목록에서 한글명/영문명/심볼 일부 일치 검색 (KRW 우선)
+  const cand = ALL_MARKETS.filter(m => m.market.startsWith('KRW-'));
+  // 우선순위: 정확 일치 → 접두사 → 포함
+  const score = (m) => {
+    const nameKo = _norm(m.korean_name);
+    const nameEn = _norm(m.english_name);
+    const sym = m.market.split('-')[1].toLowerCase();
+
+    if (nameKo === q || nameEn === q || sym === q) return 3;
+    if (nameKo.startsWith(q) || nameEn.startsWith(q) || sym.startsWith(q)) return 2;
+    if (nameKo.includes(q) || nameEn.includes(q)) return 1;
+    return 0;
+  };
+  let best = null, bestScore = 0;
+  for (const m of cand) {
+    const s = score(m);
+    if (s > bestScore) { best = m; bestScore = s; }
+  }
+  return best ? best.market : null;
+}
+
+// 페이지 초기화 시 마켓리스트를 한 번 불러와 저장 (이미 있다면 생략)
+async function loadAllMarketsOnce() {
+  if (ALL_MARKETS.length) return;
+  try {
+    const r = await fetch('/api/upbit?path=/v1/market/all?isDetails=true', { cache:'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    ALL_MARKETS = await r.json();
+  } catch(e) {
+    console.warn('마켓목록 로딩 실패:', e);
+  }
+}
+
+// 예: 검색 버튼 클릭 핸들러에서 사용
+async function onSearchClick() {
+  await loadAllMarketsOnce();
+  const q = document.querySelector('#searchInput').value; // 실제 검색 input의 selector로 바꿔주세요
+  const market = resolveMarket(q);
+  if (!market) {
+    alert('해당 코인을 찾을 수 없어요. (한글명/영문명/심볼/마켓코드 지원)');
+    return;
+  }
+  selectCoin(market); // 👉 기존의 “코인 선택” 함수 호출 (당신의 함수 이름으로 교체)
+}
+</script>
+  
 </body>
 </html>
+
