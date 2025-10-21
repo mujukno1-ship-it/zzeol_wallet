@@ -671,9 +671,172 @@ setInterval(()=>{
 }, ZCFG.refreshMs);
 </script>
 <!-- ===== END: 타점 프로 오버레이 v6.3 ===== -->
+<!-- ===== BEGIN: 검색 강화 + 화면 흔들림 방지 패치 v6.3-fix ===== -->
+<script>
+(function(){
+  /* 0) 안정 유틸 */
+  const $ = (s)=>document.querySelector(s);
+  const byId = (id)=>document.getElementById(id);
+
+  /* 1) 비트코인 검색 강화
+     - 한글/심볼/마켓코드/영문명(비트코인/BTC/KRW-BTC/BITCOIN) 모두 인식
+     - 기존 핸들러가 있어도, 아래가 '마지막에' 덮어써 동작합니다. */
+  function normalizeQuery(q){
+    return (q||'').trim().toUpperCase().replace(/\s+/g,'');
+  }
+  const EN_NAME_MAP = {
+    'BITCOIN': 'BTC',
+    'ETHEREUM': 'ETH',
+    'RIPPLE': 'XRP',
+    'CARDANO': 'ADA',
+    'DOGE': 'DOGE',
+    'DOGECOIN': 'DOGE',
+    'LITECOIN': 'LTC',
+    'SOLANA': 'SOL',
+    'POLKADOT':'DOT',
+    'CHAINLINK':'LINK'
+  };
+
+  function findMarketByQuery(q){
+    if (!window.state || !Array.isArray(state.markets) || !state.markets.length) return null;
+    const QQ = normalizeQuery(q);
+    if (!QQ) return null;
+
+    // 1) KRW-XXX 직접 입력
+    if (QQ.startsWith('KRW-')) return QQ;
+
+    // 2) 영문명 → 심볼 매핑 (BITCOIN → BTC)
+    const mapped = EN_NAME_MAP[QQ];
+    const sym = mapped || QQ;
+
+    // 3) 심볼 직매칭
+    const bySym = (state.markets.find(x => x.market.split('-')[1] === sym) || {}).market;
+    if (bySym) return bySym;
+
+    // 4) 한글명 매칭 (공백 제거)
+    const tgt = QQ.replace(/\s/g,'');
+    const byKoRow = state.markets.find(x => ((x.korean_name||'').replace(/\s/g,'').toUpperCase() === tgt));
+    if (byKoRow) return byKoRow.market;
+
+    // 5) 부분 포함(한글/심볼)
+    const byKoLike = state.markets.find(x => (x.korean_name||'').toUpperCase().includes(QQ));
+    if (byKoLike) return byKoLike.market;
+
+    return null;
+  }
+
+  function bindStrongSearch(){
+    const qEl = byId('q');
+    const btn = byId('btnSearch');
+    if (!qEl || !btn) return;
+
+    // 기존 핸들러 제거 후 우리가 덮어씀
+    btn.onclick = async ()=>{
+      const m = findMarketByQuery(qEl.value);
+      if (!m){ alert('해당 코인을 찾지 못했습니다. (예: 비트코인 / BTC / KRW-BTC)'); return; }
+      const tk = (state.tickers||[]).find(x=>x.market===m);
+      if (!tk){ alert('데이터 준비 중입니다. 잠시 후 다시 시도해 주세요.'); return; }
+
+      // 선택 갱신 (기존 renderSelected를 최대한 활용)
+      try {
+        if (typeof window.renderSelected === 'function'){
+          window.renderSelected(tk);
+        } else {
+          // 선택 상태만 갱신
+          state.selected = tk;
+          // 상단 카드 id 기준으로 직접 주입(보조)
+          if (byId('selName')) byId('selName').textContent = (state.nameMap?.[m.split('-')[1]]||m);
+        }
+      } catch(e){ console.warn('select fail', e); }
+    };
+
+    // Enter로도 검색
+    qEl.addEventListener('keydown', (ev)=>{
+      if (ev.key === 'Enter') btn.click();
+    });
+  }
+
+  /* 2) 화면 흔들림(덜컥거림) 방지
+     - 자동 새로고침(renderTables/refreshTickers) 때 테이블을 갈아끼우면
+       스크롤/레이아웃이 순간적으로 움직일 수 있음 → 스크롤 위치 보존
+     - 입력 중일 때는 자동 갱신 잠깐 멈춤 */
+  let PAUSE_REFRESH = false;
+  function pauseWhileTyping(){
+    const qEl = byId('q');
+    if (!qEl) return;
+    let t=null;
+    qEl.addEventListener('input', ()=>{
+      PAUSE_REFRESH = true;
+      clearTimeout(t);
+      t = setTimeout(()=>{ PAUSE_REFRESH = false; }, 1200); // 입력 멈추고 1.2초 후 해제
+    });
+    qEl.addEventListener('focus', ()=>{ PAUSE_REFRESH = true; });
+    qEl.addEventListener('blur',  ()=>{ setTimeout(()=>{ PAUSE_REFRESH=false; }, 300); });
+  }
+
+  function withStableScroll(run){
+    try{
+      const upBox  = $('#tblUp')?.parentElement;
+      const dnBox  = $('#tblDown')?.parentElement;
+      const upTop  = upBox ? upBox.scrollTop : null;
+      const dnTop  = dnBox ? dnBox.scrollTop : null;
+
+      run(); // 실제 렌더 실행
+
+      if (upBox && upTop!=null) upBox.scrollTop = upTop;
+      if (dnBox && dnTop!=null) dnBox.scrollTop = dnTop;
+    }catch(e){ run(); }
+  }
+
+  // 기존 renderTables를 감싸서 스크롤 보존 + 입력 중 갱신 일시정지
+  (function wrapRenderTables(){
+    if (typeof window.renderTables !== 'function') return;
+    const _orig = window.renderTables;
+    window.renderTables = function(...args){
+      if (PAUSE_REFRESH) return;       // 입력 중이면 렌더 스킵
+      withStableScroll(()=> _orig.apply(this, args));
+    };
+  })();
+
+  // 기존 refreshTickers도 감싸서 입력 중엔 네트워크 호출 최소화(선택)
+  (function wrapRefreshTickers(){
+    if (typeof window.refreshTickers !== 'function') return;
+    const _orig = window.refreshTickers;
+    window.refreshTickers = function(...args){
+      if (PAUSE_REFRESH) return Promise.resolve();
+      return _orig.apply(this, args);
+    };
+  })();
+
+  /* 3) BTC 한글명이 비어 있거나 매핑 누락될 때를 대비해 보강 */
+  (function ensureBTCName(){
+    if (!window.state) return;
+    state.nameMap = state.nameMap || {};
+    if (!state.nameMap.BTC) state.nameMap.BTC = '비트코인';
+  })();
+
+  /* 4) 초기 바인딩 */
+  function init(){
+    bindStrongSearch();
+    pauseWhileTyping();
+    // 테이블 컨테이너에 최소 높이 부여(렌더 중 흔들림 방지 - 선택)
+    const upBox = $('#tblUp')?.parentElement;
+    const dnBox = $('#tblDown')?.parentElement;
+    if (upBox) upBox.style.minHeight = (upBox.clientHeight || 320) + 'px';
+    if (dnBox) dnBox.style.minHeight = (dnBox.clientHeight || 320) + 'px';
+  }
+
+  // DOM 준비 후 init
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else { init(); }
+})();
+</script>
+<!-- ===== END: 검색 강화 + 화면 흔들림 방지 패치 ===== -->
 
 </body>
 </html>
+
 
 
 
