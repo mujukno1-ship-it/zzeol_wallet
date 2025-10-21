@@ -389,8 +389,165 @@ document.getElementById('q').addEventListener('keydown',e=>{
 
 /* 초기 구동 */
 refreshAll();
+<script>
+/* ====== 빠른 검색 가속기 (기존 기능 유지) ====== */
+(() => {
+  const API = '/api/upbit?path=/v1/market/all?isDetails=true';
+  const $q = document.querySelector('#q, [data-id="q"]') || document.querySelector('input[type="search"]');
+  const $btn = document.querySelector('#btnSearch, [data-id="btn-search"]') || document.querySelector('button.search');
+  if (!$q) return; // 검색창이 없으면 아무 것도 안 함
+
+  // (선택) 입력창에 자동완성 표시용 datalist 연결
+  let $list = document.querySelector('#coins_datalist');
+  if (!$list) {
+    $list = document.createElement('datalist');
+    $list.id = 'coins_datalist';
+    document.body.appendChild($list);
+  }
+  $q.setAttribute('list', 'coins_datalist');
+
+  // 상태
+  const state = {
+    idx: [],                 // {market, ko, en, sym, key}
+    map: new Map(),          // market -> full row
+    ready: false,
+    buildCtrl: null,
+    lastCtrl: null,          // 마지막 네트워크 요청 취소용(필요 시)
+    cache: new Map(),        // 여유: 검색어 -> 배열 캐시
+  };
+
+  // 유틸
+  const norm = s => String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^\w\-가-힣]/g, '');
+
+  const debounce = (fn, ms=200) => {
+    let t; return (...a) => { clearTimeout(t); t=setTimeout(()=>fn(...a), ms); };
+  };
+
+  // 인덱스 구축(앱 최초 1회)
+  async function buildIndex() {
+    try {
+      state.buildCtrl?.abort();
+      state.buildCtrl = new AbortController();
+      const r = await fetch(API, { signal: state.buildCtrl.signal, cache: 'no-store' });
+      if (!r.ok) throw new Error('market/all fetch fail: ' + r.status);
+      const arr = await r.json();
+      state.idx.length = 0;
+      state.map.clear();
+      for (const it of arr) {
+        const market = it.market;           // e.g. KRW-BTC
+        const [symBase, sym] = market.split('-'); // KRW, BTC
+        const row = {
+          market,
+          ko: it.korean_name || '',
+          en: it.english_name || '',
+          sym: sym || '',
+          base: symBase || '',
+        };
+        state.map.set(market, row);
+        state.idx.push({
+          market,
+          ko: norm(row.ko),
+          en: norm(row.en),
+          sym: norm(row.sym),
+          key: norm(row.ko + row.en + row.sym + market)
+        });
+      }
+      state.ready = true;
+      // 초기에 인기 마켓 일부 자동완성
+      renderDatalist(suggest('krw'));
+    } catch (e) {
+      console.warn('[search] buildIndex error', e);
+    }
+  }
+
+  function suggest(q) {
+    q = norm(q);
+    if (!q) return [];
+    if (state.cache.has(q)) return state.cache.get(q);
+
+    // 우선순위: 정확 매치 > 부분 매치(심볼/한글/영문)
+    // 너무 많으면 상위 15개만
+    const hits = [];
+    for (const r of state.idx) {
+      let score = 0;
+      if (r.sym === q) score += 10;
+      if (r.ko === q || r.en === q) score += 9;
+      if (r.key.includes(q)) score += 5;
+      if (r.sym.startsWith(q)) score += 4;
+      if (r.ko.startsWith(q) || r.en.startsWith(q)) score += 3;
+      if (score > 0) hits.push({ m: r.market, score });
+    }
+    hits.sort((a,b)=>b.score - a.score);
+    const top = hits.slice(0, 15).map(h => state.map.get(h.m));
+    state.cache.set(q, top);
+    return top;
+  }
+
+  function renderDatalist(list) {
+    if (!$list) return;
+    const frag = document.createDocumentFragment();
+    for (const it of list) {
+      const opt = document.createElement('option');
+      opt.value = `${it.ko} (${it.market})`;
+      frag.appendChild(opt);
+    }
+    $list.innerHTML = '';
+    $list.appendChild(frag);
+  }
+
+  // 빠른 제안(타이핑 중)
+  const onInput = debounce(() => {
+    if (!state.ready) return;
+    const q = $q.value.trim();
+    if (!q) { $list.innerHTML = ''; return; }
+    renderDatalist(suggest(q));
+  }, 200);
+
+  // 기존 “검색 버튼/엔터” 로직 존중: 최상단 후보의 market만 찾아서
+  // 기존 함수로 넘겨줍니다. (아래 두 함수 이름 중 프로젝트에 있는 걸 쓰세요)
+  function fireSelect(market) {
+    // 1) 기존에 사용하던 함수가 있으면 그대로 호출
+    if (typeof selectCoin === 'function') return selectCoin(market);
+    if (typeof loadCoin === 'function')   return loadCoin(market);
+
+    // 2) 없으면 input에 market만 남기고(UX) 기존 핸들러가 읽도록 둠
+    $q.value = market;
+    // 기존 버튼 클릭 핸들러 트리거(있으면)
+    $btn?.click();
+  }
+
+  function confirmSearch() {
+    const qraw = $q.value.trim();
+    if (!qraw) return;
+    // 사용자가 "코인이름 (KRW-XXX)" 형식에서 market만 뽑았을 수도 있음
+    const m = qraw.match(/\((\w+-\w+)\)\s*$/);
+    if (m) return fireSelect(m[1]);
+
+    // 그 외엔 상담 후보 1순위로
+    const cands = suggest(qraw);
+    if (cands.length) return fireSelect(cands[0].market);
+  }
+
+  // 이벤트 설치
+  $q.addEventListener('input', onInput);
+  $q.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter') confirmSearch();
+  });
+  $btn?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    confirmSearch();
+  });
+
+  // 시작 시 인덱스 준비
+  buildIndex();
+})();
+</script>
 
 </script>
 </body>
 </html>
+
 
