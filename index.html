@@ -316,5 +316,211 @@ $('#reloadDown').addEventListener('click', buildTables);
   if(hash){ $('#q').value = hash; doSearch(); }
 })();
 </script>
+ <!-- ====== zzeol v7.x 검색 패치: UI & 로직 (붙여넣기) ====== -->
+<style>
+  /* 검색 결과 표 스타일(가볍게) */
+  #zsearch-wrap { margin-top: 12px; }
+  #zsearch-box { display:flex; gap:8px; align-items:center; }
+  #zsearch-input { flex:1; height:36px; padding:0 10px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:#0e0f14; color:#eaeef7; }
+  #zsearch-btn { height:36px; padding:0 14px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:#151823; color:#eaeef7; cursor:pointer; }
+  #zsearch-result { margin-top:10px; border:1px solid rgba(255,255,255,.08); border-radius:12px; overflow:hidden; }
+  #zsearch-result table { width:100%; border-collapse:collapse; font-size:13px; }
+  #zsearch-result thead { background:#11131a; }
+  #zsearch-result th, #zsearch-result td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.06); text-align:right; }
+  #zsearch-result th:first-child, #zsearch-result td:first-child { text-align:left; }
+  .zpos { color:#3fe1a1; } .zneg { color:#ff6b74; }
+  .zmuted { opacity:.7 }
+  #zsearch-empty { padding:16px; text-align:center; opacity:.8 }
+</style>
+
+<div id="zsearch-wrap">
+  <!-- 이미 페이지에 검색창이 있다면 아래가 무시되고, 기존 #zsearch-input 요소만 잡아서 씁니다. -->
+  <div id="zsearch-box">
+    <input id="zsearch-input" type="text" placeholder="코인 검색 (한글/영문/심볼/마켓코드: 예) 이더리움 / ETH / KRW-ETH)" />
+    <button id="zsearch-btn">검색</button>
+  </div>
+  <div id="zsearch-result" style="display:none"></div>
+</div>
+
+<script>
+(function(){
+  // ===== 설정 =====
+  const API = '/api/upbit?path=';            // 프록시 고정
+  const MAX_ROWS = 20;                       // 검색 결과 최대 표시
+  const DEBOUNCE_MS = 300;                   // 입력 디바운스
+
+  // ===== 엘리먼트 바인딩(이미 존재하면 그대로 사용) =====
+  const inputEl = document.getElementById('zsearch-input') || (function(){
+    // 혹시 상단에 이미 검색창이 있다면 거기에 id만 부여해 재활용
+    const prior = document.querySelector('input[type="search"], input[placeholder*="검색"]');
+    if (prior) prior.id = 'zsearch-input';
+    return prior || document.getElementById('zsearch-input');
+  })();
+  const btnEl = document.getElementById('zsearch-btn');
+  const resultEl = document.getElementById('zsearch-result');
+
+  // ===== 유틸 =====
+  const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
+  const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+  const norm = (s)=> (s||'').toString().trim().toLowerCase().replace(/\s+/g,'');
+  const fmt = (n, d=2)=> (n==null || isNaN(n)) ? '-' : Number(n).toLocaleString('ko-KR', { maximumFractionDigits:d });
+  const pct = (n)=> (n==null || isNaN(n)) ? '-' : (n>0 ? `<span class="zpos">+${n.toFixed(2)}%</span>` : `<span class="zneg">${n.toFixed(2)}%</span>`);
+
+  // ===== 마켓 맵(한글/영문/심볼/마켓코드) 캐시 =====
+  let marketMap = null; // Map(symbol|korean|english|market) -> marketCode(KRW-XXX)
+  let marketInfo = null; // marketCode -> {korean_name, english_name}
+  async function ensureMarkets() {
+    if (marketMap) return;
+    const url = API + encodeURIComponent('/v1/market/all?isDetails=true');
+    const res = await fetch(url, { cache: 'no-store' });
+    const list = await res.json();
+    marketMap = new Map();
+    marketInfo = new Map();
+    list.forEach(it=>{
+      const market = it.market;               // KRW-ETH
+      const sym = market.split('-')[1];       // ETH
+      const k = norm(it.korean_name);
+      const e = norm(it.english_name);
+      const s = norm(sym);
+      marketMap.set(norm(market), market);
+      marketMap.set(k, market);
+      marketMap.set(e, market);
+      marketMap.set(s, market);
+      marketInfo.set(market, { k: it.korean_name, e: it.english_name, market });
+    });
+  }
+
+  // ===== 티커 조회 =====
+  async function fetchTickers(markets){
+    if (!markets.length) return [];
+    const batched = [];
+    // 업비트는 100개까지 한번에 OK. 안전하게 50개씩
+    for (let i=0; i<markets.length; i+=50) {
+      const part = markets.slice(i, i+50).join(',');
+      const url = API + encodeURIComponent('/v1/ticker?markets=' + part);
+      batched.push(fetch(url, { cache: 'no-store' }).then(r=>r.json()));
+    }
+    const chunks = await Promise.all(batched);
+    return chunks.flat();
+  }
+
+  // ===== 매수/매도/손절/위험도/한마디 계산 (기존 함수 존중) =====
+  function defaultAdvice(t){ // t: 업비트 티커 원본
+    const p = t.trade_price;
+    const chg = ((t.signed_change_rate||0) * 100);
+    const buy  = p * 0.995;     // 보수적 진입 제안(0.5% 하락시)
+    const sell = p * 1.005;     // 단기 분할 익절(0.5%)
+    const sl   = p * 0.980;     // 2% 손절
+    const risk = (Math.abs(chg) > 5 ? '3(주의)' : Math.abs(chg) > 2 ? '2(보통)' : '1(안정)');
+    let say = '관망';
+    if (chg > 3) say = '상승중';
+    if (chg > 6) say = '폭등 모드!';
+    if (chg < -3) say = '낙폭경계';
+    return { buy, sell, sl, risk, say };
+  }
+  function computeAdvice(t){
+    // 페이지에 기존 계산기가 있으면 우선 사용
+    if (window.ZZEOL && typeof window.ZZEOL.compute === 'function') {
+      try{ return window.ZZEOL.compute(t); }catch(_){}
+    }
+    return defaultAdvice(t);
+  }
+
+  // ===== 렌더링 =====
+  function renderEmpty(msg='검색 결과가 없습니다.'){
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<div id="zsearch-empty">${msg}</div>`;
+  }
+  function renderTable(rows){
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>코인명(한글)</th>
+            <th>현재가</th>
+            <th>변동률</th>
+            <th>매수</th>
+            <th>매도</th>
+            <th>손절</th>
+            <th>위험도</th>
+            <th>쩔어한마디</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr>
+              <td>${r.name} <span class="zmuted">(${r.market})</span></td>
+              <td>${fmt(r.price, r.price>100 ? 0 : 2)}</td>
+              <td>${pct(r.change)}</td>
+              <td>${fmt(r.buy)}</td>
+              <td>${fmt(r.sell)}</td>
+              <td>${fmt(r.sl)}</td>
+              <td>${r.risk}</td>
+              <td>${r.say}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // ===== 검색 실행 =====
+  async function runSearch(q){
+    try{
+      await ensureMarkets();
+      const key = norm(q);
+      if (!key) { resultEl.style.display='none'; resultEl.innerHTML=''; return; }
+
+      // 키워드로 시장코드 찾기(완전/부분일치 지원)
+      let targets = new Set();
+      // 완전일치 우선
+      if (marketMap.has(key)) targets.add(marketMap.get(key));
+      // 부분일치
+      for (const [k, mkt] of marketMap.entries()) {
+        if (k.includes(key)) targets.add(mkt);
+        if (targets.size >= 200) break;
+      }
+      const markets = Array.from(targets).filter(m=>m.startsWith('KRW-')).slice(0, 200);
+      if (!markets.length) { renderEmpty('코인을 찾지 못했습니다. (한글/영문/심볼/마켓코드 지원)'); return; }
+
+      const tickers = await fetchTickers(markets);
+      if (!tickers.length) { renderEmpty('티커가 없습니다.'); return; }
+
+      const rows = tickers.slice(0, MAX_ROWS).map(t=>{
+        const info = marketInfo.get(t.market) || { k: t.market, e: '' };
+        const adv = computeAdvice(t);
+        return {
+          name: info.k,
+          market: t.market,
+          price: t.trade_price,
+          change: (t.signed_change_rate||0) * 100,
+          buy: adv.buy, sell: adv.sell, sl: adv.sl, risk: adv.risk, say: adv.say
+        };
+      });
+      renderTable(rows);
+    }catch(e){
+      console.error('검색 실패', e);
+      renderEmpty('검색 중 오류가 발생했습니다.');
+    }
+  }
+
+  // ===== 이벤트 =====
+  const doSearch = ()=> runSearch(inputEl && inputEl.value || '');
+  const doSearchDebounced = debounce(doSearch, DEBOUNCE_MS);
+
+  if (inputEl) {
+    inputEl.addEventListener('input', doSearchDebounced);
+    inputEl.addEventListener('keydown', (e)=>{ if (e.key==='Enter') doSearch(); });
+  }
+  if (btnEl) btnEl.addEventListener('click', doSearch);
+
+  // 페이지 진입 시 검색창 포커스(선택)
+  // inputEl && inputEl.focus();
+
+})();  
+</script>
+<!-- ====== /검색 패치 끝 ====== --> 
 </body>
 </html>
+
