@@ -204,11 +204,16 @@ async function loadMarkets(){
     nameMap[x.korean_name] = x.market;
     nameMap[x.english_name] = x.market;
     nameMap[x.market] = x.market;
-    // 심볼(ETH) 도 인덱싱
     const sym = x.market.replace('KRW-','');
     nameMap[sym] = x.market;
+
+    // ✅ 추가: 한글 이름에서 띄어쓰기 제거 / 소문자 등록
+    nameMap[x.korean_name.replace(/\s+/g,'').toLowerCase()] = x.market;
+    nameMap[x.english_name.replace(/\s+/g,'').toLowerCase()] = x.market;
+    nameMap[sym.toLowerCase()] = x.market;
   });
 }
+
 
 async function loadTickers(markets){
   if(!markets.length) return [];
@@ -361,3 +366,4 @@ document.getElementById('refreshDown').onclick = fillTables;
 </script>
 </body>
 </html>
+
