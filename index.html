@@ -488,8 +488,193 @@ setInterval(()=>{
 }, 15000);
 </script>
 <!-- ===== END: 분석(캔들) + 타점 연결 패치 ===== -->
+<!-- ===== BEGIN: 타점 프로(EMA/RSI/VWAP/ATR/Volume) 오버레이 v6.3 ===== -->
+<script>
+/* ============ 0) 설정(여기 숫자만 바꾸면 민감도 튜닝 됩니다) ============ */
+const ZCFG = {
+  emaFast: 12,            // 빠른 EMA
+  emaSlow: 26,            // 느린 EMA
+  rsiPeriod: 14,          // RSI 기간
+  rsiBuyMin: 52,          // 매수 RSI 하한 (낮출수록 공격적)
+  rsiSellMax: 48,         // 매도 RSI 상한 (높일수록 공격적)
+  atrPeriod: 14,          // ATR 기간
+  stopATR: 1.5,           // 손절폭 = ATR * 이 값
+  pbATR: 0.5,             // 풀백 진입 폭 = ATR * 이 값
+  boATR: 0.25,            // 돌파 여유 = ATR * 이 값
+  volLookback: 30,        // 거래량 평균 구간
+  volSpike: 1.8,          // 거래량 스파이크 임계(= 최근/평균). 높이면 보수적
+  minCandles: 80,         // 최소 캔들 수
+  minutes: 1,             // 분봉(1,3,5 권장)
+  fetchCount: 160,        // 가져올 캔들 수
+  refreshMs: 15000        // 자동 재분석 주기(ms)
+};
+
+/* ============ 1) 유틸 ============ */
+const zzSleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+async function zzFetchJSON(url, tries=4){
+  for(let i=0;i<tries;i++){
+    try{
+      const r = await fetch(url,{cache:'no-store'});
+      if(r.status===429){ await zzSleep(500*(i+1)); continue; }
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return await r.json();
+    }catch(e){ if(i===tries-1) throw e; }
+  }
+}
+async function getCandles(market, minutes=ZCFG.minutes, count=ZCFG.fetchCount){
+  const path = `/v1/candles/minutes/${minutes}?market=${encodeURIComponent(market)}&count=${count}`;
+  return await zzFetchJSON(`/api/upbit?path=${encodeURIComponent(path)}&ts=${Date.now()}`);
+}
+const emaArr=(arr,n)=>{ const k=2/(n+1); const out=[arr[0]]; for(let i=1;i<arr.length;i++){ out[i]=arr[i]*k+out[i-1]*(1-k);} return out; };
+function rsiArr(closes, period=14){
+  const out=new Array(closes.length).fill(null);
+  let g=0,l=0;
+  for(let i=1;i<=period;i++){ const d=closes[i]-closes[i-1]; if(d>=0) g+=d; else l-=d; }
+  let ag=g/period, al=l/period;
+  out[period]=100-(100/(1+(ag/(al||1e-9))));
+  for(let i=period+1;i<closes.length;i++){
+    const d=closes[i]-closes[i-1], G=Math.max(d,0), L=Math.max(-d,0);
+    ag=(ag*(period-1)+G)/period; al=(al*(period-1)+L)/period;
+    out[i]=100-(100/(1+(ag/(al||1e-9))));
+  }
+  return out;
+}
+function atrLast(H,L,C,period=14){
+  const tr=[]; for(let i=0;i<C.length;i++){
+    if(i===0){ tr.push(H[0]-L[0]); continue; }
+    tr.push(Math.max(H[i]-L[i], Math.abs(H[i]-C[i-1]), Math.abs(L[i]-C[i-1])));
+  }
+  if(tr.length<period) return tr.at(-1)??0;
+  let a=tr.slice(0,period).reduce((x,y)=>x+y,0)/period;
+  for(let i=period;i<tr.length;i++) a=(a*(period-1)+tr[i])/period;
+  return a;
+}
+function smaLast(arr,n){ if(arr.length<n) return null; let s=0; for(let i=arr.length-n;i<arr.length;i++) s+=arr[i]; return s/n; }
+function vwapDaySimple(H,L,C,V){
+  const N=Math.min(360,C.length); let pv=0, vol=0;
+  for(let i=C.length-N;i<C.length;i++){ const tp=(H[i]+L[i]+C[i])/3; pv+=tp*(V[i]||0); vol+=(V[i]||0); }
+  return vol? pv/vol : C.at(-1);
+}
+function fmtKR(n){ return (n==null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('ko-KR'); }
+
+/* ============ 2) 타점 프로 로직 ============ */
+function computeProSignals(candlesUpbit){
+  if(!Array.isArray(candlesUpbit) || candlesUpbit.length<ZCFG.minCandles) return null;
+
+  // Upbit 분봉을 오래된→최신 순으로 변환
+  const cs = candlesUpbit.slice().reverse().map(c=>({
+    o:c.opening_price, h:c.high_price, l:c.low_price, c:c.trade_price, v:c.candle_acc_trade_volume
+  }));
+  const C=cs.map(x=>x.c), H=cs.map(x=>x.h), L=cs.map(x=>x.l), V=cs.map(x=>x.v);
+  const i=C.length-1, last=C[i];
+
+  // 지표
+  const emaF = emaArr(C, ZCFG.emaFast).at(-1);
+  const emaS = emaArr(C, ZCFG.emaSlow).at(-1);
+  const rsi   = rsiArr(C, ZCFG.rsiPeriod).at(-1);
+  const atr   = atrLast(H,L,C, ZCFG.atrPeriod);
+  const vwap  = vwapDaySimple(H,L,C,V);
+
+  // 거래량 스파이크
+  const vAvg = smaLast(V, Math.min(ZCFG.volLookback,V.length)) || 0.000001;
+  const vSpike = (V.at(-1)||0) / vAvg;
+
+  // 추세/레짐
+  const up   = (last>emaF && emaF>emaS && last>=vwap);
+  const down = (last<emaF && emaF<emaS && last<=vwap);
+
+  // 레벨 계산(호가단위 대신 ATR 기반)
+  const pbWidth = ZCFG.pbATR * atr;     // 풀백 폭
+  const boPad   = ZCFG.boATR * atr;     // 돌파 여유
+  const stopMul = ZCFG.stopATR * atr;   // 손절폭
+
+  const high60 = Math.max(...H.slice(-60));
+  const low60  = Math.min(...L.slice(-60));
+  const swingLow  = Math.min(...L.slice(-12));
+  const swingHigh = Math.max(...H.slice(-12));
+
+  let buy=null, sell=null, stop=null, riskLabel='1(안정)', pep='👀 관망';
+
+  // 리스크 라벨(ATR%)
+  const atrPct = (atr/(last||1))*100;
+  if (atrPct>7) riskLabel='3(주의)'; else if (atrPct>3.5) riskLabel='2(보통)';
+
+  if (up && rsi>=ZCFG.rsiBuyMin && vSpike>=ZCFG.volSpike){
+    // 상승 + RSI 양호 + 거래량 스파이크 → 공격적 매수 허용
+    const pbMid = Math.max(emaF - pbWidth*0.5, 0);
+    buy  = pbMid;                     // 풀백 중앙값 (보수적이면 emaF- pbWidth 사용)
+    stop = Math.max(swingLow - stopMul, 0);
+    pep  = (last > high60 + boPad) ? '🚀 폭등 모드!' : '🔥 불장 신호!';
+  } else if (down && rsi<=ZCFG.rsiSellMax && vSpike>=ZCFG.volSpike){
+    // 하락 + RSI 약세 + 스파이크 → 매도(또는 롱 회피)
+    sell = emaF + pbWidth*0.5;
+    stop = swingHigh + stopMul;
+    pep  = (last < low60 - boPad) ? '⚠️ 낙폭주의' : '😬 조정권';
+  } else {
+    // 조건 불충족: 관망
+    if (up) pep='상승 관망'; else if (down) pep='하락 관망';
+  }
+
+  return { price:last, emaFast:emaF, emaSlow:emaS, vwap, rsi, atr,
+           vSpike, buy, sell, stop, risk:riskLabel, pep };
+}
+
+/* ============ 3) 화면 바인딩: 기존 UI 그대로, 값만 교체 ============ */
+async function analyzeSelectedPro(ticker){
+  try{
+    const mkt = ticker.market;
+    const candles = await getCandles(mkt);
+    const sig = computeProSignals(candles);
+    if(!sig) return;
+
+    const set = (id, val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+    const setHTML = (id, html)=>{ const el=document.getElementById(id); if(el) el.innerHTML=html; };
+
+    set('k_now',  fmtKR(sig.price));
+    set('k_buy',  sig.buy  != null ? fmtKR(sig.buy)  : '—');
+    set('k_sell', sig.sell != null ? fmtKR(sig.sell) : '—');
+    set('k_stop', sig.stop != null ? fmtKR(sig.stop) : '—');
+    set('k_risk', sig.risk);
+    set('k_say',  sig.pep);
+
+    if (typeof ticker.signed_change_rate==='number'){
+      const p = ticker.signed_change_rate*100;
+      setHTML('k_pct', `<span class="${p>=0?'pos':'neg'}">${p.toFixed(2)}%</span>`);
+    }
+    const net = document.getElementById('k_net'); if(net) net.textContent='연결됨(분석PRO)';
+  }catch(e){
+    console.warn('타점 프로 분석 실패:', e);
+    const net = document.getElementById('k_net'); if(net) net.textContent='분석 대기';
+  }
+}
+
+/* ============ 4) 기존 선택 흐름에 “후킹” (UI/기능 변경 없음) ============ */
+(function(){
+  if(typeof window.renderSelected==='function'){
+    const _orig = window.renderSelected;
+    window.renderSelected = function(tk, ...rest){
+      const r = _orig.call(this, tk, ...rest);
+      try{ analyzeSelectedPro(tk); }catch(_){}
+      return r;
+    };
+  } else {
+    // renderSelected가 없는 구조면 전역에서 직접 호출 가능
+    window.analyzeSelectedPro = analyzeSelectedPro;
+  }
+})();
+
+/* ============ 5) 자동 재분석 타이머 ============ */
+setInterval(()=>{
+  if (window.state && window.state.selected){
+    analyzeSelectedPro(window.state.selected);
+  }
+}, ZCFG.refreshMs);
+</script>
+<!-- ===== END: 타점 프로 오버레이 v6.3 ===== -->
+
 </body>
 </html>
+
 
 
 
