@@ -1,37 +1,27 @@
-// /api/upbit.js
 export default async function handler(req, res) {
   try {
-    if (req.method !== 'GET') {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(405).json({ error: 'Method Not Allowed' });
+    const { path } = req.query;
+    if (!path) {
+      return res.status(400).json({ error: "Missing path parameter" });
     }
 
-    const path = req.query.path || '';
-    if (typeof path !== 'string' || !path.startsWith('/v1/')) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(400).json({ error: 'Bad path' });
-    }
-
-    const upstream = 'https://api.upbit.com' + path;
-    const r = await fetch(upstream, {
-      headers: { 'User-Agent': 'zzeolwallet/1.0', Accept: 'application/json' },
-      cache: 'no-store',
+    const url = `https://api.upbit.com${path.startsWith("/") ? path : `/${path}`}`;
+    const response = await fetch(url, {
+      headers: { accept: "application/json" },
+      next: { revalidate: 0 },
     });
 
-    const text = await r.text();
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'no-store');
-
-    // 업비트는 대부분 JSON이지만 혹시 모를 텍스트 응답 대비
-    try {
-      const json = JSON.parse(text);
-      return res.status(r.status).json(json);
-    } catch {
-      return res.status(r.status).send(text);
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
     }
-  } catch (err) {
-    console.error('upbit proxy error:', err);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.status(500).json({ error: String(err?.message || err) });
+
+    const data = await response.json();
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Upbit API Error:", error);
+    return res.status(500).json({ error: error.message || "Server Error" });
   }
 }
