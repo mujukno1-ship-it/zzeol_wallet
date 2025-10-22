@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v10.1 — 사람형 접속즉시 표시 + 새후보 상단 고정</title>
+<title>사토시의지갑 v10.2 — 검색 우선 / 고정코인 아래 / 예열 상단반영 / 사람형 상시</title>
 <style>
   :root{--bg:#0b0f14;--panel:#111823;--muted:#8fa4c7;--text:#e8eefc;--up:#22c55e;--down:#ef4444}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Noto Sans KR",system-ui}
@@ -18,6 +18,7 @@
   tbody tr{background:#0e1520;border:1px solid #1d2a40} tbody td{padding:10px;vertical-align:middle}
   .price{font-variant-numeric:tabular-nums} .up{color:var(--up)} .down{color:var(--down)}
   .tag{font-size:11px;padding:3px 6px;border:1px solid #2a3956;border-radius:6px;background:#111a27;color:#9fb6db}
+  .badge{display:inline-block;padding:4px 8px;border:1px solid #2a3956;border-radius:999px;background:#0f1726;color:#cfe2ff;font-size:12px}
   .act{padding:4px 8px;border-radius:999px;border:1px solid #2a3956}
   .act.buy{color:#9ff4b1;border-color:#2b5b3a}.act.sell{color:#ffb4b4;border-color:#6b2b2b}.act.hold{color:#c9d4eb}
   .pin{cursor:pointer;font-size:16px;line-height:1} .pinned{color:#ffd54a}
@@ -26,7 +27,30 @@
 <body>
 <div class="wrap">
 
-  <!-- ★ 고정 코인 -->
+  <!-- 🔎 코인 검색 (KRW 전용) — 맨 위로 올림 -->
+  <div class="card">
+    <h2>🔎 코인 검색 (KRW 전용)</h2>
+    <div class="row">
+      <input id="q" placeholder="예: 이더리움/ETH, 이더리움클래식/ETC, 에이다/ADA, 시바/SHIB">
+      <button id="btnSearch">검색</button>
+      <button id="btnTop">상승TOP10</button>
+      <button id="btnHot">급등</button>
+      <button id="btnFall">급락</button>
+      <button id="btnReset">초기화</button>
+      <span class="badge">빠른검색: <a href="#" id="qSHIB" style="color:#cfe2ff">SHIB</a> · <a href="#" id="qADA" style="color:#cfe2ff">ADA</a></span>
+    </div>
+    <div class="status" id="status">마켓 목록 로드 중…</div>
+    <table>
+      <thead><tr>
+        <th style="width:6%">★</th>
+        <th style="width:22%">코인</th><th style="width:14%">현재가</th><th style="width:12%">등락</th>
+        <th style="width:14%">매수</th><th style="width:14%">매도</th><th style="width:14%">손절</th><th>비고</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ★ 고정 코인 — 검색 아래로 이동 -->
   <div class="card">
     <h2>★ 고정 코인 — 접속 시 항상 유지</h2>
     <div class="status">행의 ★/☆ 클릭으로 고정/해제(브라우저에 저장)</div>
@@ -45,12 +69,12 @@
         </tr>
       </thead>
       <tbody id="pinnedBody">
-        <tr><td colspan="9" class="status">고정된 코인이 없습니다. 아래 표에서 ★을 눌러 고정하세요.</td></tr>
+        <tr><td colspan="9" class="status">고정된 코인이 없습니다. 위 표에서 ★을 눌러 고정해 보세요.</td></tr>
       </tbody>
     </table>
   </div>
 
-  <!-- 🔥 예열 자동예측 -->
+  <!-- 🔥 예열 자동예측 — 캐시 복원 + 실시간 / 신규는 상단 -->
   <div class="card">
     <h2>🔥 예열 자동예측 — 항상 표시(캐시 복원 + 실시간)</h2>
     <div class="status">새 후보가 감지되면 자동으로 <b>상단</b>에 배치됩니다.</div>
@@ -69,12 +93,12 @@
         </tr>
       </thead>
       <tbody id="preheatBody">
-        <tr><td colspan="9" class="status">최근 예열 캐시 없음 — 실시간 스캔 대기…</td></tr>
+        <tr><td colspan="9" class="status">예열 후보 없음(감시 중)</td></tr>
       </tbody>
     </table>
   </div>
 
-  <!-- 🧭 사람형 AI 타점 (요청 컬럼 전부) -->
+  <!-- 🧭 사람형 AI 표 — 접속 즉시 채움 + 새후보 상단 반영 -->
   <div class="card">
     <h2>🧭 사람형 AI 표 — 접속 즉시 채워짐 + 새후보 상단 반영</h2>
     <div class="status">우선순위: <b>고정 코인 ▶ 예열 캐시/신규(상단) ▶ 기본 시드</b></div>
@@ -98,26 +122,7 @@
     </table>
   </div>
 
-  <!-- 🔎 검색 -->
-  <div class="card">
-    <h2>🔎 코인 검색 (KRW 전용)</h2>
-    <div class="row">
-      <input id="q" placeholder="예: 이더리움/ETH, 이더리움클래식/ETC, 에이다/ADA, 시바/SHIB">
-      <button id="btnSearch">검색</button>
-      <button id="btnReset">초기화</button>
-    </div>
-    <div class="status" id="status">마켓 목록 로드 중…</div>
-    <table>
-      <thead><tr>
-        <th style="width:6%">★</th>
-        <th style="width:22%">코인</th><th style="width:14%">현재가</th><th style="width:12%">등락</th>
-        <th style="width:14%">매수</th><th style="width:14%">매도</th><th style="width:14%">손절</th><th>비고</th>
-      </tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
-
-  <!-- ⚙️ 상태 -->
+  <!-- ⚙️ 시스템 상태 -->
   <div class="card">
     <h2>⚙️ 시스템 상태</h2>
     <div class="status" id="net">초기화 중…</div>
@@ -126,7 +131,7 @@
 </div>
 
 <script>
-/* ===== 기본 설정 ===== */
+/* ===== 기본 설정/상수 ===== */
 const API={
   REST_MARKETS:'https://api.upbit.com/v1/market/all?isDetails=true',
   REST_TICKER:(codes)=>`https://api.upbit.com/v1/ticker?markets=${codes.join(',')}`,
@@ -136,12 +141,16 @@ const API={
   LOCAL:(url)=>`/api/upbit?url=${encodeURIComponent(url)}`
 };
 const TH={preNearHighPct:0.005, preMinMove:0.002, preMaxMove:0.020, preAccel:1.6, baselineMin:600};
-const LS_PREHEAT='ZWL_PREHEAT_V6';       // 예열 캐시
-const LS_PINNED='ZWL_PINNED_V1';         // 고정 코인
-const DEFAULT_SEED=['KRW-BTC','KRW-ETH','KRW-ADA','KRW-XRP','KRW-SOL','KRW-SHIB']; // 접속 즉시 사람형 표에 채워질 시드
+const LS_PREHEAT='ZWL_PREHEAT_V6';   // 예열 캐시
+const LS_PINNED='ZWL_PINNED_V1';     // 고정 코인
+const DEFAULT_SEED=['KRW-BTC','KRW-ETH','KRW-ADA','KRW-XRP','KRW-SOL','KRW-SHIB']; // 접속 즉시 사람형 표 보장
 
 /* ===== 상태/유틸 ===== */
-const el={pinnedBody:byId('pinnedBody'),preheatBody:byId('preheatBody'),aiBody:byId('aiBody'),tbody:byId('tbody'),status:byId('status'),net:byId('net'),q:byId('q')};
+const el={
+  q:byId('q'), status:byId('status'), net:byId('net'),
+  tbody:byId('tbody'), pinnedBody:byId('pinnedBody'),
+  preheatBody:byId('preheatBody'), aiBody:byId('aiBody')
+};
 const st={markets:[],dict:{},tickers:new Map(),hist:new Map(),rx:0,last:0,pinned:new Set()};
 function byId(id){return document.getElementById(id)}
 function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
@@ -157,7 +166,7 @@ function savePinned(){ localStorage.setItem(LS_PINNED, JSON.stringify([...st.pin
 function loadPreheat(){ try{ const a=JSON.parse(localStorage.getItem(LS_PREHEAT)||'[]'); return Array.isArray(a)?a:[]; }catch{return []} }
 function savePreheat(arr){ localStorage.setItem(LS_PREHEAT, JSON.stringify(arr)); }
 
-/* ===== 검색(간단 매핑 포함) ===== */
+/* ===== 검색 인덱스(별칭 포함) ===== */
 function norm(s){return (s||'').toString().toLowerCase().replace(/\s+/g,'')}
 function buildSearchIndex(){
   st.dict={};
@@ -188,7 +197,7 @@ function searchAll(q){
   return list.slice(0,30);
 }
 
-/* ===== 폴링/통계/예열 ===== */
+/* ===== 시세 폴링/히스토리/1분 통계 ===== */
 async function pollTickers(){
   const codes=st.markets.map(m=>m.market); const chunk=80; const now=Date.now();
   for(let i=0;i<codes.length;i+=chunk){
@@ -216,9 +225,8 @@ function oneMin(m){ const arr=st.hist.get(m)||[]; if(arr.length<2) return null; 
 function riskScore(s){ const near=(1-Math.min(1,s.near))*0.5, accel=Math.min(3,s.accel)/3*0.35, gain=Math.max(0,Math.min(1,(s.pct-0.002)/(0.02-0.002)))*0.15; return Math.max(0.8, Math.min(2.2, 1.0+near+accel+gain-0.1)); }
 function oneLinerFromStat(s){ const r=riskScore(s); if(s.pct>0.015&&s.accel>2.2&&s.near<0.003)return{act:'buy',msg:'점화 직전 — 1차 진입 관점',risk:r}; if(s.pct>0.008&&s.accel>1.8)return{act:'hold',msg:'가열 진행 — 눌림 확인 후 추격 금지',risk:r}; if(s.pct<0.003)return{act:'hold',msg:'예열 초기 — 관망/감시',risk:r}; return{act:'hold',msg:'조건 모니터링 지속',risk:r}; }
 
-/* ===== 예열 스캔 (신규: 상단 배치) ===== */
+/* ===== 예열 스캔: 신규 후보 상단 배치 ===== */
 function mergeAndSortPreheat(newList){
-  // 기존 캐시 + 신규 병합, ts 큰(=최신) 순서로 정렬 → 상단 배치
   const mp=new Map(loadPreheat().map(x=>[x.market,x]));
   newList.forEach(n=>mp.set(n.market,n));
   const merged=[...mp.values()].sort((a,b)=>b.ts-a.ts).slice(0,48);
@@ -234,10 +242,10 @@ const scanPreheat = debounce(function(){
     }
   }
   const list = found.length ? mergeAndSortPreheat(found) : loadPreheat();
-  renderPreheat(list); renderPinned(); renderAI(); // 새 후보가 있으면 자동 상단 반영
+  renderPreheat(list); renderPinned(); renderAI(); // 자동 상단 반영
 }, 250);
 
-/* ===== 공통 행 & 핀 ===== */
+/* ===== 공통 행/핀 ===== */
 function rowHTML(market, name, price, chg, lv, stat){
   const cls=(chg||0)>=0?'up':'down'; const one=stat?oneLinerFromStat(stat):{act:'hold',msg:'관망',risk:1.3};
   const pinned=st.pinned.has(market);
@@ -257,15 +265,26 @@ function wirePins(tbody){
     el.onclick=()=>{
       const code=el.getAttribute('data-m');
       if(st.pinned.has(code)) st.pinned.delete(code); else st.pinned.add(code);
-      savePinned(); renderPinned(); renderAI(); // 고정 즉시 반영
+      savePinned(); renderPinned(); renderAI(); // 즉시 반영
     };
   });
 }
 
-/* ===== 렌더: 고정/예열/검색 ===== */
+/* ===== 렌더: 검색/고정/예열 ===== */
+function renderTable(list){
+  const tb=el.tbody; tb.innerHTML='';
+  if(!list.length){ tb.innerHTML='<tr><td colspan="8" class="status">검색 결과 없음</td></tr>'; return; }
+  for(const m of list){
+    const t=st.tickers.get(m.market); if(!t||typeof t.trade_price!=='number') continue;
+    const lv=levels(t.trade_price); const stat=oneMin(m.market)||{pct:0,accel:0,near:1};
+    const tr=document.createElement('tr'); tr.innerHTML=rowHTML(m.market, m.korean_name||m.english_name||'', t.trade_price, t.signed_change_rate, lv, stat);
+    tb.appendChild(tr);
+  }
+  wirePins(tb);
+}
 function renderPinned(){
   const body=el.pinnedBody; const codes=[...st.pinned];
-  if(!codes.length){ body.innerHTML='<tr><td colspan="9" class="status">고정된 코인이 없습니다. 아래 표에서 ★을 눌러 고정해 보세요.</td></tr>'; return; }
+  if(!codes.length){ body.innerHTML='<tr><td colspan="9" class="status">고정된 코인이 없습니다. 위 표에서 ★을 눌러 고정해 보세요.</td></tr>'; return; }
   body.innerHTML='';
   for(const code of codes){
     const m=st.markets.find(x=>x.market===code)||{korean_name:code}; const t=st.tickers.get(code); if(!t||typeof t.trade_price!=='number') continue;
@@ -287,33 +306,15 @@ function renderPreheat(arr){
   }
   wirePins(body);
 }
-function renderTable(list){
-  const tb=el.tbody; tb.innerHTML='';
-  if(!list.length){ tb.innerHTML='<tr><td colspan="8" class="status">검색 결과 없음</td></tr>'; return; }
-  for(const m of list){
-    const t=st.tickers.get(m.market); if(!t||typeof t.trade_price!=='number') continue;
-    const lv=levels(t.trade_price); const stat=oneMin(m.market)||{pct:0,accel:0,near:1};
-    const tr=document.createElement('tr'); tr.innerHTML=rowHTML(m.market, m.korean_name||m.english_name||'', t.trade_price, t.signed_change_rate, lv, stat);
-    tb.appendChild(tr);
-  }
-  wirePins(tb);
-}
 
-/* ===== 사람형 AI: 접속 즉시 채우기 + 새후보 상단 반영 ===== */
+/* ===== 사람형 AI: 접속 즉시 채움 + 새후보 상단 반영 ===== */
 function initialTargets(){
-  // 1) 고정 코인
-  const pinned=[...st.pinned];
-  if(pinned.length) return pinned;
-
-  // 2) 예열 캐시(최신 상단)
-  const cached = loadPreheat().sort((a,b)=>b.ts-a.ts).map(x=>x.market);
-  if(cached.length) return cached.slice(0,8);
-
-  // 3) 기본 시드(항상 보장) — 접속 즉시 사람형 표에 코인 나타나도록
+  const pinned=[...st.pinned]; if(pinned.length) return pinned;
+  const cached = loadPreheat().sort((a,b)=>b.ts-a.ts).map(x=>x.market); if(cached.length) return cached.slice(0,8);
   return DEFAULT_SEED;
 }
 async function analyzeHuman(market){
-  const [h1]=await Promise.all([fetchUpbit(API.CANDLE(market,'1h'))]); // 경량화
+  const [h1]=await Promise.all([fetchUpbit(API.CANDLE(market,'1h'))]);
   if(!h1.length) throw new Error('no candles');
   const price = h1[h1.length-1].trade_price;
   const t = st.tickers.get(market)||{trade_price:price, signed_change_rate:0};
@@ -343,11 +344,14 @@ function onSearch(){
   const key=el.q.value.trim();
   const list=searchAll(key);
   renderTable(list);
-  renderAI(list.slice(0,12).map(m=>m.market)); // 검색 시 사람형 표도 교체
+  renderAI(list.slice(0,12).map(m=>m.market)); // 검색 결과를 사람형 표에도 즉시 반영
 }
 byId('btnSearch').onclick=onSearch;
 el.q.onkeydown=(e)=>{ if(e.key==='Enter') onSearch(); };
-byId('btnReset').onclick=()=>{ el.q.value=''; renderTable(st.markets.slice(0,20)); renderAI(); };
+byId('btnTop').onclick=()=>{ const arr=[...st.tickers.values()].filter(t=>typeof t.trade_price==='number').sort((a,b)=>(b.signed_change_rate||0)-(a.signed_change_rate||0)).slice(0,10).map(t=>st.markets.find(m=>m.market===t.market)); renderTable(arr); renderAI(arr.map(x=>x.market)); };
+byId('btnHot').onclick=()=>{ const hot=st.markets.filter(m=>{const h=oneMin(m.market);return h && h.pct>=0.03 && h.accel>=1.8}); renderTable(hot.slice(0,20)); renderAI(hot.slice(0,12).map(x=>x.market)); };
+byId('btnFall').onclick=()=>{ const fall=st.markets.filter(m=>{const h=oneMin(m.market);return h && h.pct<=-0.03 && h.accel>=1.8}); renderTable(fall.slice(0,20)); renderAI(fall.slice(0,12).map(x=>x.market)); };
+byId('btnReset').onclick=()=>{ el.q.value=''; const base=st.markets.slice(0,20); renderTable(base); renderAI(); };
 
 /* ===== 시작 ===== */
 (async function start(){
@@ -357,19 +361,18 @@ byId('btnReset').onclick=()=>{ el.q.value=''; renderTable(st.markets.slice(0,20)
     st.markets=data.filter(x=>x.market?.startsWith('KRW-'));
     el.status.textContent=`KRW ${st.markets.length}종 로드 완료`;
   }catch{
-    // 업비트 막히면 시드만으로도 사람형 표가 보이게 처리
     st.markets=DEFAULT_SEED.map(code=>({market:code,korean_name:code.replace('KRW-','')}));
     el.status.textContent='업비트 연결 실패 — 기본 시드로 가동';
   }
   buildSearchIndex();
 
-  // 접속 즉시: 예열(캐시) 렌더 + 사람형 표에 반드시 대상 채워넣기
-  renderPreheat(loadPreheat().sort((a,b)=>b.ts-a.ts));
+  // 초기 렌더
   renderPinned();
+  renderPreheat(loadPreheat().sort((a,b)=>b.ts-a.ts));
   await pollTickers();
   renderTable(st.markets.slice(0,20));
-  renderAI(); // ← 접속 즉시 사람형 표가 비지 않도록 시드/캐시/고정 순으로 채움
-  scanPreheat(); // 이후 신규 예열이 생기면 mergeAndSortPreheat로 상단 반영
+  renderAI();              // 접속 즉시 사람형 표가 비지 않도록 보장
+  scanPreheat();           // 이후 신규 예열은 상단 반영
   setInterval(async()=>{ await pollTickers(); scanPreheat(); }, 1000);
 })();
 </script>
