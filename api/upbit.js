@@ -1,26 +1,31 @@
-// api/upbit.js
-// Proxy to Upbit REST API with CORS headers
 export default async function handler(req, res) {
   try {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
+    const { path } = req.query;
+    if (!path) {
+      return res.status(400).json({ error: "Missing path parameter" });
+    }
 
-    const path = (req.query.path || '').toString();
-    if (!path.startsWith('/v1/')) return res.status(400).json({ error: 'Bad path' });
+    // 🔹 업비트 기본 URL
+    const url = `https://api.upbit.com${path.startsWith("/") ? path : `/${path}`}`;
 
-    const upstream = 'https://api.upbit.com' + path;
-    const r = await fetch(upstream, { headers: { Accept: 'application/json', 'User-Agent': 'zzeolwallet/7.4.1' }, cache: 'no-store' });
-    const text = await r.text();
+    // 🔹 업비트 서버로 요청 (CORS 허용)
+    const response = await fetch(url, {
+      headers: { accept: "application/json" },
+      next: { revalidate: 0 },
+    });
 
-    res.status(r.status);
-    res.setHeader('Content-Type', r.headers.get('content-type') || 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    res.send(text);
-  } catch (e) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.status(500).json({ error: 'proxy-fail', message: String(e) });
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET");
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Upbit API Error:", error);
+    return res.status(500).json({ error: error.message || "Server Error" });
   }
 }
