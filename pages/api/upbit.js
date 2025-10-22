@@ -1,26 +1,18 @@
 // pages/api/upbit.js
 export default async function handler(req, res) {
+  const target = req.query.url;
+  if (!target) {
+    res.status(400).json({ error: "Missing url query param" });
+    return;
+  }
   try {
-    if (req.method !== 'GET') {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(405).json({ error: 'Method Not Allowed' });
-    }
-    const path = req.query.path || '';
-    if (typeof path !== 'string' || !path.startsWith('/v1/')) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(400).json({ error: 'Bad path' });
-    }
-    const upstream = 'https://api.upbit.com' + path;
-    const r = await fetch(upstream, {
-      headers: { 'User-Agent': 'zzeolwallet/1.0', 'Accept': 'application/json' },
-      cache: 'no-store',
-    });
+    const r = await fetch(target);
     const text = await r.text();
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(r.status).send(text);
-  } catch (e) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.status(500).json({ error: 'proxy-fail', message: String(e) });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.status(200).send(text);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "proxy failed" });
   }
 }
