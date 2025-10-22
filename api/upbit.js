@@ -5,10 +5,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing path parameter" });
     }
 
-    // 🔹 업비트 기본 URL
     const url = `https://api.upbit.com${path.startsWith("/") ? path : `/${path}`}`;
 
-    // 🔹 업비트 서버로 요청 (CORS 허용)
     const response = await fetch(url, {
       headers: { accept: "application/json" },
       next: { revalidate: 0 },
