@@ -1,136 +1,118 @@
 <script>
-/* -----------------------------
-   검색 정규화/인덱스 유틸
---------------------------------*/
-function norm(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/\s+/g, '')      // 공백 제거
-    .replace(/[-_./]/g, '')   // 구분기호 제거
-    .replace(/[()]/g, '');    // 괄호 제거
+/* ========== 유틸 ========== */
+const $ = (sel) => document.querySelector(sel);
+function norm(s){
+  return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/[-_.\/()]/g,'');
 }
+function symbolFromMarket(m){ const i=(m||'').indexOf('-'); return i>-1?m.slice(i+1):m; }
 
-let MARKET_LIST = [];        // Upbit market list 캐시
-let NAME_TO_MARKET = new Map(); // 별칭 → 마켓코드 인덱스
+let MARKET_LIST = [];
+let NAME_TO_MARKET = new Map();
 
-// KRW-XXX → 심볼 추출
-function symbolFromMarket(market) {
-  const m = market || '';
-  const idx = m.indexOf('-');
-  return idx > -1 ? m.slice(idx + 1) : m;
-}
-
-// 별칭 등록
-function addAlias(key, market) {
+function addAlias(key, market){
   const k = norm(key);
-  if (!k) return;
-  // 동일 별칭에 여러 마켓이 걸릴 때 ETH 같은 대표마켓을 우선
-  // 기존 값이 없으면 덮어쓰기
-  if (!NAME_TO_MARKET.has(k)) NAME_TO_MARKET.set(k, market);
+  if(!k) return;
+  if(!NAME_TO_MARKET.has(k)) NAME_TO_MARKET.set(k, market);
 }
 
-// 마켓 목록으로 별칭 인덱스 만들기
-function buildNameIndex(markets) {
+function buildNameIndex(list){
   NAME_TO_MARKET.clear();
-  markets.forEach(m => {
-    if (!m.market || !m.korean_name) return;
-    if (!m.market.startsWith('KRW-')) return; // 원화마켓만
+  list.forEach(m=>{
+    if(!m.market?.startsWith('KRW-')) return;
+    const sym = symbolFromMarket(m.market);
+    addAlias(m.korean_name, m.market);
+    addAlias(m.english_name, m.market);
+    addAlias(sym, m.market);
+    addAlias(m.market, m.market);
+    addAlias(norm(m.korean_name), m.market);
+    addAlias(norm(m.english_name), m.market);
 
-    const market = m.market;                  // 예: KRW-ETH
-    const sym    = symbolFromMarket(market);  // 예: ETH
-
-    // 기본 별칭(한/영/심볼/마켓)
-    addAlias(m.korean_name, market);          // 이더리움
-    addAlias(m.english_name, market);         // Ethereum
-    addAlias(sym, market);                    // ETH
-    addAlias(market, market);                 // KRW-ETH
-
-    // 한글 축약 별칭(자주 쓰는 것들)
-    if (sym === 'BTC') ['비트','비트코인','btc','bitcoin'].forEach(a => addAlias(a, market));
-    if (sym === 'ETH') ['이더','이더리움','eth','ethereum'].forEach(a => addAlias(a, market));
-    if (sym === 'ETC') ['이더리움클래식','클래식','etc','ethereumclassic'].forEach(a => addAlias(a, market));
-
-    // 공백/기호 제거 버전(한/영 둘 다)
-    addAlias(norm(m.korean_name), market);
-    addAlias(norm(m.english_name), market);
+    // 축약/별칭
+    if(sym==='BTC') ['비트','비트코인','btc','bitcoin'].forEach(a=>addAlias(a,m.market));
+    if(sym==='ETH') ['이더','이더리움','eth','ethereum'].forEach(a=>addAlias(a,m.market));
+    if(sym==='ETC') ['이더리움클래식','클래식','etc','ethereumclassic'].forEach(a=>addAlias(a,m.market));
   });
 
-  // 안전핀: 대표 마켓 강제 인덱싱(혹시 빠졌을 때)
-  addAlias('이더리움', 'KRW-ETH');
-  addAlias('eth',     'KRW-ETH');
-  addAlias('ethereum','KRW-ETH');
-  addAlias('krweth',  'KRW-ETH');
-
-  addAlias('이더리움클래식', 'KRW-ETC');
-  addAlias('etc',         'KRW-ETC');
-  addAlias('ethereumclassic','KRW-ETC');
-  addAlias('krwetc',      'KRW-ETC');
+  // 안전핀
+  addAlias('이더리움','KRW-ETH'); addAlias('eth','KRW-ETH'); addAlias('ethereum','KRW-ETH'); addAlias('krweth','KRW-ETH');
+  addAlias('이더리움클래식','KRW-ETC'); addAlias('etc','KRW-ETC'); addAlias('ethereumclassic','KRW-ETC'); addAlias('krwetc','KRW-ETC');
 }
 
-// 마켓 목록 로드(처음 1회)
-async function loadMarketsOnce() {
-  if (MARKET_LIST.length) return MARKET_LIST;
-  const res = await fetch('/api/upbit?path=/v1/market/all?isDetails=true', { cache:'no-store' });
-  const data = await res.json();
-  MARKET_LIST = (Array.isArray(data) ? data : []).filter(m => m.market?.startsWith('KRW-'));
-  buildNameIndex(MARKET_LIST);
+async function loadMarketsOnce(){
+  if(MARKET_LIST.length) return MARKET_LIST;
+  const r = await fetch('/api/upbit?path=/v1/market/all?isDetails=true',{cache:'no-store'});
+  const data = await r.json();
+  MARKET_LIST = Array.isArray(data) ? data : [];
+  const krw = MARKET_LIST.filter(m=>m.market?.startsWith('KRW-'));
+  buildNameIndex(krw);
   return MARKET_LIST;
 }
 
-/* -----------------------------
-   검색 실행
---------------------------------*/
-async function runSearch() {
-  const qRaw = document.querySelector('#searchInput')?.value || '';
-  const q    = norm(qRaw);
-  if (!q) return;
+/* ========== DOM 선택자 호환 ========== */
+// 입력창/버튼이 프로젝트마다 id가 다를 수 있어서, 여러 후보를 순회합니다.
+function getSearchInput(){
+  return $('#searchInput') ||
+         $('input[type=search]') ||
+         $('input[placeholder*="코인"]') ||
+         $('input[placeholder*="ETH"]') ||
+         $('input[placeholder*="비트"]') ||
+         $('input'); // 최후
+}
+function getSearchBtn(){
+  return $('#searchBtn') ||
+         $('button#search') ||
+         $('button:contains("검색")') || // 일부 브라우저는 지원X → 아래로 대체
+         Array.from(document.querySelectorAll('button')).find(b=>/검색/.test(b.textContent));
+}
 
-  // 마켓 목록 로드 & 인덱스 준비
+/* ========== 검색 실행 ========== */
+async function runSearch(){
+  const input = getSearchInput();
+  if(!input){ alert('검색 입력창을 찾지 못했습니다.'); return; }
+  const qRaw = input.value||'';
+  const q = norm(qRaw);
+  if(!q){ return; }
+
   await loadMarketsOnce();
 
-  // 1) 별칭 인덱스에서 바로 찾기
   let market = NAME_TO_MARKET.get(q);
 
-  // 2) 실패 시: 부분일치 탐색(코인명/영문명/마켓코드)
-  if (!market) {
-    for (const m of MARKET_LIST) {
-      const kn = norm(m.korean_name);
-      const en = norm(m.english_name);
-      const mk = norm(m.market);
-
-      if (kn.includes(q) || en.includes(q) || mk.includes(q)) {
-        market = m.market; break;
-      }
+  if(!market){
+    // 부분일치
+    const list = MARKET_LIST.filter(m=>m.market?.startsWith('KRW-'));
+    for(const m of list){
+      const kn = norm(m.korean_name), en = norm(m.english_name), mk = norm(m.market);
+      if(kn.includes(q) || en.includes(q) || mk.includes(q)){ market = m.market; break; }
     }
   }
 
-  // 3) 그래도 실패 시: 축약 예외(이더 → ETH 같은 핸들링)
-  if (!market) {
-    if (['이더','eth','ethereum','krweth'].includes(q)) market = 'KRW-ETH';
-    else if (['클래식','etc','ethereumclassic','krwetc'].includes(q)) market = 'KRW-ETC';
+  if(!market){
+    // 축약 예외
+    if(['이더','eth','ethereum','krweth'].includes(q)) market='KRW-ETH';
+    else if(['클래식','etc','ethereumclassic','krwetc'].includes(q)) market='KRW-ETC';
   }
 
-  if (!market) {
-    alert('코인을 찾지 못했습니다. (한글/영문/심볼/마켓코드 지원)');
+  if(!market){
+    // 화면 토스트용 문구를 쓰는 프로젝트도 있어서 alert + 콘솔 같이 표시
+    console.warn('[검색실패] 입력:', qRaw, '정규화:', q, '인덱스크기:', NAME_TO_MARKET.size);
+    alert('코인을 찾을 수 없습니다. (한글/영문/심볼/마켓코드로 검색 가능)');
     return;
   }
 
-  // 이후는 기존의 “선택 코인 박스 갱신 / 매수·매도·손절·위험도/쩔어한마디 계산” 로직을 그대로 호출
-  // 예시: showSelectedCoin(market)
-  showSelectedCoin(market);
+  // ← 여기서 기존 코드의 “선택 코인 표시/지표갱신” 함수를 그대로 호출하세요.
+  // 예) showSelectedCoin(market)
+  if(typeof showSelectedCoin === 'function') showSelectedCoin(market);
+  else console.log('[디버그] 선택된 마켓:', market);
 }
 
-/* -----------------------------
-   이벤트 바인딩
---------------------------------*/
-document.addEventListener('DOMContentLoaded', () => {
-  // 검색 버튼
-  document.querySelector('#searchBtn')?.addEventListener('click', runSearch);
-  // 엔터키 검색
-  document.querySelector('#searchInput')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') runSearch();
-  });
-  // 최초 인덱스 준비
+/* ========== 초기화 ========== */
+document.addEventListener('DOMContentLoaded', ()=>{
   loadMarketsOnce().catch(console.error);
+
+  const input = getSearchInput();
+  const btn   = getSearchBtn();
+
+  if(btn) btn.addEventListener('click', runSearch);
+  if(input) input.addEventListener('keydown', e=>{ if(e.key==='Enter') runSearch(); });
 });
 </script>
