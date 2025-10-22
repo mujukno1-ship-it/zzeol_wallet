@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>사토시의지갑 v9.3.4 – 예열 자동예측 패널</title>
+<title>사토시의지갑 v9.3.5 – 예열 예측 상시패널(고정/누적/최신 우선)</title>
 <style>
   :root{--bg:#0b0f14;--panel:#111823;--muted:#7c8aa5;--text:#e8eefc;--up:#22c55e;--down:#ef4444;--btn:#0f1b2e;--btnb:#2a3b57}
   *{box-sizing:border-box}
@@ -28,13 +28,22 @@
   .price{font-variant-numeric:tabular-nums}
   .up{color:var(--up)} .down{color:var(--down)}
   .tag{font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid #2a3956;color:#9fb6db;background:#111a27}
-  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;margin:6px;border:1px solid #26344f;border-radius:999px;background:#0f1726}
+  .pill-wrap{display:flex;flex-wrap:wrap;align-items:flex-start}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;margin:6px;border:1px solid #26344f;border-radius:999px;background:#0f1726;transition:transform .15s ease, box-shadow .15s ease}
+  .pill.new{box-shadow:0 0 0 2px rgba(34,197,94,.35)}
   .pill .sym{font-weight:700}
   .pill .m{font-size:12px;color:#a7b7d4}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <!-- 🔥 예열 자동예측 패널: 항상 맨 위에 고정 -->
+  <div class="card" id="preheatPanel">
+    <h2>🔥 예열 자동예측 (항상 활성/누적, 최신 발견이 위로)</h2>
+    <div class="badge">기준: 고가근접 ≤0.5%, 1m +0.2~2.0%, 가속 ≥1.6×</div>
+    <div id="preheatBox" class="pill-wrap status" style="margin-top:10px">초기 스캔 중…</div>
+  </div>
+
   <!-- 검색/리스트 -->
   <div class="card">
     <h2>🔎 코인 검색 (KRW 전용, 분석기반)</h2>
@@ -44,7 +53,7 @@
       <button id="btnTop" disabled>상승 TOP10</button>
       <button id="btnHot" disabled>급등(분석)</button>
       <button id="btnFall" disabled>급락(분석)</button>
-      <button id="btnPre" disabled>예열(급상승 후보)</button>
+      <button id="btnPre" disabled>예열(버튼 수동 보기)</button>
       <button id="btnReset" disabled>초기화</button>
     </div>
     <div class="toolbar">
@@ -52,7 +61,7 @@
       <button id="btn2s" disabled>2초</button>
       <button id="btn5s" disabled>5초</button>
       <button id="btnStop" disabled>정지</button>
-      <span class="badge">예열 기준: 고가근접 ≤0.5%, 1m +0.2~2.0%, 가속 ≥1.6×</span>
+      <span class="badge">상단 패널은 자동 유지/자동 업데이트</span>
     </div>
     <div class="status" id="status">마켓 목록 로드 중…</div>
 
@@ -73,12 +82,6 @@
     </table>
   </div>
 
-  <!-- 🔥 예열 자동예측 패널 -->
-  <div class="card" id="preheatPanel">
-    <h2>🔥 예열 자동예측 (상시 갱신)</h2>
-    <div id="preheatBox" class="status">계산 중…</div>
-  </div>
-
   <!-- 시스템 상태 -->
   <div class="card">
     <h2>⚙️ 시스템 상태</h2>
@@ -87,12 +90,14 @@
 </div>
 
 <script>
-/* -------------------- 설정 -------------------- */
+/* -------------------- 임계값/설정 -------------------- */
 const THRESH = {
   pct1mUp: 0.03, pct1mDown: -0.03, accel: 1.8, windowSec: 60, baselineMin: 600,
   preNearHighPct: 0.005, preMinMove: 0.002, preMaxMove: 0.020, preAccel: 1.6
 };
 const POLL_DEFAULT = 1000;
+const PREHEAT_MAX = 48;           // 패널에 보관할 최대 후보 수
+const PREHEAT_TTL_MS = 30*60*1000;// 30분 지나면 자연 정리(사라지지 않되 오래된 건 청소)
 
 /* -------------------- 전역 -------------------- */
 const el = {
@@ -119,7 +124,9 @@ const state = {
   markets: [], dict: {},
   pollMs: POLL_DEFAULT, timer: null, lastList: [],
   hist: new Map(),
-  scanCounter: 0   // 예열 스캔 주기 제어
+  scanCounter: 0,
+  // 예열 후보를 "영속" 보관: market -> {nearHigh, pricePct1m, accel, score, lastSeen}
+  preheatMap: new Map()
 };
 
 /* -------------------- 유틸 -------------------- */
@@ -145,7 +152,7 @@ function enableAll(){
   [el.btnSearch,el.btnTop,el.btnHot,el.btnFall,el.btnPre,el.btnReset,el.btn1s,el.btn2s,el.btn5s,el.btnStop].forEach(b=>b.disabled=false);
 }
 
-/* -------------------- 데이터 로드 -------------------- */
+/* -------------------- 데이터 로드/호출 -------------------- */
 async function loadMarkets(){
   const res = await fetch(UPBIT.markets, {cache:'no-store'});
   const data = await res.json();
@@ -153,16 +160,13 @@ async function loadMarkets(){
   state.markets = krw;
   state.dict = {};
   for(const m of krw){
-    const keys=[m.market,m.korean_name,m.english_name,
-      m.korean_name?.replace(/\s+/g,''), m.english_name?.replace(/\s+/g,'')]
+    const keys=[m.market,m.korean_name,m.english_name,m.korean_name?.replace(/\s+/g,''),m.english_name?.replace(/\s+/g,'')]
       .filter(Boolean).map(x=>x.toLowerCase());
     for(const k of keys){ (state.dict[k]??=[]).push(m); }
   }
   setStatus(`KRW 마켓 ${krw.length}종 로드 완료`);
   enableAll();
 }
-
-/* 안정형 ticker: 배치+재시도 */
 async function fetchTicker(list){
   if(!list.length) return [];
   const codes=list.map(x=>x.market);
@@ -184,9 +188,9 @@ async function fetchTicker(list){
 }
 
 /* -------------------- 분석용 히스토리/통계 -------------------- */
-function updateHistory(tickers){
+function updateHistory(ticks){
   const now=Date.now();
-  for(const t of tickers){
+  for(const t of ticks){
     const key=t.market; const arr=state.hist.get(key)||[];
     arr.push({ts:now, price:t.trade_price, acc:t.acc_trade_price_24h||0, high:t.high_price||t.trade_price});
     const cutoff=now-600*1000; while(arr.length && arr[0].ts<cutoff) arr.shift();
@@ -205,15 +209,8 @@ function oneMinStats(key){
   return {pricePct1m:pct, accel, nearHigh:near};
 }
 
-/* -------------------- 타점 -------------------- */
-function levelsBasic(tk){ const p=+tk.trade_price, t=krwTick(p);
-  return {buy:p-2*t, sell:p+3*t, cut:p-6*t, sig:'기본', say:''}; }
-function levelsForPresurge(tk, st){ const p=+tk.trade_price, t=krwTick(p);
-  const buy=p-Math.max(t,p*0.0015), sell=p+Math.max(3*t,p*0.006), cut=p-Math.max(3*t,p*0.004);
-  const say=`고가근접 ${(st.nearHigh*100).toFixed(2)}%, 1m ${(st.pricePct1m*100).toFixed(2)}%, 가속 ${st.accel.toFixed(1)}×`;
-  return {buy,sell,cut,sig:'예열',say}; }
-
-/* -------------------- 렌더 -------------------- */
+/* -------------------- 리스트 렌더 -------------------- */
+function levelsBasic(tk){ const p=+tk.trade_price, t=krwTick(p); return {buy:p-2*t, sell:p+3*t, cut:p-6*t, sig:'기본', say:''}; }
 function renderRows(rows, emptyMsg='조건에 맞는 코인이 없습니다.'){
   el.tbody.innerHTML='';
   if(!rows.length){ el.tbody.innerHTML=`<tr><td colspan="8" class="status">${emptyMsg}</td></tr>`; return; }
@@ -233,38 +230,72 @@ function renderRows(rows, emptyMsg='조건에 맞는 코인이 없습니다.'){
   }
 }
 
-/* -------------------- 예열 패널 -------------------- */
-function renderPreheatPanel(cands){
+/* -------------------- 예열 패널(영속/최신 우선) -------------------- */
+function preheatScore(st){
+  // 점수: 고가 근접(가까울수록↑) + 가속(클수록↑) + 1m상승(중간범위 보너스)
+  const nearScore = 1 - Math.min(1, st.nearHigh);         // 0~1
+  const accelScore = Math.min(3, st.accel)/3;             // 0~1(최대 3배 캡)
+  const pctBonus = Math.max(0, Math.min(1, (st.pricePct1m-0.002)/(0.02-0.002))); // 0.2~2.0% 스케일링
+  return nearScore*0.5 + accelScore*0.35 + pctBonus*0.15;
+}
+function upsertPreheat(market, st){
+  const now=Date.now();
+  const score=preheatScore(st);
+  const prev = state.preheatMap.get(market);
+  // 새로 들어오면 바로 최신으로 보이도록 lastSeen 갱신
+  state.preheatMap.set(market, {
+    nearHigh: st.nearHigh, pricePct1m: st.pricePct1m, accel: st.accel,
+    score: score, lastSeen: now, firstSeen: prev?.firstSeen ?? now
+  });
+  // 과도한 누적 방지: 오래된 항목 정리
+  const toDelete=[];
+  state.preheatMap.forEach((v,k)=>{ if(now - v.lastSeen > PREHEAT_TTL_MS) toDelete.push(k); });
+  toDelete.forEach(k=> state.preheatMap.delete(k));
+  // 상한 유지
+  if(state.preheatMap.size > PREHEAT_MAX){
+    // 오래되고 점수 낮은 것부터 제거
+    const arr=[...state.preheatMap.entries()]
+      .sort((a,b)=> (a[1].lastSeen - b[1].lastSeen) || (a[1].score - b[1].score));
+    const excess = state.preheatMap.size - PREHEAT_MAX;
+    for(let i=0;i<excess;i++){ state.preheatMap.delete(arr[i][0]); }
+  }
+}
+function renderPreheatPanel(){
   const box = el.preheatBox;
-  if(!cands.length){ box.innerHTML = '예열 후보 없음'; return; }
-  box.innerHTML = '';
-  cands.slice(0,24).forEach(c=>{
-    const div=document.createElement('div'); div.className='pill';
-    div.innerHTML = `
-      <span class="sym">${c.market.replace('KRW-','')}</span>
-      <span class="m">가까움:${(c.nearHigh*100).toFixed(2)}%</span>
-      <span class="m">1m:${(c.pricePct1m*100).toFixed(2)}%</span>
-      <span class="m">가속:${c.accel.toFixed(1)}×</span>
+  const arr = [...state.preheatMap.entries()]
+    .map(([market,v])=>({market, ...v}))
+    .sort((a,b)=> (b.lastSeen - a.lastSeen) || (b.score - a.score)); // ★ 최신 우선, 그다음 점수
+  if(!arr.length){ box.textContent='예열 후보 없음(자동 감시 중)'; return; }
+  box.textContent='';
+  const now=Date.now();
+  arr.slice(0,48).forEach(item=>{
+    const isNew = (now - item.firstSeen) < 5000; // 5초 이내 신규 표식
+    const div=document.createElement('div');
+    div.className='pill' + (isNew? ' new':'');
+    div.innerHTML=`
+      <span class="sym">${item.market.replace('KRW-','')}</span>
+      <span class="m">가까움 ${(item.nearHigh*100).toFixed(2)}%</span>
+      <span class="m">1m ${(item.pricePct1m*100).toFixed(2)}%</span>
+      <span class="m">가속 ${item.accel.toFixed(1)}×</span>
     `;
     box.appendChild(div);
   });
 }
 async function scanPreheat(){
   const tks = await fetchTicker(state.markets);
-  if(!tks.length){ return; }
+  if(!tks.length) return;
   updateHistory(tks);
-  const out=[];
   for(const m of state.markets){
     const st = oneMinStats(m.market); if(!st) continue;
     const tk = tks.find(x=>x.market===m.market); if(!tk || !tk.high_price) continue;
-    if(st.nearHigh<=THRESH.preNearHighPct &&
-       st.pricePct1m>=THRESH.preMinMove && st.pricePct1m<=THRESH.preMaxMove &&
-       st.accel>=THRESH.preAccel){
-      out.push({market:m.market, nearHigh:st.nearHigh, pricePct1m:st.pricePct1m, accel:st.accel});
+    const condNear  = st.nearHigh <= THRESH.preNearHighPct;
+    const condMove  = st.pricePct1m >= THRESH.preMinMove && st.pricePct1m <= THRESH.preMaxMove;
+    const condAccel = st.accel >= THRESH.preAccel;
+    if(condNear && condMove && condAccel){
+      upsertPreheat(m.market, st); // ★ 누적/최신화
     }
   }
-  out.sort((a,b)=> a.nearHigh - b.nearHigh); // 고가에 더 가까운 순
-  renderPreheatPanel(out);
+  renderPreheatPanel();
 }
 
 /* -------------------- 폴링 -------------------- */
@@ -274,15 +305,14 @@ async function poll(){
     const tks=await fetchTicker(base);
     if(tks.length){
       updateHistory(tks);
-      const rows=[];
-      for(const m of base){
-        const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
-        rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsBasic(tk)});
-      }
+      const rows=base.map(m=>{
+        const tk=tks.find(x=>x.market===m.market); if(!tk) return null;
+        return {market:m.market, name:m.korean_name||m.english_name, ticker:tk, levels:levelsBasic(tk)};
+      }).filter(Boolean);
       renderRows(rows);
       setStatus(`실시간 갱신 중… (주기 ${state.pollMs/1000}s)`);
     }
-    // 예열 자동 스캔: 5번 중 1번(약 5초마다)
+    // 예열 스캔: 5초 간격(1초 폴링 기준으로 5번에 1회)
     state.scanCounter = (state.scanCounter+1)%5;
     if(state.scanCounter===0){ scanPreheat(); }
   }catch(e){ console.error(e); }
@@ -290,7 +320,7 @@ async function poll(){
 function start(){ stop(); state.timer=setInterval(poll,state.pollMs); poll(); }
 function stop(){ if(state.timer){ clearInterval(state.timer); state.timer=null; } }
 
-/* -------------------- 버튼 -------------------- */
+/* -------------------- 검색/버튼 -------------------- */
 function searchLocal(q){
   if(!q) return state.markets.slice(0,20);
   const key=q.trim().toLowerCase();
@@ -354,6 +384,7 @@ el.btnFall.onclick = async ()=>{
   rows.sort((a,b)=>a.ticker.signed_change_rate-b.ticker.signed_change_rate);
   renderRows(rows.slice(0,20)); start();
 };
+// 수동 예열 보기(버튼): 상단 패널과 별개로 표에 상세 정렬
 el.btnPre.onclick = async ()=>{
   const tks=await fetchTicker(state.markets); if(!tks.length){ renderRows([], '지연'); return; }
   updateHistory(tks);
@@ -361,18 +392,26 @@ el.btnPre.onclick = async ()=>{
   for(const m of state.markets){
     const st=oneMinStats(m.market); if(!st) continue;
     const tk=tks.find(x=>x.market===m.market); if(!tk || !tk.high_price) continue;
-    const near=(tk.high_price - tk.trade_price)/tk.high_price;
-    if(near<=THRESH.preNearHighPct && st.pricePct1m>=THRESH.preMinMove && st.pricePct1m<=THRESH.preMaxMove && st.accel>=THRESH.preAccel){
-      rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsForPresurge(tk,{...st,nearHigh:near})});
+    const condNear=st.nearHigh<=THRESH.preNearHighPct;
+    const condMove=st.pricePct1m>=THRESH.preMinMove && st.pricePct1m<=THRESH.preMaxMove;
+    const condAccel=st.accel>=THRESH.preAccel;
+    if(condNear&&condMove&&condAccel){
+      // 상단 패널에도 누적
+      upsertPreheat(m.market, st);
+      rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsBasic(tk)});
     }
   }
+  // 표에서는 점수 높은 순
   rows.sort((a,b)=>{
-    const ah=(a.ticker.high_price-a.ticker.trade_price)/a.ticker.high_price;
-    const bh=(b.ticker.high_price-b.ticker.trade_price)/b.ticker.high_price;
-    return ah - bh;
+    const sa=preheatScore(oneMinStats(a.market)||{nearHigh:1,accel:0,pricePct1m:0});
+    const sb=preheatScore(oneMinStats(b.market)||{nearHigh:1,accel:0,pricePct1m:0});
+    return sb - sa;
   });
-  renderRows(rows.slice(0,20)); start();
+  renderRows(rows.slice(0,20));
+  renderPreheatPanel(); // 상단도 갱신
+  start();
 };
+
 el.btnReset.onclick = ()=>{ el.q.value=''; state.lastList=state.markets.slice(0,40); start(); };
 el.btn1s.onclick = ()=>{ state.pollMs=1000; start(); };
 el.btn2s.onclick = ()=>{ state.pollMs=2000; start(); };
@@ -384,9 +423,9 @@ el.btnStop.onclick = ()=>{ stop(); setStatus('일시정지'); };
   try{
     await loadMarkets();
     state.lastList=state.markets.slice(0,40);
+    // 시작 즉시 1회 스캔 → 패널 표시 (항상 접속시 보임)
+    await scanPreheat();
     start();
-    // 초기 한 번 예열 스캔
-    scanPreheat();
   }catch(e){
     console.error(e);
     setStatus('마켓 로드 실패 — Ctrl+F5 후 재시도');
