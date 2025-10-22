@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>사토시의지갑 v9.3.2 – 분석기반(급등·급락·예열) 안정판</title>
+<title>사토시의지갑 v9.3.3 – 분석기반(급등·급락·예열) 안정판</title>
 <style>
   :root{--bg:#0b0f14;--panel:#111823;--muted:#7c8aa5;--text:#e8eefc;--up:#22c55e;--down:#ef4444;--btn:#0f1b2e;--btnb:#2a3b57}
   *{box-sizing:border-box}
@@ -15,6 +15,7 @@
   input,button{border-radius:12px;border:1px solid var(--btnb);background:var(--btn);color:#dbe7ff}
   input{padding:12px 14px;flex:1;min-width:220px}
   button{padding:10px 12px;cursor:pointer}
+  button[disabled]{opacity:.55;cursor:not-allowed}
   table{width:100%;border-collapse:separate;border-spacing:0 8px;margin-top:12px}
   thead th{font-size:12px;color:#8fa4c7;text-align:left;padding:0 10px}
   tbody tr{background:#0e1520;border:1px solid #1d2a40}
@@ -36,21 +37,21 @@
     <h2>🔎 코인 검색 (KRW 전용, 분석기반)</h2>
     <div class="row">
       <input id="q" placeholder="코인명/티커 (예: 이더리움, ETH, KRW-ETH)">
-      <button id="btnSearch">검색</button>
-      <button id="btnTop">상승 TOP10</button>
-      <button id="btnHot">급등(분석)</button>
-      <button id="btnFall">급락(분석)</button>
-      <button id="btnPre">예열(급상승 후보)</button>
-      <button id="btnReset">초기화</button>
+      <button id="btnSearch" disabled>검색</button>
+      <button id="btnTop" disabled>상승 TOP10</button>
+      <button id="btnHot" disabled>급등(분석)</button>
+      <button id="btnFall" disabled>급락(분석)</button>
+      <button id="btnPre" disabled>예열(급상승 후보)</button>
+      <button id="btnReset" disabled>초기화</button>
     </div>
     <div class="toolbar">
-      <button id="btn1s">폴링 1초</button>
-      <button id="btn2s">2초</button>
-      <button id="btn5s">5초</button>
-      <button id="btnStop">정지</button>
+      <button id="btn1s" disabled>폴링 1초</button>
+      <button id="btn2s" disabled>2초</button>
+      <button id="btn5s" disabled>5초</button>
+      <button id="btnStop" disabled>정지</button>
       <span class="badge">예열: 고가근접 ≤0.5%, 1m +0.2~2.0%, 가속 ≥1.6×</span>
     </div>
-    <div class="status" id="status">대기중…</div>
+    <div class="status" id="status">마켓 목록 로드 중…</div>
 
     <table>
       <thead>
@@ -76,14 +77,14 @@
 </div>
 
 <script>
-// ===== 임계값 =====
+/* -------------------- 설정 -------------------- */
 const THRESH = {
   pct1mUp: 0.03, pct1mDown: -0.03, accel: 1.8, windowSec: 60, baselineMin: 600,
   preNearHighPct: 0.005, preMinMove: 0.002, preMaxMove: 0.020, preAccel: 1.6
 };
 const POLL_DEFAULT = 1000;
 
-// ===== 전역 =====
+/* -------------------- 전역 -------------------- */
 const el = {
   q: document.getElementById('q'),
   tbody: document.getElementById('tbody'),
@@ -108,10 +109,11 @@ const UPBIT = {
 const state = {
   markets: [], dict: {},
   pollMs: POLL_DEFAULT, timer: null, lastList: [],
-  hist: new Map(), // market -> [{ts, price, acc}]
+  hist: new Map(),
+  lastRendered: [] // 마지막 성공 렌더 데이터(비었을 때 유지)
 };
 
-// ===== 유틸 =====
+/* -------------------- 유틸 -------------------- */
 function krwTick(p){
   if(p>=2000000) return 1000;
   if(p>=1000000) return 500;
@@ -130,11 +132,13 @@ function fmtKRW(p){
   return Number(p).toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
 }
 function setStatus(s){ el.status.textContent = s; }
+function enableAll(){
+  [el.btnSearch,el.btnTop,el.btnHot,el.btnFall,el.btnPre,el.btnReset,el.btn1s,el.btn2s,el.btn5s,el.btnStop].forEach(b=>b.disabled=false);
+}
 
-// ===== 데이터 로드 =====
+/* -------------------- 데이터 로드 -------------------- */
 async function loadMarkets(){
-  setStatus('마켓 목록 로드 중…');
-  const res = await fetch(UPBIT.markets, {cache:'no-store', headers:{Accept:'application/json'}});
+  const res = await fetch(UPBIT.markets, {cache:'no-store'});
   const data = await res.json();
   const krw = data.filter(x=>x.market?.startsWith('KRW-'));
   state.markets = krw;
@@ -150,59 +154,56 @@ async function loadMarkets(){
     for(const k of keys){ (state.dict[k] ??= []).push(m); }
   }
   setStatus(`KRW 마켓 ${krw.length}종 로드 완료`);
+  enableAll();
 }
 
-// ===== 안정형 ticker (배치+재시도) =====
+/*  안정형 ticker: 배치+재시도  */
 async function fetchTicker(list){
   if(!list.length) return [];
   const codes = list.map(x=>x.market);
-  const chunk=80; // 보수적으로
-  const out=[];
+  const chunk=80, out=[];
   for(let i=0;i<codes.length;i+=chunk){
     const part=codes.slice(i,i+chunk);
-    let ok=false, tries=0, data=[];
-    while(!ok && tries<3){
-      tries++;
+    let data=[], ok=false;
+    for(let tries=1; tries<=3 && !ok; tries++){
       try{
-        const r=await fetch(UPBIT.ticker(part), {cache:'no-store', headers:{Accept:'application/json'}});
+        const r=await fetch(UPBIT.ticker(part), {cache:'no-store'});
         if(r.ok){ data=await r.json(); ok=true; }
-        else { await new Promise(res=>setTimeout(res, 150*tries)); }
-      }catch(e){
-        await new Promise(res=>setTimeout(res, 200*tries));
-      }
+        else { await new Promise(res=>setTimeout(res, 120*tries)); }
+      }catch(e){ await new Promise(res=>setTimeout(res, 150*tries)); }
     }
     out.push(...data);
-    // 배치 간 간격
-    await new Promise(res=>setTimeout(res, 120));
+    await new Promise(res=>setTimeout(res, 100));
   }
   return out;
 }
 
-// ===== 히스토리 & 통계 =====
+/* -------------------- 분석용 히스토리 -------------------- */
 function updateHistory(tickers){
   const now=Date.now();
   for(const t of tickers){
     const key=t.market; const arr=state.hist.get(key)||[];
     arr.push({ts:now, price:t.trade_price, acc:t.acc_trade_price_24h||0, high:t.high_price||t.trade_price});
-    const cutoff=now-THRESH.baselineMin*1000; while(arr.length&&arr[0].ts<cutoff) arr.shift();
+    const cutoff=now-600*1000; while(arr.length&&arr[0].ts<cutoff) arr.shift();
     state.hist.set(key,arr);
   }
 }
 function oneMinStats(key){
   const now=Date.now(); const arr=state.hist.get(key)||[]; if(arr.length<2) return null;
-  const target=now-THRESH.windowSec*1000; let past=arr[0];
+  const target=now-60*1000; let past=arr[0];
   for(let i=arr.length-1;i>=0;i--){ if(arr[i].ts<=target){ past=arr[i]; break; } }
   const cur=arr[arr.length-1];
-  const tenTs=now-THRESH.baselineMin*1000; const old=arr.find(x=>x.ts>=tenTs)||arr[0];
-  const delta10m=Math.max(0,(cur.acc-old.acc)); const basePerMin=delta10m/Math.max(1,((cur.ts-old.ts)/60000));
+  const old=arr.find(x=>x.ts>=now-600*1000)||arr[0];
+  const delta10m=Math.max(0,(cur.acc-old.acc));
+  const basePerMin=delta10m/Math.max(1,((cur.ts-old.ts)/60000));
   const pricePct1m=past.price>0? (cur.price-past.price)/past.price : 0;
-  const delta1m=Math.max(0,cur.acc-past.acc); const accel=basePerMin>0? (delta1m/basePerMin):(delta1m>0?99:0);
-  // 고가근접 = (고가 - 현재가) / 고가  (0이면 고가와 동일)
+  const delta1m=Math.max(0,cur.acc-past.acc);
+  const accel=basePerMin>0? (delta1m/basePerMin):(delta1m>0?99:0);
   const nearHigh = (cur.high>0) ? Math.max(0,(cur.high - cur.price)/cur.high) : 1;
   return {pricePct1m, accel, curPrice:cur.price, high:cur.high, nearHigh};
 }
 
-// ===== 타점 =====
+/* -------------------- 타점 -------------------- */
 function levelsBasic(tk){
   const p=Number(tk.trade_price), tkc=krwTick(p);
   return {buy:p-2*tkc, sell:p+3*tkc, cut:p-6*tkc, sig:'기본', say:'기본'};
@@ -216,9 +217,32 @@ function levelsForPresurge(tk, st){
   return {buy,sell,cut,sig:'예열',say};
 }
 
-// ===== 렌더 =====
-function renderRows(rows){
+/* -------------------- 렌더 -------------------- */
+function buildRows(list, tks, mode='basic'){
+  const rows=[];
+  for(const m of list){
+    const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
+    let levels=levelsBasic(tk), say='';
+    if(mode==='pre'){
+      const st=oneMinStats(m.market); if(!st || !tk.high_price) continue;
+      const condNear = ((tk.high_price - tk.trade_price)/tk.high_price) <= THRESH.preNearHighPct;
+      const condMove = st.pricePct1m >= THRESH.preMinMove && st.pricePct1m <= THRESH.preMaxMove;
+      const condAccel= st.accel >= THRESH.preAccel;
+      if(!(condNear && condMove && condAccel)) continue;
+      levels = levelsForPresurge(tk, st);
+    }
+    rows.push({market:m.market, name:m.korean_name||m.english_name, ticker:tk, levels});
+  }
+  return rows;
+}
+function renderRows(rows, emptyMsg='조건에 맞는 코인이 없습니다.'){
   el.tbody.innerHTML='';
+  if(!rows.length){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td colspan="8" class="status">${emptyMsg}</td>`;
+    el.tbody.appendChild(tr);
+    return;
+  }
   for(const r of rows){
     const cls=r.ticker.signed_change_rate>=0? 'up':'down';
     const tr=document.createElement('tr');
@@ -230,43 +254,21 @@ function renderRows(rows){
       <td class="price">${fmtKRW(r.levels.sell)}</td>
       <td class="price down">${fmtKRW(r.levels.cut)}</td>
       <td>${r.levels.sig}</td>
-      <td>${r.levels.say}</td>
+      <td>${r.levels.say||''}</td>
     `;
     el.tbody.appendChild(tr);
   }
-  if(!rows.length){
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td colspan="8" class="status">조건에 맞는 코인이 없습니다.</td>`;
-    el.tbody.appendChild(tr);
-  }
+  state.lastRendered = rows; // 성공 데이터 보관
 }
 
-// ===== 검색 =====
-function searchLocal(q){
-  if(!q) return state.markets.slice(0,20);
-  const key=q.trim().toLowerCase();
-  let list=state.dict[key]?[...state.dict[key]]:[];
-  if(list.length===0){
-    list=state.markets.filter(m=>
-      m.market.toLowerCase().includes(key)||
-      m.korean_name.toLowerCase().includes(key)||
-      m.english_name.toLowerCase().includes(key)
-    );
-  }
-  return list.slice(0,30);
-}
-
-// ===== 폴링 =====
+/* -------------------- 폴링 -------------------- */
 async function poll(){
   try{
-    const base = state.lastList.length? state.lastList : state.markets.slice(0,80);
+    const base = state.lastList.length? state.lastList : state.markets.slice(0,40);
     const tks=await fetchTicker(base);
-    if(!tks.length){ setStatus('재시도 중…'); return; }
+    if(!tks.length){ setStatus('네트워크 지연… 자동 재시도 중'); return; }
     updateHistory(tks);
-    const rows=base.map(m=>{
-      const tk=tks.find(x=>x.market===m.market); if(!tk) return null;
-      return {market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsBasic(tk)};
-    }).filter(Boolean);
+    const rows = buildRows(base, tks, 'basic');
     renderRows(rows);
     setStatus(`실시간 갱신 중… (주기 ${state.pollMs/1000}s)`);
   }catch(e){ console.error(e); }
@@ -274,76 +276,100 @@ async function poll(){
 function start(){ stop(); state.timer=setInterval(poll,state.pollMs); poll(); }
 function stop(){ if(state.timer){ clearInterval(state.timer); state.timer=null; } }
 
-// ===== 버튼 =====
-el.btnSearch.onclick=async ()=>{
-  const list=searchLocal(el.q.value);
-  state.lastList=list;
-  // 검색은 단일 배치 호출(응답 실패 대비 재시도)
-  const tks=await fetchTicker(list);
-  if(!tks.length){ setStatus('검색 응답 지연 — 다시 시도 중…'); const t2=await fetchTicker(list); updateHistory(t2); }
-  start();
-};
-el.q.onkeydown=e=>{ if(e.key==='Enter') el.btnSearch.click(); };
+/* -------------------- 버튼: 즉시 렌더 -------------------- */
+el.btnSearch.onclick = async ()=>{
+  const list = (function searchLocal(q){
+    if(!q) return state.markets.slice(0,20);
+    const key=q.trim().toLowerCase();
+    let l=state.dict[key]?[...state.dict[key]]:[];
+    if(!l.length){
+      l=state.markets.filter(m=>
+        m.market.toLowerCase().includes(key)||
+        m.korean_name.toLowerCase().includes(key)||
+        m.english_name.toLowerCase().includes(key)
+      );
+    }
+    return l.slice(0,30);
+  })(el.q.value);
 
-el.btnTop.onclick=async()=>{
+  state.lastList=list;
+  setStatus('검색 중…');
+  const tks=await fetchTicker(list);
+  if(tks.length){
+    updateHistory(tks);
+    renderRows(buildRows(list,tks,'basic'));
+    setStatus('검색 완료');
+  }else{
+    renderRows([], '검색 응답 지연 — 잠시 후 다시 시도하세요');
+  }
+  start(); // 이후 실시간 갱신
+};
+el.q.onkeydown = e=>{ if(e.key==='Enter') el.btnSearch.click(); };
+
+el.btnTop.onclick = async ()=>{
   setStatus('상승 TOP10 계산 중…');
-  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  const tks=await fetchTicker(state.markets);
+  if(!tks.length){ renderRows([], '지연 — 다시 시도'); return; }
   updateHistory(tks);
   const top=[...tks].sort((a,b)=>b.signed_change_rate-a.signed_change_rate).slice(0,10);
   const ids=new Set(top.map(t=>t.market));
   const list=state.markets.filter(m=>ids.has(m.market));
-  const rows=list.map(m=>({market:m.market,name:m.korean_name||m.english_name,ticker:top.find(x=>x.market===m.market),levels:levelsBasic(top.find(x=>x.market===m.market))}));
-  renderRows(rows); setStatus('상승 TOP10');
+  renderRows(buildRows(list, top, 'basic'));
+  state.lastList=list; start();
 };
 
-el.btnHot.onclick=async()=>{
+el.btnHot.onclick = async ()=>{
   setStatus('급등(분석) 탐색 중…');
-  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  const tks=await fetchTicker(state.markets);
+  if(!tks.length){ renderRows([], '지연 — 다시 시도'); return; }
   updateHistory(tks);
+  const list=state.markets;
   const rows=[];
-  for(const m of state.markets){
+  for(const m of list){
     const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
-    const st=oneMinStats(m.market); if(!st) continue;
-    if(st.pricePct1m>=THRESH.pct1mUp && st.accel>=THRESH.accel){
-      rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsBasic(tk)});
-    }
+    const arr=state.hist.get(m.market); if(!arr||arr.length<2) continue;
+    const now=Date.now(), target=now-60*1000;
+    let past=arr[0]; for(let i=arr.length-1;i>=0;i--){ if(arr[i].ts<=target){ past=arr[i]; break; } }
+    const cur=arr[arr.length-1], old=arr.find(x=>x.ts>=now-600*1000)||arr[0];
+    const base=(Math.max(0,cur.acc-old.acc))/Math.max(1,((cur.ts-old.ts)/60000));
+    const pct=past.price>0?(cur.price-past.price)/past.price:0;
+    const accel=base>0? (Math.max(0,cur.acc-past.acc)/base):0;
+    if(pct>=THRESH.pct1mUp && accel>=THRESH.accel) rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsBasic(tk)});
   }
-  rows.sort((a,b)=>b.ticker.signed_change_rate-a.ticker.signed_change_rate);
   renderRows(rows.slice(0,20));
-  setStatus(`급등(1m +3% & 가속 ≥1.8×) — ${rows.length}건`);
+  state.lastList=list; start();
 };
 
-el.btnFall.onclick=async()=>{
+el.btnFall.onclick = async ()=>{
   setStatus('급락(분석) 탐색 중…');
-  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  const tks=await fetchTicker(state.markets);
+  if(!tks.length){ renderRows([], '지연 — 다시 시도'); return; }
   updateHistory(tks);
+  const list=state.markets;
   const rows=[];
-  for(const m of state.markets){
+  for(const m of list){
     const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
     const st=oneMinStats(m.market); if(!st) continue;
-    if(st.pricePct1m<=THRESH.pct1mDown && st.accel>=THRESH.accel){
+    if(st.pricePct1m<=THRESH.pct1mDown && st.accel>=THRESH.accel)
       rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsBasic(tk)});
-    }
   }
-  rows.sort((a,b)=>a.ticker.signed_change_rate-b.ticker.signed_change_rate);
   renderRows(rows.slice(0,20));
-  setStatus(`급락(1m -3% & 가속 ≥1.8×) — ${rows.length}건`);
+  state.lastList=list; start();
 };
 
-el.btnPre.onclick=async()=>{
+el.btnPre.onclick = async ()=>{
   setStatus('예열(급상승 후보) 탐색 중…');
-  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  const tks=await fetchTicker(state.markets);
+  if(!tks.length){ renderRows([], '지연 — 다시 시도'); return; }
   updateHistory(tks);
+  const list=state.markets;
   const rows=[];
-  for(const m of state.markets){
+  for(const m of list){
     const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
     const st=oneMinStats(m.market); if(!st || !tk.high_price) continue;
-    const nearHigh = (tk.high_price>0) ? Math.max(0,(tk.high_price - tk.trade_price)/tk.high_price) : 1; // 보정
-    const condNear  = nearHigh <= THRESH.preNearHighPct;
-    const condMove  = st.pricePct1m >= THRESH.preMinMove && st.pricePct1m <= THRESH.preMaxMove;
-    const condAccel = st.accel >= THRESH.preAccel;
-    if(condNear && condMove && condAccel){
-      rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsForPresurge(tk,{...st,nearHigh})});
+    const near = (tk.high_price - tk.trade_price)/tk.high_price;
+    if(near<=THRESH.preNearHighPct && st.pricePct1m>=THRESH.preMinMove && st.pricePct1m<=THRESH.preMaxMove && st.accel>=THRESH.preAccel){
+      rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsForPresurge(tk, {...st,nearHigh:near})});
     }
   }
   rows.sort((a,b)=>{
@@ -352,20 +378,25 @@ el.btnPre.onclick=async()=>{
     return ah - bh;
   });
   renderRows(rows.slice(0,20));
-  setStatus(`예열(급상승 후보) — ${rows.length}건`);
+  state.lastList=list; start();
 };
 
-el.btnReset.onclick=()=>{ el.q.value=''; state.lastList=state.markets.slice(0,80); start(); };
-el.btn1s.onclick=()=>{ state.pollMs=1000; start(); };
-el.btn2s.onclick=()=>{ state.pollMs=2000; start(); };
-el.btn5s.onclick=()=>{ state.pollMs=5000; start(); };
-el.btnStop.onclick=()=>{ stop(); setStatus('일시정지'); };
+el.btnReset.onclick = ()=>{ el.q.value=''; state.lastList=state.markets.slice(0,40); start(); };
+el.btn1s.onclick = ()=>{ state.pollMs=1000; start(); };
+el.btn2s.onclick = ()=>{ state.pollMs=2000; start(); };
+el.btn5s.onclick = ()=>{ state.pollMs=5000; start(); };
+el.btnStop.onclick = ()=>{ stop(); setStatus('일시정지'); };
 
-// ===== 시작 =====
+/* -------------------- 시작 -------------------- */
 (async function init(){
-  await loadMarkets();
-  state.lastList=state.markets.slice(0,80);
-  start();
+  try{
+    await loadMarkets();
+    state.lastList = state.markets.slice(0,40);
+    start();
+  }catch(e){
+    console.error(e);
+    setStatus('마켓 로드 실패 — 새로고침(Ctrl+F5) 후 재시도');
+  }
 })();
 </script>
 </body>
