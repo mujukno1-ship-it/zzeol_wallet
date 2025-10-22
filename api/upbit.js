@@ -18,7 +18,7 @@ export default async function handler(req, res) {
       headers: {
         Accept: "application/json",
         "User-Agent": "zzeolwallet/1.0"
-      },
+      }, 
       // 최신값 강제
       cache: "no-store"
     });
