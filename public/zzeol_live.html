@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>사토시의지갑 v9.2.1 – KRW 실시간 한방버전</title>
+  <style>
+    body{margin:0;background:#0b0f14;color:#e8eefc;font-family:"Noto Sans KR",sans-serif}
+    .wrap{max-width:1100px;margin:20px auto;padding:16px}
+    .card{background:#111823;border-radius:16px;padding:14px;margin-bottom:16px}
+    input,button{border-radius:8px;border:1px solid #2a3b57;background:#0f1b2e;color:#dbe7ff}
+    table{width:100%;border-collapse:separate;border-spacing:0 8px;margin-top:10px}
+    td,th{padding:8px;text-align:left}
+    .up{color:#22c55e}.down{color:#ef4444}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h2>🔎 코인 검색 (KRW)</h2>
+    <input id="q" placeholder="이더리움 / ETH / KRW-ETH" style="width:70%;padding:8px">
+    <button id="searchBtn">검색</button>
+    <button id="topBtn">상승 TOP10</button>
+    <table>
+      <thead>
+        <tr><th>코인</th><th>현재가</th><th>등락</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어한마디</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const tbody=document.getElementById('tbody');
+const q=document.getElementById('q');
+const UPBIT={
+  markets:'https://api.upbit.com/v1/market/all?isDetails=true',
+  ticker:(list)=>`https://api.upbit.com/v1/ticker?markets=${list.join(',')}`
+};
+let markets=[];
+
+async function loadMarkets(){
+  const res=await fetch(UPBIT.markets);
+  const data=await res.json();
+  markets=data.filter(x=>x.market.startsWith('KRW-'));
+}
+function tick(price){
+  if(price>=2000000)return 1000;
+  if(price>=1000000)return 500;
+  if(price>=500000)return 100;
+  if(price>=100000)return 50;
+  if(price>=10000)return 10;
+  if(price>=1000)return 5;
+  if(price>=100)return 1;
+  if(price>=10)return 0.1;
+  if(price>=1)return 0.01;
+  return 0.001;
+}
+function fmt(p){
+  const t=tick(p);
+  const d=t>=1?0:t===0.1?1:t===0.01?2:3;
+  return Number(p).toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
+}
+function calc(t){
+  const p=t.trade_price;
+  const tck=tick(p);
+  const buy=p-tck*2,sell=p+tck*3,cut=p-tck*6;
+  const r=Math.abs(t.signed_change_rate);
+  const risk=r<0.01?1:r<0.02?2:r<0.035?3:r<0.06?4:5;
+  const say=risk<=2?"무난한 눌림 대기":"변동 주의. 절대 추격금지";
+  return{buy,sell,cut,risk,say};
+}
+async function search(name){
+  const key=name.toLowerCase();
+  const list=markets.filter(m=>
+    m.market.toLowerCase().includes(key)||
+    m.korean_name.toLowerCase().includes(key)||
+    m.english_name.toLowerCase().includes(key)
+  ).slice(0,20);
+  const codes=list.map(x=>x.market);
+  const res=await fetch(UPBIT.ticker(codes));
+  const data=await res.json();
+  render(data,list);
+}
+function render(data,list){
+  tbody.innerHTML='';
+  data.forEach(t=>{
+    const m=list.find(x=>x.market===t.market);
+    const cls=t.signed_change_rate>=0?'up':'down';
+    const lv=calc(t);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${m.korean_name}</td>
+    <td class="${cls}">${fmt(t.trade_price)}</td>
+    <td class="${cls}">${(t.signed_change_rate*100).toFixed(2)}%</td>
+    <td>${fmt(lv.buy)}</td>
+    <td>${fmt(lv.sell)}</td>
+    <td>${fmt(lv.cut)}</td>
+    <td>${lv.risk}</td>
+    <td>${lv.say}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+async function top10(){
+  const list=markets.slice(0,200);
+  const res=await fetch(UPBIT.ticker(list.map(x=>x.market)));
+  const data=await res.json();
+  const top=data.sort((a,b)=>b.signed_change_rate-a.signed_change_rate).slice(0,10);
+  render(top,markets);
+}
+document.getElementById('searchBtn').onclick=()=>search(q.value);
+q.onkeydown=e=>{if(e.key==='Enter')search(q.value)};
+document.getElementById('topBtn').onclick=top10;
+loadMarkets();
+</script>
+</body>
+</html>
