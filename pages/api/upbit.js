@@ -1,10 +1,7 @@
 // pages/api/upbit.js
 export default async function handler(req, res) {
   const target = req.query.url;
-  if (!target) {
-    res.status(400).json({ error: "Missing url query param" });
-    return;
-  }
+  if (!target) return res.status(400).json({ error: "Missing url query param" });
   try {
     const r = await fetch(target);
     const text = await r.text();
