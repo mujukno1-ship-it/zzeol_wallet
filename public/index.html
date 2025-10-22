@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>사토시의지갑 v9.3.1 – 급상승 후보(예열) 스캐너</title>
+<title>사토시의지갑 v9.3.2 – 분석기반(급등·급락·예열) 안정판</title>
 <style>
   :root{--bg:#0b0f14;--panel:#111823;--muted:#7c8aa5;--text:#e8eefc;--up:#22c55e;--down:#ef4444;--btn:#0f1b2e;--btnb:#2a3b57}
   *{box-sizing:border-box}
@@ -15,7 +15,6 @@
   input,button{border-radius:12px;border:1px solid var(--btnb);background:var(--btn);color:#dbe7ff}
   input{padding:12px 14px;flex:1;min-width:220px}
   button{padding:10px 12px;cursor:pointer}
-  .hint{font-size:12px;color:var(--muted);margin-top:6px}
   table{width:100%;border-collapse:separate;border-spacing:0 8px;margin-top:12px}
   thead th{font-size:12px;color:#8fa4c7;text-align:left;padding:0 10px}
   tbody tr{background:#0e1520;border:1px solid #1d2a40}
@@ -34,7 +33,7 @@
 <body>
 <div class="wrap">
   <div class="card">
-    <h2>🔎 코인 검색 (KRW 전용) — 급상승 후보 스캐너</h2>
+    <h2>🔎 코인 검색 (KRW 전용, 분석기반)</h2>
     <div class="row">
       <input id="q" placeholder="코인명/티커 (예: 이더리움, ETH, KRW-ETH)">
       <button id="btnSearch">검색</button>
@@ -49,7 +48,7 @@
       <button id="btn2s">2초</button>
       <button id="btn5s">5초</button>
       <button id="btnStop">정지</button>
-      <span class="badge">예열 기준: 고가 근접 ≤0.5%, 1m +0.2~2.0%, 1m 거래대금 ≥10m 평균의 1.6×</span>
+      <span class="badge">예열: 고가근접 ≤0.5%, 1m +0.2~2.0%, 가속 ≥1.6×</span>
     </div>
     <div class="status" id="status">대기중…</div>
 
@@ -63,7 +62,7 @@
           <th style="width:12%">매도</th>
           <th style="width:12%">손절</th>
           <th style="width:8%">시그널</th>
-          <th>분석(근접/1m변동/가속)</th>
+          <th>분석</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -79,15 +78,8 @@
 <script>
 // ===== 임계값 =====
 const THRESH = {
-  pct1mUp: 0.03,        // 급등
-  pct1mDown: -0.03,     // 급락
-  accel: 1.8,
-  windowSec: 60,
-  baselineMin: 600,     // 10분
-  preNearHighPct: 0.005, // 0.5%
-  preMinMove: 0.002,     // 0.2%
-  preMaxMove: 0.020,     // 2.0%
-  preAccel: 1.6
+  pct1mUp: 0.03, pct1mDown: -0.03, accel: 1.8, windowSec: 60, baselineMin: 600,
+  preNearHighPct: 0.005, preMinMove: 0.002, preMaxMove: 0.020, preAccel: 1.6
 };
 const POLL_DEFAULT = 1000;
 
@@ -142,7 +134,7 @@ function setStatus(s){ el.status.textContent = s; }
 // ===== 데이터 로드 =====
 async function loadMarkets(){
   setStatus('마켓 목록 로드 중…');
-  const res = await fetch(UPBIT.markets);
+  const res = await fetch(UPBIT.markets, {cache:'no-store', headers:{Accept:'application/json'}});
   const data = await res.json();
   const krw = data.filter(x=>x.market?.startsWith('KRW-'));
   state.markets = krw;
@@ -160,16 +152,28 @@ async function loadMarkets(){
   setStatus(`KRW 마켓 ${krw.length}종 로드 완료`);
 }
 
-// ===== 배치 ticker =====
+// ===== 안정형 ticker (배치+재시도) =====
 async function fetchTicker(list){
   if(!list.length) return [];
   const codes = list.map(x=>x.market);
-  const chunk=100, out=[];
+  const chunk=80; // 보수적으로
+  const out=[];
   for(let i=0;i<codes.length;i+=chunk){
     const part=codes.slice(i,i+chunk);
-    const r=await fetch(UPBIT.ticker(part));
-    if(!r.ok) continue;
-    out.push(...await r.json());
+    let ok=false, tries=0, data=[];
+    while(!ok && tries<3){
+      tries++;
+      try{
+        const r=await fetch(UPBIT.ticker(part), {cache:'no-store', headers:{Accept:'application/json'}});
+        if(r.ok){ data=await r.json(); ok=true; }
+        else { await new Promise(res=>setTimeout(res, 150*tries)); }
+      }catch(e){
+        await new Promise(res=>setTimeout(res, 200*tries));
+      }
+    }
+    out.push(...data);
+    // 배치 간 간격
+    await new Promise(res=>setTimeout(res, 120));
   }
   return out;
 }
@@ -193,23 +197,23 @@ function oneMinStats(key){
   const delta10m=Math.max(0,(cur.acc-old.acc)); const basePerMin=delta10m/Math.max(1,((cur.ts-old.ts)/60000));
   const pricePct1m=past.price>0? (cur.price-past.price)/past.price : 0;
   const delta1m=Math.max(0,cur.acc-past.acc); const accel=basePerMin>0? (delta1m/basePerMin):(delta1m>0?99:0);
-  const nearHigh = cur.price>0 && cur.high>0 ? 1 - (cur.high/cur.price) : 1; // 음수면 고가 돌파 중
-  return {pricePct1m, accel, curPrice:cur.price, high:cur.high, nearHigh:Math.abs(nearHigh)};
+  // 고가근접 = (고가 - 현재가) / 고가  (0이면 고가와 동일)
+  const nearHigh = (cur.high>0) ? Math.max(0,(cur.high - cur.price)/cur.high) : 1;
+  return {pricePct1m, accel, curPrice:cur.price, high:cur.high, nearHigh};
 }
 
-// ===== 시그널 기반 타점 =====
-function levelsForPresurge(tk, st){ // 예열: 급상승 후보
+// ===== 타점 =====
+function levelsBasic(tk){
   const p=Number(tk.trade_price), tkc=krwTick(p);
-  // 살짝 눌림 진입, 짧은 익절, 짧은 손절
+  return {buy:p-2*tkc, sell:p+3*tkc, cut:p-6*tkc, sig:'기본', say:'기본'};
+}
+function levelsForPresurge(tk, st){
+  const p=Number(tk.trade_price), tkc=krwTick(p);
   const buy  = p - Math.max(tkc, p*0.0015);
   const sell = p + Math.max(3*tkc, p*0.006);
   const cut  = p - Math.max(3*tkc, p*0.004);
-  const say  = `고점근접 ${(st.nearHigh*100).toFixed(2)}%, 1m ${(st.pricePct1m*100).toFixed(2)}%, 가속 ${st.accel.toFixed(1)}×`;
+  const say  = `고가근접 ${(st.nearHigh*100).toFixed(2)}%, 1m ${(st.pricePct1m*100).toFixed(2)}%, 가속 ${st.accel.toFixed(1)}×`;
   return {buy,sell,cut,sig:'예열',say};
-}
-function levelsBasic(tk){ // 기본
-  const p=Number(tk.trade_price), tkc=krwTick(p);
-  return {buy:p-2*tkc, sell:p+3*tkc, cut:p-6*tkc, sig:'기본', say:'기본 타점'};
 }
 
 // ===== 렌더 =====
@@ -257,6 +261,7 @@ async function poll(){
   try{
     const base = state.lastList.length? state.lastList : state.markets.slice(0,80);
     const tks=await fetchTicker(base);
+    if(!tks.length){ setStatus('재시도 중…'); return; }
     updateHistory(tks);
     const rows=base.map(m=>{
       const tk=tks.find(x=>x.market===m.market); if(!tk) return null;
@@ -269,13 +274,21 @@ async function poll(){
 function start(){ stop(); state.timer=setInterval(poll,state.pollMs); poll(); }
 function stop(){ if(state.timer){ clearInterval(state.timer); state.timer=null; } }
 
-// ===== 버튼 핸들러 =====
-el.btnSearch.onclick=()=>{ state.lastList=searchLocal(el.q.value); start(); };
+// ===== 버튼 =====
+el.btnSearch.onclick=async ()=>{
+  const list=searchLocal(el.q.value);
+  state.lastList=list;
+  // 검색은 단일 배치 호출(응답 실패 대비 재시도)
+  const tks=await fetchTicker(list);
+  if(!tks.length){ setStatus('검색 응답 지연 — 다시 시도 중…'); const t2=await fetchTicker(list); updateHistory(t2); }
+  start();
+};
 el.q.onkeydown=e=>{ if(e.key==='Enter') el.btnSearch.click(); };
 
 el.btnTop.onclick=async()=>{
   setStatus('상승 TOP10 계산 중…');
-  const tks=await fetchTicker(state.markets); updateHistory(tks);
+  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  updateHistory(tks);
   const top=[...tks].sort((a,b)=>b.signed_change_rate-a.signed_change_rate).slice(0,10);
   const ids=new Set(top.map(t=>t.market));
   const list=state.markets.filter(m=>ids.has(m.market));
@@ -285,7 +298,8 @@ el.btnTop.onclick=async()=>{
 
 el.btnHot.onclick=async()=>{
   setStatus('급등(분석) 탐색 중…');
-  const tks=await fetchTicker(state.markets); updateHistory(tks);
+  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  updateHistory(tks);
   const rows=[];
   for(const m of state.markets){
     const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
@@ -301,7 +315,8 @@ el.btnHot.onclick=async()=>{
 
 el.btnFall.onclick=async()=>{
   setStatus('급락(분석) 탐색 중…');
-  const tks=await fetchTicker(state.markets); updateHistory(tks);
+  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  updateHistory(tks);
   const rows=[];
   for(const m of state.markets){
     const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
@@ -315,15 +330,15 @@ el.btnFall.onclick=async()=>{
   setStatus(`급락(1m -3% & 가속 ≥1.8×) — ${rows.length}건`);
 };
 
-// ★ 예열(급상승 후보)
 el.btnPre.onclick=async()=>{
   setStatus('예열(급상승 후보) 탐색 중…');
-  const tks=await fetchTicker(state.markets); updateHistory(tks);
+  const tks=await fetchTicker(state.markets); if(!tks.length){ setStatus('지연… 다시 시도'); return; }
+  updateHistory(tks);
   const rows=[];
   for(const m of state.markets){
     const tk=tks.find(x=>x.market===m.market); if(!tk) continue;
     const st=oneMinStats(m.market); if(!st || !tk.high_price) continue;
-    const nearHigh = Math.abs(1 - (tk.high_price / tk.trade_price)); // 0이면 고가
+    const nearHigh = (tk.high_price>0) ? Math.max(0,(tk.high_price - tk.trade_price)/tk.high_price) : 1; // 보정
     const condNear  = nearHigh <= THRESH.preNearHighPct;
     const condMove  = st.pricePct1m >= THRESH.preMinMove && st.pricePct1m <= THRESH.preMaxMove;
     const condAccel = st.accel >= THRESH.preAccel;
@@ -331,10 +346,9 @@ el.btnPre.onclick=async()=>{
       rows.push({market:m.market,name:m.korean_name||m.english_name,ticker:tk,levels:levelsForPresurge(tk,{...st,nearHigh})});
     }
   }
-  // 돌파 임박 순으로 정렬(고가에 더 근접한 순)
   rows.sort((a,b)=>{
-    const ah=Math.abs(1 - (a.ticker.high_price/a.ticker.trade_price));
-    const bh=Math.abs(1 - (b.ticker.high_price/b.ticker.trade_price));
+    const ah=(a.ticker.high_price-a.ticker.trade_price)/a.ticker.high_price;
+    const bh=(b.ticker.high_price-b.ticker.trade_price)/b.ticker.high_price;
     return ah - bh;
   });
   renderRows(rows.slice(0,20));
