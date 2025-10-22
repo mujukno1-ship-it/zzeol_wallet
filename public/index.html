@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>사토시의지갑 v9.4.1 — 하이브리드 안정판(WS+REST 폴백)</title>
+<title>사토시의지갑 v9.6.0 — Human Edition (WS+REST 하이브리드, 예열+사람형 타점)</title>
 <style>
   :root{--bg:#0b0f14;--panel:#111823;--muted:#7c8aa5;--text:#e8eefc;--up:#22c55e;--down:#ef4444;--btn:#0f1b2e;--btnb:#2a3b57}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,"Noto Sans KR",Segoe UI,Roboto,Arial}
@@ -16,25 +16,51 @@
   .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
   .badge{padding:6px 10px;border-radius:999px;background:#151f2f;border:1px solid #25344f;font-size:12px}
   .status{margin-top:6px;font-size:12px;color:#9bb0d1}
+
   table{width:100%;border-collapse:separate;border-spacing:0 8px;margin-top:12px}
   thead th{font-size:12px;color:#8fa4c7;text-align:left;padding:0 10px}
   tbody tr{background:#0e1520;border:1px solid #1d2a40} tbody td{padding:10px}
   tbody tr td:first-child{border-radius:10px 0 0 10px} tbody tr td:last-child{border-radius:0 10px 10px 0}
   .price{font-variant-numeric:tabular-nums} .up{color:var(--up)} .down{color:var(--down)}
   .tag{font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid #2a3956;color:#9fb6db;background:#111a27}
+
   .pill-wrap{display:flex;flex-wrap:wrap;align-items:flex-start}
   .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;margin:6px;border:1px solid #26344f;border-radius:999px;background:#0f1726}
   .pill.new{box-shadow:0 0 0 2px rgba(34,197,94,.35)} .pill .sym{font-weight:700} .pill .m{font-size:12px;color:#a7b7d4}
+
+  .signals{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
+  .sig{display:flex;justify-content:space-between;align-items:center;border:1px solid #26344f;background:#0f1726;border-radius:12px;padding:10px}
+  .sig .left{display:flex;gap:10px;align-items:center}
+  .sig .sym{font-weight:700}
+  .sig .msg{font-size:13px;color:#cfe2ff}
+  .sig .risk{font-size:12px;color:#9bb0d1}
+  .sig .act{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid #2a3956;background:#111a27}
+  .act.buy{color:#9ff4b1;border-color:#2b5b3a}
+  .act.sell{color:#ffb4b4;border-color:#6b2b2b}
+  .act.hold{color:#c9d4eb;border-color:#2a3956}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <!-- 🔥 예열 자동예측: 항상 보이고 누적(최신이 위) -->
+  <!-- 🔥 예열 자동예측: 항상 보이는 상단 고정 -->
   <div class="card">
     <h2>🔥 예열 자동예측 (항상 활성/최신 우선)</h2>
     <div class="badge">기준: 고가근접 ≤0.5%, 1m +0.2~2.0%, 가속 ≥1.6×</div>
     <div id="preheatBox" class="pill-wrap status" style="margin-top:10px">초기 스캔 중…</div>
+  </div>
+
+  <!-- 🧭 사람형 AI 매수·매도 타점 (Human Edition) -->
+  <div class="card">
+    <h2>🧭 사람형 AI 타점 (1h·4h·1d 종합) — 문장형 제안</h2>
+    <div class="toolbar">
+      <span class="badge" id="netBadge">네트워크: 초기화 중…</span>
+      <span class="badge" id="rxBadge">수신 0건 · 마지막 —</span>
+      <span class="badge">WS 우선, 실패 시 REST 1s 폴백</span>
+    </div>
+    <div class="signals" id="signalsBox">
+      <div class="status">예열 상위 후보를 기준으로 분석 중…(사람용 타점)</div>
+    </div>
   </div>
 
   <!-- 검색/리스트 -->
@@ -49,13 +75,7 @@
       <button id="btnPre" disabled>예열(표로 보기)</button>
       <button id="btnReset" disabled>초기화</button>
     </div>
-    <div class="toolbar">
-      <span class="badge" id="netBadge">네트워크: 초기화 중…</span>
-      <span class="badge" id="rxBadge">수신 0건 · 마지막 —</span>
-      <span class="badge">WS 우선, 실패 시 REST 1s 폴백</span>
-    </div>
     <div class="status" id="status">마켓 목록 로드 중…</div>
-
     <table>
       <thead>
         <tr>
@@ -76,7 +96,7 @@
   <!-- 시스템 상태 -->
   <div class="card">
     <h2>⚙️ 시스템 상태</h2>
-    <div class="status">업비트 WebSocket + REST 하이브리드. 연결 끊김 감지 시 자동 전환.</div>
+    <div class="status">업비트 WebSocket + REST 하이브리드. 예열 상시패널 + 사람형 타점 엔진.</div>
   </div>
 </div>
 
@@ -88,7 +108,7 @@ const PREHEAT_TTL_MS = 30*60*1000, PREHEAT_MAX = 48;
 
 /* ===== 엘리먼트 ===== */
 const el={ q:byId('q'), tbody:byId('tbody'), status:byId('status'), netBadge:byId('netBadge'),
-  rxBadge:byId('rxBadge'), preheatBox:byId('preheatBox'),
+  rxBadge:byId('rxBadge'), preheatBox:byId('preheatBox'), signalsBox:byId('signalsBox'),
   btnSearch:byId('btnSearch'), btnTop:byId('btnTop'), btnHot:byId('btnHot'), btnFall:byId('btnFall'),
   btnPre:byId('btnPre'), btnReset:byId('btnReset') };
 function byId(id){return document.getElementById(id)}
@@ -122,8 +142,7 @@ async function loadMarkets(){
       .filter(Boolean).map(x=>x.toLowerCase());
     for(const k of keys) (state.dict[k]??=[]).push(m);
   }
-  el.status.textContent=`KRW ${krw.length}종 로드 완료`;
-  enableAll();
+  el.status.textContent=`KRW ${krw.length}종 로드 완료`; enableAll();
 }
 
 /* ===== WS + REST 하이브리드 ===== */
@@ -142,7 +161,6 @@ function startWS(){
     ws.onerror=()=>{ state.mode='WS 오류'; setNetBadge(); fallbackREST(); };
     state.wsSockets.push(ws);
   }
-  // 5초 동안 수신 없으면 REST로 폴백
   setTimeout(()=>{ if(Date.now()-state.lastRxTs>5000){ fallbackREST(); } }, 5000);
 }
 function stopWS(){ state.wsSockets.forEach(s=>{try{s.close()}catch{}}); state.wsSockets=[]; }
@@ -152,20 +170,17 @@ async function fallbackREST(){
   clearInterval(state.restTimer);
   state.restTimer=setInterval(async ()=>{
     try{
-      // 100개씩 끊어서 호출
-      const codes=state.markets.map(m=>m.market); const chunk=100;
+      const codes=state.markets.map(m=>m.market); const chunk=100; const now=Date.now();
       for(let i=0;i<codes.length;i+=chunk){
         const part=codes.slice(i,i+chunk);
         const r=await fetch(`https://api.upbit.com/v1/ticker?markets=${part.join(',')}`,{cache:'no-store'});
         if(!r.ok) continue; const arr=await r.json();
-        const now=Date.now();
         for(const t of arr){
           const item={market:t.market, trade_price:t.trade_price, high_price:t.high_price, signed_change_rate:t.signed_change_rate, acc_trade_price_24h:t.acc_trade_price_24h||0, ts:now};
           state.tickers.set(item.market,item); pushHist(item); state.rxCount++; state.lastRxTs=now;
         }
       }
       setRxBadge(); scanPreheatLite();
-      // 데이터가 잘 들어오면 WS 재시도
       if(state.mode==='REST 폴링중' && Date.now()-state.lastRxTs<1500){ startWS(); }
     }catch(e){ /* 조용히 재시도 */ }
   }, 1000);
@@ -191,7 +206,6 @@ function preheatScore(st){ const nearScore=1-Math.min(1,st.nearHigh); const acce
   const pctBonus=Math.max(0,Math.min(1,(st.pricePct1m-0.002)/(0.02-0.002))); return nearScore*.5+accelScore*.35+pctBonus*.15; }
 function upsertPreheat(mkt, st){ const now=Date.now(); const prev=state.preheat.get(mkt);
   state.preheat.set(mkt,{nearHigh:st.nearHigh,pricePct1m:st.pricePct1m,accel:st.accel,score:preheatScore(st),firstSeen:prev?.firstSeen??now,lastSeen:now});
-  // 정리
   const del=[]; state.preheat.forEach((v,k)=>{ if(now-v.lastSeen>PREHEAT_TTL_MS) del.push(k); }); del.forEach(k=>state.preheat.delete(k));
   if(state.preheat.size>PREHEAT_MAX){ const arr=[...state.preheat.entries()].sort((a,b)=>(a[1].lastSeen-b[1].lastSeen)||(a[1].score-b[1].score));
     for(let i=0;i<state.preheat.size-PREHEAT_MAX;i++) state.preheat.delete(arr[i][0]); }
@@ -217,6 +231,8 @@ function scanPreheatLite(){
       }
     }
     renderPreheat();
+    // 예열 상위 후보를 기준으로 사람형 타점 갱신
+    humanSignalsRefresh();
   }, 250);
 }
 
@@ -255,6 +271,186 @@ function buildRows(list, mode='basic'){
   }
   return rows;
 }
+
+/* ===== 사람형 타점(Human Edition) =====
+   - 예열 상위 10개 기준으로 1h/4h/1d 캔들 분석
+   - RSI(14), MACD(12,26,9), 볼린저(20,2) 계산
+   - 문장형: 매수/보류/익절/전량매도 + 위험도
+*/
+async function humanSignalsRefresh(){
+  const candidates = [...state.preheat.entries()]
+    .map(([m,v])=>({market:m, score:v.score, lastSeen:v.lastSeen}))
+    .sort((a,b)=>(b.lastSeen-a.lastSeen)||(b.score-a.score))
+    .slice(0,10);
+  if(!candidates.length){ el.signalsBox.innerHTML='<div class="status">예열 후보가 생기면 사람형 타점을 자동으로 분석합니다.</div>'; return; }
+
+  // 캔들 가져오기(부하 줄이기: 병렬 3*N, Upbit CORS 허용)
+  const analyses = [];
+  for(const c of candidates){
+    analyses.push(analyzeMarketHuman(c.market));
+  }
+  const results = await Promise.allSettled(analyses);
+  const ok = results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+
+  if(!ok.length){
+    el.signalsBox.innerHTML='<div class="status">캔들 데이터 응답 지연 — 잠시 후 자동 재시도</div>';
+    return;
+  }
+  // 렌더
+  renderHumanSignals(ok);
+}
+
+// Upbit candle endpoints
+async function fetchCandles(market, frame){
+  if(frame==='1h')  return fetchJSON(`https://api.upbit.com/v1/candles/minutes/60?market=${market}&count=200`);
+  if(frame==='4h')  return fetchJSON(`https://api.upbit.com/v1/candles/minutes/240?market=${market}&count=200`);
+  if(frame==='1d')  return fetchJSON(`https://api.upbit.com/v1/candles/days?market=${market}&count=200`);
+  return [];
+}
+async function fetchJSON(url){
+  for(let i=0;i<3;i++){
+    try{ const r=await fetch(url,{cache:'no-store'}); if(r.ok) return r.json(); }catch(e){}
+    await new Promise(res=>setTimeout(res,120*(i+1)));
+  }
+  return [];
+}
+
+// Indicators
+function rsi(values, period=14){
+  if(values.length<period+1) return [];
+  const out=new Array(values.length).fill(null);
+  let gain=0, loss=0;
+  for(let i=1;i<=period;i++){
+    const ch=values[i-1]-values[i];
+    if(ch>0) gain+=ch; else loss+=-ch;
+  }
+  let avgGain=gain/period, avgLoss=loss/period;
+  out[period]= 100 - (100/(1+(avgGain/(avgLoss||1e-9))));
+  for(let i=period+1;i<values.length;i++){
+    const ch=values[i-1]-values[i];
+    const g=ch>0?ch:0, l=ch<0?-ch:0;
+    avgGain=(avgGain*(period-1)+g)/period;
+    avgLoss=(avgLoss*(period-1)+l)/period;
+    const rs=avgGain/(avgLoss||1e-9);
+    out[i]=100-(100/(1+rs));
+  }
+  return out;
+}
+function ema(values, period){
+  const k=2/(period+1), out=new Array(values.length).fill(null);
+  let prev=values[0];
+  for(let i=0;i<values.length;i++){
+    const val=values[i];
+    prev = i===0 ? val : (val - prev)*k + prev;
+    out[i]=prev;
+  }
+  return out;
+}
+function macd(values, fast=12, slow=26, signal=9){
+  if(values.length<slow+signal) return {macd:[], signal:[], hist:[]};
+  const rev=[...values].reverse(); // 최신이 앞
+  const emaFast=ema(rev, fast), emaSlow=ema(rev, slow);
+  const macdLine=emaFast.map((v,i)=>v - (emaSlow[i]??v));
+  const signalLine=ema(macdLine, signal);
+  const hist=macdLine.map((v,i)=>v - (signalLine[i]??v));
+  // 다시 최신이 뒤로 가도록 reverse
+  return {macd:macdLine.reverse(), signal:signalLine.reverse(), hist:hist.reverse()};
+}
+function sma(values, period){
+  const out=new Array(values.length).fill(null);
+  let sum=0;
+  for(let i=0;i<values.length;i++){
+    sum+=values[i];
+    if(i>=period) sum-=values[i-period];
+    if(i>=period-1) out[i]=sum/period;
+  }
+  return out;
+}
+function bollinger(values, period=20, mult=2){
+  const ma=sma(values,period), out=values.map(()=>({mid:null, up:null, dn:null}));
+  for(let i=0;i<values.length;i++){
+    if(i<period-1){ out[i]={mid:null,up:null,dn:null}; continue; }
+    const slice=values.slice(i-period+1,i+1);
+    const mean=ma[i];
+    const variance=slice.reduce((a,b)=>a+Math.pow(b-mean,2),0)/slice.length;
+    const sd=Math.sqrt(variance);
+    out[i]={mid:mean, up:mean+mult*sd, dn:mean-mult*sd};
+  }
+  return out;
+}
+
+async function analyzeMarketHuman(market){
+  // 최신이 첫 원소로 오는 Upbit candle 응답 → 역순 처리
+  const [h1, h4, d1] = await Promise.all([fetchCandles(market,'1h'), fetchCandles(market,'4h'), fetchCandles(market,'1d')]);
+  if(!(h1.length&&h4.length&&d1.length)) throw new Error('no candles');
+  const close1h=h1.map(c=>c.trade_price).reverse();
+  const close4h=h4.map(c=>c.trade_price).reverse();
+  const close1d=d1.map(c=>c.trade_price).reverse();
+
+  const r1=rsi(close1h), r4=rsi(close4h), rD=rsi(close1d);
+  const m1=macd(close1h), m4=macd(close4h), mD=macd(close1d);
+  const b1=bollinger(close1h), b4=bollinger(close4h), bD=bollinger(close1d);
+
+  const last=(arr)=>arr[arr.length-1];
+  const priceH1=last(close1h), price4h=last(close4h), price1d=last(close1d);
+
+  // 신호 평가(사람형 규칙)
+  const sigs=[];
+  // 매수 준비: 일봉 RSI<40 & 4h MACD 상향 전환 근처 & 1h 가격이 BB 중단선 위 재안착
+  const buyPrep = (last(rD)<40) && (last(m4.hist)>-1e-9) && (last(b1).mid && priceH1>=last(b1).mid);
+  if(buyPrep) sigs.push({type:'buy', txt:'일봉 저점권 + 4h MACD 개선 + 1h 중단선 안착 — 매수 준비', risk:scoreRisk(rD,r4,m4,priceH1,b1)});
+
+  // 매수 확정: 4h MACD>signal & 1h RSI 45→55 상승 & 1h 종가가 BB 중단선 상방 유지
+  const buyNow = (last(m4.macd)>last(m4.signal)) && (last(r1)>55 && r1[r1.length-2]<50) && (priceH1>=(last(b1).mid||priceH1*0.999));
+  if(buyNow) sigs.push({type:'buy', txt:'4h 상방 전환 확인 + 1h RSI 50→55 상향 — 1차 진입', risk:scoreRisk(rD,r4,m4,priceH1,b1)});
+
+  // 익절: 1h 가격이 BB 상단 근접 & 4h RSI>65 & MACD 히스토그램 둔화
+  const takeProfit = (last(b1).up && priceH1>=last(b1).up*0.992) && (last(r4)>65) && (m4.hist[m4.hist.length-1] < m4.hist[m4.hist.length-2]);
+  if(takeProfit) sigs.push({type:'sell', txt:'단기 과열(1h 상단밴드 근접) + 4h 과열 — 분할 익절', risk:scoreRisk(rD,r4,m4,priceH1,b1)});
+
+  // 전량 매도: 일봉 MACD 데드크로스 & 4h RSI<45
+  const exitAll = (last(mD.macd)<last(mD.signal)) && (last(r4)<45);
+  if(exitAll) sigs.push({type:'sell', txt:'일봉 추세 반전(데드) + 4h 약세 — 전량 청산', risk:scoreRisk(rD,r4,m4,priceH1,b1)});
+
+  // 관망: 뚜렷한 신호 없음
+  if(!sigs.length) sigs.push({type:'hold', txt:'방향성 미확정 — 관망(조건 대기)', risk:scoreRisk(rD,r4,m4,priceH1,b1)});
+
+  return {market, sigs};
+}
+function scoreRisk(rD,r4,m4,price,b1){
+  // 단순 위험도: 일봉 RSI 낮을수록↓, 4h MACD 양호할수록↓, 1h 상단밴드 과열이면↑
+  const base = Math.max(0, (lastVal(rD)-30)/50); // 0~1
+  const macdBoost = lastVal(m4.hist)>0 ? -0.15 : 0.15;
+  const bb = lastVal(b1); const bbHeat = (bb.up && price>bb.up)? 0.25 : 0;
+  return Math.max(0.8, Math.min(2.2, 1.0 + base + macdBoost + bbHeat)); // 0.8~2.2
+}
+function lastVal(arr){ return arr && arr.length ? arr[arr.length-1] : 0; }
+
+function renderHumanSignals(items){
+  // items: [{market, sigs:[{type,txt,risk}...]}]
+  const byFresh=[...state.preheat.entries()].reduce((a,[m,v])=>{a[m]=v.lastSeen;return a;}, {});
+  const sorted = items.sort((a,b)=>(byFresh[b.market]||0)-(byFresh[a.market]||0));
+  el.signalsBox.innerHTML='';
+  for(const it of sorted){
+    // 가장 우선 신호 1개만 보여주되(사람형), 전체는 title로
+    const top = it.sigs[0];
+    const actClass = top.type==='buy'?'buy':(top.type==='sell'?'sell':'hold');
+    const div=document.createElement('div'); div.className='sig';
+    div.innerHTML = `
+      <div class="left">
+        <span class="sym">${it.market.replace('KRW-','')}</span>
+        <span class="msg">${escapeHTML(top.txt)}</span>
+      </div>
+      <div class="right">
+        <span class="risk">위험도 ${top.risk.toFixed(2)}</span>
+        <span class="act ${actClass}">${top.type==='buy'?'매수':top.type==='sell'?'매도':'관망'}</span>
+      </div>
+    `;
+    div.title = it.sigs.map(s=>`${s.type.toUpperCase()} • ${s.txt} • 위험도 ${s.risk.toFixed(2)}`).join('\n');
+    el.signalsBox.appendChild(div);
+  }
+}
+function escapeHTML(s){ return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
 
 /* ===== 버튼 ===== */
 el.btnSearch.onclick=()=>{ const list=searchLocal(el.q.value); renderRows(buildRows(list,'basic'),'검색 결과 없음'); };
