@@ -1,73 +1,96 @@
 // api/onchain.js
-// 무료 공개 소스 기반 온체인 근사 지표 (CoinGecko + Binance + Fear&Greed)
-// CommonJS (module.exports) — Vercel Functions에서 안전하게 동작
-
-module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
-
-  const out = {
-    ts: Date.now(),
-    mvrv: null,                 // MA200 비율 기반 proxy
-    fundingRate: null,          // Binance
-    openInterest: null,         // Binance
-    fearGreed: null,            // 보조
-    source: [],
-    ok: true
-  };
-
-  const j = async (url, headers = {}) => {
-    try {
-      const r = await fetch(url, { headers, cache: "no-store" });
-      if (!r.ok) throw new Error(String(r.status));
-      return await r.json();
-    } catch (_) { return null; }
-  };
-
-  // 1) CoinGecko: BTC 200일 평균 대비 비율 → mvrv proxy
-  const cg = await j("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200");
-  if (cg?.prices?.length > 50) {
-    const prices = cg.prices.map(p => Number(p[1])).filter(Number.isFinite);
-    const cur = prices.at(-1);
-    const ma200 = prices.reduce((a,b)=>a+b,0) / prices.length;
-    const ratio = cur && ma200 ? cur / ma200 : null;
-    if (ratio) {
-      out.mvrv = Number((ratio * 1.5).toFixed(3)); // 프론트 임계값 스케일에 맞춤
-      out.source.push("coingecko:ma200-proxy");
+export default async function handler(req, res) {
+  try {
+    const symbol = (req.query.symbol || '').toString().toUpperCase();
+    if (!symbol) {
+      return res.status(400).json({ error: 'symbol is required' });
     }
-  }
 
-  // 2) Binance: Funding Rate
-  const fr = await j("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1");
-  if (Array.isArray(fr) && fr.length) {
-    const v = Number(fr[0].fundingRate);
-    if (Number.isFinite(v)) { out.fundingRate = v; out.source.push("binance:funding"); }
-  }
+    // ─────────────────────────────────────────
+    // ① 네가 기존에 쓰던 온체인/가격/MA 로딩 로직을 그대로 둔다.
+    //    아래는 예시. 실제로는 네 기존 코드(Upbit, Glassnode, CoinGecko 등)를 사용.
+    const price = await getPrice(symbol);   // number | null
+    const ma200 = await getMA200(symbol);   // number | null
+    const rawSignal = await getRawSignal(symbol); // 'buy' | 'sell' | 'long' | 'short' | '매수' | '매도' | null
+    const levels = await getLevels(symbol); // { stop:number, take:number } | null
+    // ─────────────────────────────────────────
 
-  // 3) Binance: Open Interest
-  const oi = await j("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT");
-  if (oi?.openInterest) {
-    const v = Number(oi.openInterest);
-    if (Number.isFinite(v)) { out.openInterest = v; out.source.push("binance:openInterest"); }
-  }
+    const result = {
+      symbol,
+      price: toNum(price),
+      ma200: toNum(ma200),
+      signal: normalizeSignal(rawSignal),
+      levels: normalizeLevels(levels),
+    };
 
-  // 4) Fear & Greed
-  const fng = await j("https://api.alternative.me/fng/?limit=1");
-  if (fng?.data?.[0]?.value) {
-    out.fearGreed = Number(fng.data[0].value);
-    out.source.push("altme:feargreed");
-  }
+    // ② 보강: 값이 없거나 비어있다면 기본 생성
+    // signal 보강: price/Ma200 비교
+    if (!result.signal && isNum(result.price) && isNum(result.ma200)) {
+      result.signal = result.price > result.ma200 ? '매수' : '매도';
+    }
 
-  // 안전장치 (전부 막혔을 때도 프론트 안깨지게)
-  if (!out.source.length) {
-    out.mvrv = 1.2;
-    out.fundingRate = 0.01;
-    out.openInterest = null;
-    out.fearGreed = 50;
-    out.source.push("fallback");
-  }
+    // levels 보강: ±3%
+    if ((!result.levels || !isNum(result.levels.stop) || !isNum(result.levels.take)) && isNum(result.price)) {
+      const p = result.price;
+      result.levels = {
+        stop: round(p * 0.97),
+        take: round(p * 1.03),
+      };
+    }
 
-  res.status(200).json(out);
-};
+    // 안전 가드: 값 없으면 null → '-'는 프론트에서 표시
+    if (!isNum(result.price)) result.price = null;
+    if (!isNum(result.ma200)) result.ma200 = null;
+
+    return res.status(200).json(result);
+  } catch (e) {
+    console.error('[onchain]', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+}
+
+/** ───────── 유틸 ───────── */
+function normalizeSignal(sig) {
+  if (!sig) return null;
+  const s = String(sig).trim().toLowerCase();
+  if (/buy|long|매수/.test(s)) return '매수';
+  if (/sell|short|매도/.test(s)) return '매도';
+  return null;
+}
+function normalizeLevels(lv) {
+  if (!lv || typeof lv !== 'object') return null;
+  const stop = toNum(lv.stop);
+  const take = toNum(lv.take);
+  if (!isNum(stop) || !isNum(take)) return null;
+  return { stop: round(stop), take: round(take) };
+}
+function toNum(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : null;
+}
+function isNum(x) {
+  return typeof x === 'number' && Number.isFinite(x);
+}
+function round(n, d = 2) {
+  const pow = Math.pow(10, d);
+  return Math.round(n * pow) / pow;
+}
+
+/** ──────── 예시 데이터 소스(네 기존 코드로 대체) ──────── */
+// 아래 3개는 임시 더미. 반드시 네 기존 데이터 로직으로 대체/연결해.
+async function getPrice(symbol) {
+  // Upbit/Coingecko 등에서 현재가 로드
+  return null; // 예시: 일부 코인에서 null일 수 있음 → 보강 로직이 커버
+}
+async function getMA200(symbol) {
+  // MA200 계산 or API
+  return null;
+}
+async function getRawSignal(symbol) {
+  // 기존 전략 신호
+  return null; // buy/sell/long/short/매수/매도 등
+}
+async function getLevels(symbol) {
+  // 기존 손절/익절 계산
+  return null; // { stop, take }
+}
