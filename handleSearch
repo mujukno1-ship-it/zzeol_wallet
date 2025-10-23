@@ -1,56 +1,54 @@
-// ===============================
-// handleSearch.js (최신 안정화 버전)
-// ===============================
-
-// 상태 변수 (전역에서 관리)
+// handleSearch/handleSearch.js
 let lastReqId = 0;
 let controller = null;
-let currentResults = []; // 이전 검색결과 저장
 
-async function handleSearch(rawInput) {
-  const map = { '비트코인':'BTC', '이더리움':'ETH', '솔라나':'SOL', '리플':'XRP', '에이다':'ADA' };
-  const symbol = (map[rawInput.trim()] || rawInput.trim()).toUpperCase();
+// 한글 ↔ 심볼 매핑
+const NAME2SYMBOL = {
+  '비트코인': 'BTC', '이더리움': 'ETH', '솔라나': 'SOL',
+  '리플': 'XRP', '에이다': 'ADA', '시바이누': 'SHIB'
+};
 
-  // 이전 요청 취소
+export async function handleSearch(rawInput) {
+  const symbol = (NAME2SYMBOL[rawInput.trim()] || rawInput.trim()).toUpperCase();
+
+  // 진행 중 요청 취소
   if (controller) controller.abort();
   controller = new AbortController();
-
   const myReqId = ++lastReqId;
 
   try {
-    const res = await fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, {
-      signal: controller.signal,
-    });
-    const data = await res.json();
+    const r = await fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal });
+    const data = await r.json();
 
-    // 최신 요청만 반영 (늦게 도착한 응답은 무시)
-    if (myReqId === lastReqId) {
-      currentResults = [{
-        코인: data.symbol || symbol,
-        현재가: data.price || '-',
-        등락: data.ma200 && data.price
-          ? (((data.price - data.ma200) / data.ma200) * 100).toFixed(2) + '%'
-          : '-',
-        매수: data.signal === '매수' ? '●' : '',
-        매도: data.signal === '매도' ? '●' : '',
-        손절: data.levels?.stop ? data.levels.stop.toFixed(2) : '-',
-        익절: data.levels?.take ? data.levels.take.toFixed(2) : '-',
-      }];
-      updateSearchTable(currentResults);
+    // 오래된 응답 버림
+    if (myReqId !== lastReqId) return;
+
+    const sig = normalizeSignal(data.signal);
+    const row = {
+      코인: data.symbol || symbol,
+      현재가: nfmt(data.price),
+      등락: (isNum(data.price) && isNum(data.ma200))
+        ? (((data.price - data.ma200) / data.ma200) * 100).toFixed(2) + '%'
+        : '-',
+      매수: sig === '매수' ? '●' : '',
+      매도: sig === '매도' ? '●' : '',
+      손절: nfmt(data?.levels?.stop),
+      익절: nfmt(data?.levels?.take),
+    };
+
+    renderSearchRow(row); // 항상 1행만 유지
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error('[handleSearch]', e);
     }
-  } catch (err) {
-    if (err.name !== 'AbortError') console.error('검색 오류:', err);
   }
 }
 
-// ====================================
-// 화면 갱신 함수 (검색 결과 사라짐 방지)
-// ====================================
-function updateSearchTable(results) {
+/** ───── 렌더링 ───── */
+function renderSearchRow(r) {
   const tbody = document.getElementById('search-body');
   if (!tbody) return;
-
-  tbody.innerHTML = results.map(r => `
+  tbody.innerHTML = `
     <tr>
       <td>${r.코인}</td>
       <td>${r.현재가}</td>
@@ -60,5 +58,20 @@ function updateSearchTable(results) {
       <td>${r.손절}</td>
       <td>${r.익절}</td>
     </tr>
-  `).join('');
+  `;
+}
+
+/** ───── 유틸 ───── */
+function normalizeSignal(sig) {
+  if (!sig) return null;
+  const s = String(sig).toLowerCase();
+  if (/buy|long|매수/.test(s)) return '매수';
+  if (/sell|short|매도/.test(s)) return '매도';
+  return null;
+}
+function isNum(x) {
+  return typeof x === 'number' && Number.isFinite(x);
+}
+function nfmt(x) {
+  return isNum(x) ? x.toLocaleString() : '-';
 }
