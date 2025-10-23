@@ -1,0 +1,45 @@
+// ===============================
+// [검색 버튼 동작 코드 수정본]
+// ===============================
+const [searchResults, setSearchResults] = useState([]);
+const [isSearching, setIsSearching] = useState(false);
+const lastReqId = useRef(0);
+const controllerRef = useRef(null);
+
+async function handleSearch(rawInput) {
+  const map = { '비트코인':'BTC', '이더리움':'ETH', '솔라나':'SOL', '리플':'XRP', '에이다':'ADA' };
+  const symbol = (map[rawInput.trim()] || rawInput.trim()).toUpperCase();
+
+  // 이전 요청 취소
+  if (controllerRef.current) controllerRef.current.abort();
+  controllerRef.current = new AbortController();
+
+  const myReqId = ++lastReqId.current;
+  setIsSearching(true);
+
+  try {
+    const r = await fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, {
+      signal: controllerRef.current.signal,
+    });
+    const data = await r.json();
+
+    // 최신 요청만 반영
+    if (myReqId === lastReqId.current) {
+      setSearchResults([{
+        코인: data.symbol,
+        현재가: data.price,
+        등락: data.ma200 && data.price
+          ? (((data.price - data.ma200) / data.ma200) * 100).toFixed(2) + '%'
+          : '-',
+        매수: data.signal === '매수' ? '●' : '',
+        매도: data.signal === '매도' ? '●' : '',
+        손절: data.levels?.stop ? data.levels.stop.toFixed(2) : '-',
+        익절: data.levels?.take ? data.levels.take.toFixed(2) : '-',
+      }]);
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error('검색 에러:', e);
+  } finally {
+    if (myReqId === lastReqId.current) setIsSearching(false);
+  }
+}
