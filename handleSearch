@@ -75,3 +75,28 @@ function isNum(x) {
 function nfmt(x) {
   return isNum(x) ? x.toLocaleString() : '-';
 }
+import { combineSignals } from '../strategies/signal';
+
+async function fetchRow(symbol) {
+  const [upbit, onchain] = await Promise.all([
+    fetch(`/api/upbit?symbol=${encodeURIComponent(symbol)}`).then(r=>r.json()),
+    fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`).then(r=>r.json()),
+  ]);
+
+  const sig = combineSignals({ upbit, onchain });
+
+  return {
+    symbol,
+    // 표에 뿌릴 값들
+    price: upbit?.price ?? null,
+    changeRate: upbit?.changeRate ?? null,
+    mvrvZ: onchain?.mvrvZ ?? null,
+    fundingRate: onchain?.fundingRate ?? null,
+
+    // 신호 세트
+    marketSignal: sig.market,   // 시장 신호
+    onchainSignal: sig.chain,   // 온체인 신호
+    signal: sig.both,           // 둘 다 일치할 때만 BUY/SELL
+    reason: sig.reason.join(' | ')
+  };
+}
