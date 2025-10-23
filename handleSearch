@@ -1,33 +1,33 @@
 // ===============================
-// [검색 버튼 동작 코드 수정본]
+// handleSearch.js (최신 안정화 버전)
 // ===============================
-const [searchResults, setSearchResults] = useState([]);
-const [isSearching, setIsSearching] = useState(false);
-const lastReqId = useRef(0);
-const controllerRef = useRef(null);
+
+// 상태 변수 (전역에서 관리)
+let lastReqId = 0;
+let controller = null;
+let currentResults = []; // 이전 검색결과 저장
 
 async function handleSearch(rawInput) {
   const map = { '비트코인':'BTC', '이더리움':'ETH', '솔라나':'SOL', '리플':'XRP', '에이다':'ADA' };
   const symbol = (map[rawInput.trim()] || rawInput.trim()).toUpperCase();
 
   // 이전 요청 취소
-  if (controllerRef.current) controllerRef.current.abort();
-  controllerRef.current = new AbortController();
+  if (controller) controller.abort();
+  controller = new AbortController();
 
-  const myReqId = ++lastReqId.current;
-  setIsSearching(true);
+  const myReqId = ++lastReqId;
 
   try {
-    const r = await fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, {
-      signal: controllerRef.current.signal,
+    const res = await fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, {
+      signal: controller.signal,
     });
-    const data = await r.json();
+    const data = await res.json();
 
-    // 최신 요청만 반영
-    if (myReqId === lastReqId.current) {
-      setSearchResults([{
-        코인: data.symbol,
-        현재가: data.price,
+    // 최신 요청만 반영 (늦게 도착한 응답은 무시)
+    if (myReqId === lastReqId) {
+      currentResults = [{
+        코인: data.symbol || symbol,
+        현재가: data.price || '-',
         등락: data.ma200 && data.price
           ? (((data.price - data.ma200) / data.ma200) * 100).toFixed(2) + '%'
           : '-',
@@ -35,11 +35,30 @@ async function handleSearch(rawInput) {
         매도: data.signal === '매도' ? '●' : '',
         손절: data.levels?.stop ? data.levels.stop.toFixed(2) : '-',
         익절: data.levels?.take ? data.levels.take.toFixed(2) : '-',
-      }]);
+      }];
+      updateSearchTable(currentResults);
     }
-  } catch (e) {
-    if (e.name !== 'AbortError') console.error('검색 에러:', e);
-  } finally {
-    if (myReqId === lastReqId.current) setIsSearching(false);
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error('검색 오류:', err);
   }
+}
+
+// ====================================
+// 화면 갱신 함수 (검색 결과 사라짐 방지)
+// ====================================
+function updateSearchTable(results) {
+  const tbody = document.getElementById('search-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = results.map(r => `
+    <tr>
+      <td>${r.코인}</td>
+      <td>${r.현재가}</td>
+      <td>${r.등락}</td>
+      <td>${r.매수}</td>
+      <td>${r.매도}</td>
+      <td>${r.손절}</td>
+      <td>${r.익절}</td>
+    </tr>
+  `).join('');
 }
