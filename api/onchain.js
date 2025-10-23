@@ -1,6 +1,6 @@
 // api/onchain.js
 // 무료 공개 소스 기반 온체인 근사 지표 (CoinGecko + Binance + Fear&Greed)
-// CommonJS (module.exports) 버전 — Vercel 정적+Functions에서 확실히 동작
+// CommonJS (module.exports) — Vercel 정적+Functions에서 확실히 동작
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -10,13 +10,13 @@ module.exports = async (req, res) => {
 
   const out = {
     ts: Date.now(),
-    mvrv: null,
-    exchangeNetflow: null,
-    btcOnExchangeBalance: null,
-    fundingRate: null,
-    openInterest: null,
-    stablecoinNetflow: null,
-    fearGreed: null,
+    mvrv: null,                 // MA200 비율 기반 MVRV proxy
+    exchangeNetflow: null,      // 무료 대체 없음
+    btcOnExchangeBalance: null, // 무료 대체 없음
+    fundingRate: null,          // Binance
+    openInterest: null,         // Binance
+    stablecoinNetflow: null,    // 무료 대체 없음
+    fearGreed: null,            // 보조 지표
     source: [],
     ok: true,
   };
@@ -26,20 +26,20 @@ module.exports = async (req, res) => {
       const r = await fetch(url, { headers, cache: "no-store" });
       if (!r.ok) throw new Error(String(r.status));
       return await r.json();
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   };
 
-  // 1) CoinGecko: BTC 200일 평균대비 비율 → mvrv proxy
+  // 1) CoinGecko: BTC 200일 평균 대비 비율 -> mvrv proxy
   const cg = await j("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200");
   if (cg?.prices?.length > 50) {
     const prices = cg.prices.map(p => Number(p[1])).filter(Number.isFinite);
     const cur = prices.at(-1);
-    const ma200 = prices.reduce((a, b) => a + b, 0) / prices.length;
-    const ratio = (cur && ma200) ? cur / ma200 : null;
+    const ma200 = prices.reduce((a,b)=>a+b,0) / prices.length;
+    const ratio = cur && ma200 ? cur / ma200 : null;
     if (ratio) {
-      out.mvrv = Number((ratio * 1.5).toFixed(3)); // 프론트 mvrv 스케일과 맞춤
+      out.mvrv = Number((ratio * 1.5).toFixed(3)); // 프론트의 mvrv 임계값 스케일에 맞춤
       out.source.push("coingecko:ma200-proxy");
     }
   }
@@ -71,7 +71,7 @@ module.exports = async (req, res) => {
     out.source.push("altme:feargreed");
   }
 
-  // Fallback
+  // Fallback (네트워크 막혔을 때도 프론트가 안깨지도록)
   if (!out.source.length) {
     out.mvrv = 1.2;
     out.fundingRate = 0.01;
