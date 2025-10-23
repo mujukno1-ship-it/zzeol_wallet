@@ -1,123 +1,98 @@
 // pages/api/onchain.js
-// 역할: BTC 온체인/파생 데이터 취합 -> 프론트가 쉽게 쓰도록 표준화
-// 사용: 환경변수(있으면 실데이터, 없으면 안전한 더미값)
-//   - GLASSNODE_KEY (선택) : https://api.glassnode.com
-//   - COINGLASS_KEY  (선택) : https://open-api.coinglass.com
-//   - COINMETRICS_KEY(선택) : https://community-api.coinmetrics.io  (무료 티어 있음)
+// 무료 공개 소스만 사용해서 온체인/파생 근사 지표 제공
+// - CoinGecko: BTC 200일 가격 -> MA200 대비 비율 (mvrv proxy)
+// - Binance Futures: fundingRate / openInterest
+// - Fear&Greed Index: sentiment (참고)
+// 반환 스키마는 기존과 동일: mvrv, exchangeNetflow, fundingRate, openInterest, stablecoinNetflow, source, ok
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
 
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
-  }
-
-  const GN = process.env.GLASSNODE_KEY || "";
-  const CG = process.env.COINGLASS_KEY || "";
-  const CM = process.env.COINMETRICS_KEY || "";
-
-  // 표준 출력 스키마
   const out = {
     ts: Date.now(),
-    // 온체인(현물)
-    mvrv: null,                 // 저평가~고평가 (낮을수록 매수 유리)
-    exchangeNetflow: null,      // 거래소로의 BTC 순유입(+) / 순유출(-)
-    btcOnExchangeBalance: null, // 거래소 보유 BTC
-    // 파생(선물/옵션)
-    fundingRate: null,          // 펀딩비 (+과열/-역추세)
-    openInterest: null,         // OI 증가시 변동성 확대 가능
-    whaleRatio: null,           // 고래 입출금 비율
-    // 스테이블
-    stablecoinNetflow: null,    // 거래소 스테이블 유입(+)
-    // 상태
+    mvrv: null,                  // MA200 비율을 mvrv proxy로 사용
+    exchangeNetflow: null,       // 무료 대체 없음 -> null
+    btcOnExchangeBalance: null,  // 무료 대체 없음 -> null
+    fundingRate: null,           // Binance
+    openInterest: null,          // Binance
+    stablecoinNetflow: null,     // 무료 대체 없음 -> null
+    fearGreed: null,             // 참고치
     source: [],
     ok: true,
   };
 
-  async function safeFetchJson(url, headers={}) {
+  async function j(url, headers = {}) {
     try {
       const r = await fetch(url, { headers, cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) throw new Error(String(r.status));
       return await r.json();
     } catch (e) {
       return null;
     }
   }
 
-  // ---- 1) Glassnode: MVRV Z-Score, Exchange Net Transfer Volume, Exchange Balance
-  if (GN) {
-    // MVRV Z-Score (일 단위)
-    // 문서: https://docs.glassnode.com
-    const mvrv = await safeFetchJson(`https://api.glassnode.com/v1/metrics/market/mvrv_z_score?a=BTC&i=24h&api_key=${GN}`);
-    if (Array.isArray(mvrv) && mvrv.length) {
-      out.mvrv = Number(mvrv[mvrv.length - 1]?.v ?? null);
-      out.source.push("glassnode:mvrv");
-    }
-
-    // 거래소 순유입/유출 (net transfer volume to exchanges)
-    const netflow = await safeFetchJson(`https://api.glassnode.com/v1/metrics/transactions/transfers_volume_to_exchanges?a=BTC&i=1h&api_key=${GN}`);
-    const netflowOut = await safeFetchJson(`https://api.glassnode.com/v1/metrics/transactions/transfers_volume_from_exchanges?a=BTC&i=1h&api_key=${GN}`);
-    if (Array.isArray(netflow) && Array.isArray(netflowOut) && netflow.length && netflowOut.length) {
-      const lastIn = Number(netflow[netflow.length - 1]?.v ?? 0);
-      const lastOut = Number(netflowOut[netflowOut.length - 1]?.v ?? 0);
-      out.exchangeNetflow = lastIn - lastOut; // +면 순유입(매도압력), -면 순유출(보관/매집)
-      out.source.push("glassnode:netflow");
-    }
-
-    // 거래소 보유 BTC 잔고 (balance on exchanges)
-    const exBal = await safeFetchJson(`https://api.glassnode.com/v1/metrics/supply/exchange_balance?a=BTC&i=24h&api_key=${GN}`);
-    if (Array.isArray(exBal) && exBal.length) {
-      out.btcOnExchangeBalance = Number(exBal[exBal.length - 1]?.v ?? null);
-      out.source.push("glassnode:balance");
-    }
-  }
-
-  // ---- 2) Coinglass: Funding Rate / Open Interest / Whale Ratio (API Key 필요)
-  if (CG) {
-    const headers = { "coinglassSecret": CG };
-    // Funding Rate (BTC 합성 평균)
-    const fr = await safeFetchJson("https://open-api.coinglass.com/api/pro/v1/futures/fundingRate?symbol=BTC", headers);
-    if (fr?.data && Array.isArray(fr.data) && fr.data.length) {
-      // 여러 거래소 평균
-      const arr = fr.data.map(x => Number(x.fundingRate)).filter(Number.isFinite);
-      if (arr.length) {
-        out.fundingRate = arr.reduce((a,b)=>a+b,0)/arr.length;
-        out.source.push("coinglass:funding");
+  // 1) CoinGecko: BTC 가격 200일 -> MA200 비율 계산 (mvrv proxy)
+  //  - API: /coins/bitcoin/market_chart?vs_currency=usd&days=200
+  //  - 가격 배열 [ [ts, price], ... ]
+  const cg = await j(
+    "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200"
+  );
+  if (cg && Array.isArray(cg.prices) && cg.prices.length > 50) {
+    try {
+      const prices = cg.prices.map((p) => Number(p[1])).filter(Number.isFinite);
+      const cur = prices[prices.length - 1];
+      const ma200 = prices.reduce((a, b) => a + b, 0) / prices.length;
+      const ratio = cur && ma200 ? cur / ma200 : null; // 1.0이면 중립, <1 저평가, >1 고평가
+      // 기존 프론트가 mvrv <1.5 저평가, >3 과열 로직을 쓰므로 스케일을 살짝 보정
+      // ex) ratio 0.9 ~ 1.2 -> mvrv 1.1 ~ 1.8 정도로 매핑
+      if (ratio) {
+        out.mvrv = Number((ratio * 1.5).toFixed(3));
+        out.source.push("coingecko:ma200-proxy");
       }
-    }
-    // Open Interest
-    const oi = await safeFetchJson("https://open-api.coinglass.com/api/pro/v1/futures/openInterest?symbol=BTC", headers);
-    if (oi?.data && Array.isArray(oi.data) && oi.data.length) {
-      const arr = oi.data.map(x => Number(x.openInterest)).filter(Number.isFinite);
-      if (arr.length) {
-        out.openInterest = arr.reduce((a,b)=>a+b,0)/arr.length;
-        out.source.push("coinglass:oi");
-      }
-    }
-    // Whale Ratio (거래소 상위주소 비중 유사 지표가 없으면 null)
-    // Coinglass에 직접 지표가 없으면 null 유지
+    } catch {}
   }
 
-  // ---- 3) CoinMetrics or 기타(없으면 생략)
-  if (CM) {
-    // 예: 스테이블(USDT) 거래소 순유입 근사치 (엔드포인트마다 정의 상이)
-    // 여기선 키만 있으면 샘플로 넘어감. 실제 연동 시 엔드포인트 교체.
+  // 2) Binance Futures: 최근 펀딩비 (공개 엔드포인트)
+  //    https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1
+  const fr = await j(
+    "https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1"
+  );
+  if (Array.isArray(fr) && fr.length) {
+    const v = Number(fr[0].fundingRate);
+    if (Number.isFinite(v)) {
+      out.fundingRate = v; // 예: 0.0123 => 1.23%
+      out.source.push("binance:funding");
+    }
   }
 
-  // ---- Fallback: 키가 하나도 없는 경우 안전한 더미값 제공 (UI/엔진 동작 보장)
-  const noKey = !out.source.length;
-  if (noKey) {
-    // 보수적 안전 기본값(시장 중립~약강세 가정)
-    out.mvrv = 1.2;                 // 저평가~중립
-    out.exchangeNetflow = -1200;    // 순유출(매집 성향)
-    out.btcOnExchangeBalance = null;
-    out.fundingRate = 0.012;        // 과열 아님
+  // 3) Binance Futures: 현재 Open Interest (공개 엔드포인트)
+  //    https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT
+  const oi = await j("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT");
+  if (oi && oi.openInterest) {
+    const v = Number(oi.openInterest);
+    if (Number.isFinite(v)) {
+      out.openInterest = v; // 단위: 계약수(USDT 기반)
+      out.source.push("binance:openInterest");
+    }
+  }
+
+  // 4) Fear & Greed Index (보조지표)
+  //    https://api.alternative.me/fng/?limit=1
+  const fng = await j("https://api.alternative.me/fng/?limit=1");
+  if (fng && fng.data && fng.data[0] && fng.data[0].value) {
+    out.fearGreed = Number(fng.data[0].value); // 0~100 (낮을수록 공포)
+    out.source.push("altme:feargreed");
+  }
+
+  // 5) 값이 너무 비어있으면 보수적 fallback (프론트 동작 보장)
+  if (!out.source.length) {
+    out.mvrv = 1.2;
+    out.fundingRate = 0.01;
     out.openInterest = null;
-    out.whaleRatio = 0.42;
-    out.stablecoinNetflow = 120_000_000; // 스테이블 유입
+    out.fearGreed = 52;
     out.source.push("fallback");
   }
 
