@@ -24,10 +24,11 @@
       <div class="row" style="gap:10px;flex-wrap:wrap">
         <div class="chip" id="anaSignal">신호: –</div>
         <div class="chip" id="anaAccuracy">정확도: –</div>
-        <div class="chip" id="anaRisk">위험도: –</div>
-        <div class="chip" id="anaOBI">호가 불균형: –</div>
-        <div class="chip" id="anaStable">스테이블 유입: –</div>
-        <div class="chip" id="anaETF">ETF 유입: –</div>
+        <div class=\"chip\" id=\"anaRisk\">위험도: –<\/div>
+        <div class=\"chip\" id=\"anaOBI\">호가 불균형: –<\/div>
+        <div class=\"chip\" id=\"anaStable\">스테이블 유입: –<\/div>
+        <div class=\"chip\" id=\"anaETF\">ETF 유입: –<\/div>
+        <div class=\"chip\" id=\"anaChange\">24h 등락: –<\/div>
       </div>
       <table style="width:100%;margin-top:10px;border-collapse:separate;border-spacing:0">
         <thead>
@@ -129,6 +130,8 @@
         document.querySelector('#anaAccuracy').textContent='정확도: '+accuracy.toFixed(1)+'%';
         document.querySelector('#anaRisk').textContent='위험도: '+(accuracy>80?'낮음':accuracy>70?'보통':'높음');
         document.querySelector('#anaOBI').textContent='호가 불균형: '+obi.toFixed(2);
+        // 업비트 24h 등락률 (정확 표기)
+        try{ const diff=(upbit[0].signed_change_rate*100).toFixed(2); document.querySelector('#anaChange').textContent='24h 등락: '+(diff>0?'+':'')+diff+'%'; }catch(_){}
         document.querySelector('#anaStable').textContent='스테이블 유입: '+(stableInflowUSD==null?'N/A':(stableInflowUSD>0?'+':'')+(stableInflowUSD/1_000_000).toFixed(0)+'M$');
         document.querySelector('#anaETF').textContent='ETF 유입: '+(etfInflowUSD==null?'N/A':(etfInflowUSD>0?'+':'')+(etfInflowUSD/1_000_000).toFixed(0)+'M$');
         document.querySelector('#anaEntryU').textContent=fmt(entry);
@@ -144,6 +147,9 @@
     }
 
     document.querySelector('#btnAnalyze').onclick=analyzeScenario;
+    // ⏱ 1분 자동 새로고침 (분석 + 표 갱신)
+    analyzeScenario();
+    setInterval(()=>{ try{ analyzeScenario(); }catch(e){} try{ updateTF(); }catch(e){} }, 60_000);
   </script>
 </body>
 </html>
