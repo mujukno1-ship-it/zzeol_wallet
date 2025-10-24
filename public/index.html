@@ -30,7 +30,7 @@
 
     <div class="card">
       <div class="row">
-        <input id="q" placeholder="예: 비트코인 또는 BTC / KRW-ETH" />
+        <input id="q" placeholder="예: 비트코인, BTC, 비트코인캐시, BCH / KRW-ETH" />
         <button id="searchBtn">검색</button>
         <span id="systemBadge" class="pill">시스템: 확인중…</span>
         <span id="riskChip" class="risk muted">위험도: -</span>
@@ -55,11 +55,23 @@
             <td class="muted">업비트 KRW-BTC vs 코인베이스 BTC-USD (환율 포함)</td>
           </tr>
           <tr>
-            <td>온체인 샘플</td>
+            <td>온체인 자금흐름</td>
             <td id="onchain">-</td>
-            <td class="muted">Stablecoin 시총(안정화·대체엔드포인트 내장)</td>
+            <td class="muted">USDT·USDC·DAI 24h 유입/유출</td>
           </tr>
         </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="row" style="gap:6px;flex-wrap:wrap;">
+        <button onclick="loadList('rising')">상승 TOP10</button>
+        <button onclick="loadList('spike')">급등</button>
+        <button onclick="loadList('dump')">급락</button>
+      </div>
+      <table id="listTable" style="margin-top:8px;">
+        <thead><tr><th>코인</th><th>현재가</th><th>등락</th></tr></thead>
+        <tbody></tbody>
       </table>
     </div>
   </div>
@@ -67,16 +79,32 @@
 <script>
   const $ = (id)=>document.getElementById(id);
   const fmt = v => Number(v).toLocaleString('ko-KR');
-  const pct = v => `${v>0?'+':''}${v.toFixed(2)}%`;
-  const toMarket = (t)=>{
-    const x=(t||'').trim().toUpperCase();
-    if(!x) return 'KRW-ETH';
-    if(x==='비트코인'||x==='BTC') return 'KRW-BTC';
-    if(x==='이더리움'||x==='ETH') return 'KRW-ETH';
-    return x.startsWith('KRW-')?x:`KRW-${x}`;
-  };
+  const pct = v => `${v>0?'+':''}${(Number(v)||0).toFixed(2)}%`;
 
-  let market = 'KRW-ETH', timer=null;
+  // 마켓 매핑 사전 (한글/심볼 → KRW-XXX)
+  let MARKET_MAP = null;
+  (async function preloadMarkets(){
+    try { MARKET_MAP = (await (await fetch('/api/markets')).json()).map; } catch {}
+  })();
+
+  function toMarket(t){
+    const raw=(t||'').trim();
+    if(!raw) return 'KRW-ETH';
+    const key = raw.toUpperCase().replace(/\s+/g,'').replace(/-/g,'');
+
+    // 사전 우선
+    if (MARKET_MAP && MARKET_MAP[key]) return MARKET_MAP[key];
+
+    // 기본 매핑 (fallback)
+    if(key==='비트코인' || key==='BTC') return 'KRW-BTC';
+    if(key==='이더리움' || key==='ETH') return 'KRW-ETH';
+    if(key==='비트코인캐시' || key==='BCH') return 'KRW-BCH'; // ✅ BCH 추가
+
+    // KRW- 직접 입력 케이스
+    if(/^KRW-[A-Z]+$/.test(raw.toUpperCase())) return raw.toUpperCase();
+
+    return 'KRW-' + raw.toUpperCase();
+  }
 
   function riskScore(changePct, kimchiPct){
     if (kimchiPct == null) return {label:'관망', cls:'warn'};
@@ -86,13 +114,13 @@
     return {label:'보통', cls:'ok'};
   }
 
-  async function load(){
+  async function loadSummary(market){
     const r = await fetch(`/api/summary?market=${encodeURIComponent(market)}`);
     if(!r.ok) throw new Error('summary http '+r.status);
     return r.json();
   }
 
-  function render(s){
+  function renderSummary(s){
     const up = s?.upbit;
     if(up){
       const chg = (up.signed_change_price / up.prev_closing_price)*100;
@@ -119,9 +147,9 @@
     }
 
     if (s?.onchain?.ok) {
-      const mcap = s.onchain?.stables?.total?.mcap ?? s.onchain?.data?.total?.mcap;
-      $('onchain').textContent = mcap ? ('Stable MCap: ₩' + fmt(mcap)) : 'OK';
-      $('onchain').className = '';
+      const t = s.onchain.total;
+      $('onchain').textContent = `₩${fmt(t.mcapKRW)} (${pct(t.change24h)}) ${t.risk||''}`;
+      $('onchain').className = t.change24h < 0 ? "red" : (t.change24h > 0 ? "green" : "muted");
     } else {
       $('onchain').textContent = '오류';
       $('onchain').className = 'red';
@@ -134,19 +162,36 @@
   }
 
   async function tick(){
-    try { render(await load()); }
+    try { renderSummary(await loadSummary(currentMarket)); }
     catch(e){ console.error(e); $('systemBadge').innerHTML = "시스템: <b style='color:#ef4444'>오류</b>"; }
   }
 
-  $('searchBtn').addEventListener('click', ()=>{
-    market = toMarket($('q').value);
+  async function loadList(type){
+    const r = await fetch(`/api/list?type=${type}`);
+    const j = await r.json();
+    const tb = document.querySelector("#listTable tbody");
+    tb.innerHTML = "";
+    (j.list||[]).forEach(c=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<td>${c.name}</td><td>${fmt(c.price)}</td><td class="${c.change>=0?'green':'red'}">${pct(c.change)}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  let currentMarket = 'KRW-ETH';
+  let timer = null;
+
+  document.getElementById('searchBtn').addEventListener('click', ()=>{
+    currentMarket = toMarket(document.getElementById('q').value);
     clearInterval(timer);
     tick();
     timer = setInterval(tick, 1500);
   });
 
+  // 초기 실행
   tick();
   timer = setInterval(tick, 1500);
+  loadList('rising'); // 기본 탭
 </script>
 </body>
 </html>
