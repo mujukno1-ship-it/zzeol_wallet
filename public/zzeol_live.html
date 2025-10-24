@@ -15,6 +15,39 @@
   </style>
 </head>
 <body>
+  <!-- SPARK(FLR) 실시간 분석 카드 (온체인 섹션 바로 위) -->
+  <div class="card">
+    <div class="row">
+      <h2>SPARK (FLR) 실시간 분석 — Binance/Upbit</h2>
+      <button id="btnFLR" style="margin-left:auto;padding:8px 12px;border-radius:8px;background:#1f2d44;color:#e6edf3;border:1px solid #284161">FLR 분석 실행</button>
+    </div>
+    <div id="flrBox" style="margin-top:10px;display:none">
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <div class="chip" id="flrSignal">신호: –</div>
+        <div class="chip" id="flrAcc">정확도: –</div>
+        <div class="chip" id="flrTrend">추세: –</div>
+        <div class="chip" id="flrFund">펀딩: –</div>
+        <div class="chip" id="flrKimchi">김프: –</div>
+        <div class="chip" id="flrChange">24h 등락: –</div>
+      </div>
+      <table style="width:100%;margin-top:10px;border-collapse:separate;border-spacing:0">
+        <thead>
+          <tr style="color:#9fb0c0;text-transform:uppercase;font-size:12px">
+            <th>항목</th>
+            <th>USDT</th>
+            <th>KRW(틱보정)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><b>매수(진입)</b></td><td id="flrEntryU">–</td><td id="flrEntryK">–</td></tr>
+          <tr><td><b>익절1(TP1)</b></td><td id="flrTP1U">–</td><td id="flrTP1K">–</td></tr>
+          <tr><td><b>익절2(TP2)</b></td><td id="flrTP2U">–</td><td id="flrTP2K">–</td></tr>
+          <tr><td><b>손절(SL)</b></td><td id="flrSLU">–</td><td id="flrSLK">–</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="card">
     <div class="row">
       <h2>분석 기반 타점 — 시나리오 엔진 v2 (BTC/KRW)</h2>
@@ -147,6 +180,71 @@
     }
 
     document.querySelector('#btnAnalyze').onclick=analyzeScenario;
+
+    // ===== FLR(SPARK) 분석 모듈 =====
+    async function analyzeFLR(){
+      try{
+        // Binance FLRUSDT 가격/캔들
+        const t = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=FLRUSDT').then(r=>r.json());
+        const price = parseFloat(t.price);
+        const kl = await fetch('https://api.binance.com/api/v3/klines?symbol=FLRUSDT&interval=1h&limit=200').then(r=>r.json());
+        const close = kl.map(k=>parseFloat(k[4]));
+        const high  = kl.map(k=>parseFloat(k[2]));
+        const low   = kl.map(k=>parseFloat(k[3]));
+        // 환율
+        const xr = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=KRW').then(r=>r.json());
+        const usdkrw = xr.rates.KRW;
+        // Upbit KRW-FLR (미상장일 수 있음)
+        let upPrice = null, change24 = null;
+        try{
+          const u = await fetch('https://api.upbit.com/v1/ticker?markets=KRW-FLR').then(r=>r.json());
+          upPrice = u[0].trade_price; change24 = (u[0].signed_change_rate*100).toFixed(2)+'%';
+        }catch(_){ change24 = 'N/A'; }
+        // 펀딩 (선물 지수)
+        let funding = null; try{ const f = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=FLRUSDT').then(r=>r.json()); funding = parseFloat(f.lastFundingRate)*100; }catch(_){ funding = 0; }
+        // EMA/ATR
+        const e20 = (function(){ const k=2/21; let e=close[0]; for(let i=1;i<close.length;i++){ e=close[i]*k+e*(1-k);} return e; })();
+        const e50 = (function(){ const k=2/51; let e=close[0]; for(let i=1;i<close.length;i++){ e=close[i]*k+e*(1-k);} return e; })();
+        const atr = (function(){ const tr=[]; for(let i=1;i<high.length;i++){ const h=high[i],l=low[i],pc=close[i-1]; tr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc))); } let a=tr.slice(0,14).reduce((s,v)=>s+v,0)/14; for(let i=14;i<tr.length;i++){ a=(a*13+tr[i])/14;} return a; })();
+        const trend = (price>e20&&e20>e50)?'상승':(price<e20&&e20<e50)?'하락':'횡보';
+        const kimchi = (upPrice? (upPrice/(price*usdkrw)-1)*100 : null);
+
+        // 정확도
+        let penalty=0; if(trend==='횡보') penalty+=20; if(funding && Math.abs(funding)>0.05) penalty+=5; if(atr/price>0.05) penalty+=10; if(kimchi!=null && Math.abs(kimchi)>5) penalty+=8; const accuracy=Math.max(50,100-penalty);
+        const dir = trend==='상승'?+1:trend==='하락'?-1:0;
+        let entry=price-dir*0.25*atr, tp1=entry+dir*0.75*atr, tp2=entry+dir*1.50*atr, sl=entry-dir*0.75*atr;
+        if(kimchi!=null){ if(kimchi>5&&dir>0){ entry-=0.1*atr; } if(kimchi<-3&&dir<0){ entry+=0.1*atr; } }
+        if(funding && Math.abs(funding)>0.05){ sl=entry-dir*0.9*atr; }
+        const entryK=entry*usdkrw, tp1K=tp1*usdkrw, tp2K=tp2*usdkrw, slK=sl*usdkrw;
+        function krwTick(v){ const p=Math.abs(v); if(p>=2000000) return 1000; if(p>=1000000) return 500; if(p>=500000) return 100; if(p>=100000) return 50; if(p>=50000) return 10; if(p>=10000) return 5; if(p>=1000) return 1; if(p>=100) return 0.1; if(p>=10) return 0.01; if(p>=1) return 0.001; if(p>=0.1) return 0.0001; if(p>=0.01) return 0.00001; return 0.000001; }
+        function roundTickKRW(v,mode){ const t=krwTick(v); const x=v/t; const y=mode<0?Math.floor(x):mode>0?Math.ceil(x):Math.round(x); return Number((y*t).toFixed(6)); }
+        const eK=dir>0?roundTickKRW(entryK,-1):dir<0?roundTickKRW(entryK,+1):roundTickKRW(entryK,0);
+        const t1K=dir>0?roundTickKRW(tp1K,+1):dir<0?roundTickKRW(tp1K,-1):roundTickKRW(tp1K,0);
+        const t2K=dir>0?roundTickKRW(tp2K,+1):dir<0?roundTickKRW(tp2K,-1):roundTickKRW(tp2K,0);
+        const sK=dir>0?roundTickKRW(slK,-1):dir<0?roundTickKRW(slK,+1):roundTickKRW(slK,0);
+
+        const fmt=v=>Number(v).toFixed(5); const krw=v=>'₩ '+Math.round(v).toLocaleString('ko-KR');
+        document.querySelector('#flrBox').style.display='block';
+        document.querySelector('#flrSignal').textContent='신호: '+(dir>0?'롱(매수)':'숏(매도)');
+        document.querySelector('#flrAcc').textContent='정확도: '+accuracy.toFixed(1)+'%';
+        document.querySelector('#flrTrend').textContent='추세: '+trend;
+        document.querySelector('#flrFund').textContent='펀딩: '+(funding!=null? ((funding>0?'+':'')+funding.toFixed(4)+'%') : 'N/A');
+        document.querySelector('#flrKimchi').textContent='김프: '+(kimchi==null?'업비트 미상장': ((kimchi>0?'+':'')+kimchi.toFixed(2)+'%'));
+        document.querySelector('#flrChange').textContent='24h 등락: '+(change24||'N/A');
+        document.querySelector('#flrEntryU').textContent=fmt(entry);
+        document.querySelector('#flrTP1U').textContent=fmt(tp1);
+        document.querySelector('#flrTP2U').textContent=fmt(tp2);
+        document.querySelector('#flrSLU').textContent=fmt(sl);
+        document.querySelector('#flrEntryK').textContent=krw(eK);
+        document.querySelector('#flrTP1K').textContent=krw(t1K);
+        document.querySelector('#flrTP2K').textContent=krw(t2K);
+        document.querySelector('#flrSLK').textContent=krw(sK);
+      }catch(e){ console.error(e); }
+    }
+
+    document.querySelector('#btnFLR').onclick=analyzeFLR;
+    // 선택: FLR도 자동 새로고침하고 싶다면 주석 해제
+    // setInterval(()=>{ try{ analyzeFLR(); }catch(e){} }, 60_000);
     // ⏱ 1분 자동 새로고침 (분석 + 표 갱신)
     analyzeScenario();
     setInterval(()=>{ try{ analyzeScenario(); }catch(e){} try{ updateTF(); }catch(e){} }, 60_000);
