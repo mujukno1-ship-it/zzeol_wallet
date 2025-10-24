@@ -104,6 +104,44 @@
       <div id="listBody" class="list" style="margin-top:8px"></div>
     </div>
 
+    <!-- BTC 온체인·김프·신호 카드 -->
+    <div id="btcWrap" class="card" style="margin-top:12px;display:block">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div><b>BTC 연동</b> <span class="muted">(김프·펀딩·ATR 신호)</span></div>
+          <div class="stat">
+            <div class="item">업비트 BTC(KRW): <b id="btc_upbit" class="num">–</b></div>
+            <div class="item">바이낸스 BTC(USDT): <b id="btc_binance" class="num">–</b></div>
+            <div class="item">USD/KRW: <b id="usdkrw" class="num">–</b></div>
+            <div class="item">김프: <b id="kimchi" class="num">–</b></div>
+            <div class="item">펀딩비: <b id="funding" class="num">–</b></div>
+          </div>
+        </div>
+        <div class="row">
+          <button id="btnBTC" class="btn good">BTC 즉시 갱신</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:10px">
+        <div style="margin-bottom:6px"><b>BTC 매수·매도 타점 (ATR 기반, 1시간봉)</b></div>
+        <table style="width:100%">
+          <thead>
+            <tr>
+              <th>기준</th>
+              <th>현재가(USDT)</th>
+              <th>ATR(14)</th>
+              <th>신호</th>
+              <th>매수</th>
+              <th>TP1</th>
+              <th>TP2</th>
+              <th>손절</th>
+              <th>신호 근거</th>
+            </tr>
+          </thead>
+          <tbody id="btcBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:12px">
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <button class="btn">BTC 온체인 상태</button>
@@ -346,6 +384,103 @@
       const shib = list.find(x=>x.market==='KRW-SHIB');
       if(shib){ $('#q').value = shib.korean_name; await searchNow(); }
     })();
+      // ===== BTC: 김프/펀딩/ATR 신호 =====
+    async function getKimchiAndSignals(){
+      try{
+        // 가격 소스
+        const upbit = await API.ticker(['KRW-BTC']);
+        const up_krw = upbit[0]?.trade_price || null;
+        $('#btc_upbit').textContent = fmt(up_krw);
+
+        const br = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+        const bp = await br.json();
+        const binance = parseFloat(bp?.price||'0');
+        $('#btc_binance').textContent = fmt(binance);
+
+        const xr = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=KRW');
+        const xrj = await xr.json();
+        const usdkrw = parseFloat(xrj?.rates?.KRW||'0');
+        $('#usdkrw').textContent = fmt(usdkrw);
+
+        let kimchi = null;
+        if(up_krw && binance && usdkrw){
+          kimchi = (up_krw / (binance * usdkrw) - 1) * 100;
+          const ktxt = (kimchi>=0?'+':'') + kimchi.toFixed(2) + '%';
+          $('#kimchi').textContent = ktxt;
+          $('#kimchi').className = 'num ' + (kimchi>=0? 'green':'red');
+        } else {
+          $('#kimchi').textContent = '–';
+        }
+
+        // 펀딩비 (선물)
+        const fr = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT');
+        const fj = await fr.json();
+        const funding = parseFloat(fj?.lastFundingRate||'0');
+        $('#funding').textContent = (funding*100).toFixed(4)+'%';
+
+        // 1시간봉 ATR & 신호
+        const kl = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=200');
+        const ks = await kl.json();
+        const closes = ks.map(k=>parseFloat(k[4]));
+        const highs  = ks.map(k=>parseFloat(k[2]));
+        const lows   = ks.map(k=>parseFloat(k[3]));
+
+        function ema(arr, p){
+          const k = 2/(p+1); let e = arr[0]; const out=[e];
+          for(let i=1;i<arr.length;i++){ e = arr[i]*k + e*(1-k); out.push(e); }
+          return out;
+        }
+        function atr14(){
+          const tr=[]; for(let i=1;i<highs.length;i++){
+            const h=highs[i], l=lows[i], pc=closes[i-1];
+            tr.push(Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc)));
+          }
+          // Wilder's ATR(14)
+          const period=14; let atr = tr.slice(0,period).reduce((a,b)=>a+b,0)/period; const out=[...Array(period).fill(null), atr];
+          for(let i=period+1;i<=tr.length;i++){
+            const t = tr[i-1]; atr = (atr*(period-1) + t)/period; out.push(atr);
+          }
+          return out[out.length-1];
+        }
+
+        const cNow = closes[closes.length-1];
+        const e20 = ema(closes,20).pop();
+        const e50 = ema(closes,50).pop();
+        const atr = atr14();
+
+        const signal = (cNow>e20 && e20>e50)? '롱(매수 우위)' : (cNow<e20 && e20<e50)? '숏(매도 우위)' : '관망';
+        const entry = cNow;
+        const tp1 = entry + 0.5*atr;
+        const tp2 = entry + 1.0*atr;
+        const sl  = entry - 1.0*atr;
+
+        const why = `EMA20(${e20.toFixed(2)}) / EMA50(${e50.toFixed(2)}) / ATR(${atr.toFixed(2)})`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>1H</td>
+          <td class="num">${entry.toFixed(2)}</td>
+          <td class="num">${atr.toFixed(2)}</td>
+          <td>${signal}</td>
+          <td class="num"><b>${entry.toFixed(2)}</b></td>
+          <td class="num">${tp1.toFixed(2)}</td>
+          <td class="num">${tp2.toFixed(2)}</td>
+          <td class="num">${sl.toFixed(2)}</td>
+          <td class="muted">${why}</td>
+        `;
+        const tb = document.querySelector('#btcBody');
+        tb.innerHTML='';
+        tb.appendChild(tr);
+
+      }catch(e){
+        toast('BTC 연동 실패: '+(e?.message||e));
+        console.error(e);
+      }
+    }
+
+    document.querySelector('#btnBTC').onclick = getKimchiAndSignals;
+
+    // 첫 로드에서 BTC도 한번 계산
+    getKimchiAndSignals();
   </script>
 </body>
 </html>
