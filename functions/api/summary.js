@@ -1,4 +1,4 @@
-// upbit + kimchi + onchain 통합 (내부 /api/onchain 사용)
+// upbit + kimchi + onchain 통합 (내부 엔드포인트 호출)
 export const onRequestGet = async ({ request }) => {
   const url = new URL(request.url);
   const market = url.searchParams.get("market") || "KRW-ETH";
@@ -13,9 +13,9 @@ export const onRequestGet = async ({ request }) => {
       fetch(new URL("/api/onchain", url.origin), { cf: { cacheTtl: 15, cacheEverything: true } }),
     ]);
 
-    const upArr  = await safeJson(upRes);                 // [{...}] or null
-    const kimchi = await safeJson(kimRes);                // { kimchi, ... } or null
-    const oc     = await safeJson(ocRes);                 // { ok, stables } or null
+    const upArr  = await safeJson(upRes);   // [{...}] or null
+    const kimchi = await safeJson(kimRes);  // { kimchi, ... } or null
+    const oc     = await safeJson(ocRes);   // { ok, stables } or null
 
     const upbit = upArr?.[0]
       ? {
@@ -31,7 +31,7 @@ export const onRequestGet = async ({ request }) => {
 
     return respond({ upbit, kimchi, onchain: oc ?? { ok:false }, ts: Date.now() }, 200, 2);
   } catch (e) {
-    return respond({ ok: false, error: String(e) }, 500, 0);
+    return respond({ ok:false, error:String(e) }, 500, 0);
   }
 };
 
@@ -42,12 +42,11 @@ async function safeJson(res) {
   const t = await res.text();
   try { return JSON.parse(t); } catch { return null; }
 }
-const respond = (obj, code = 200, maxAge = 0) =>
-  new Response(JSON.stringify(obj), {
-    status: code,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
-      ...(maxAge ? { "cache-control": `max-age=${maxAge}, s-maxage=${maxAge}` } : {}),
-    },
-  });
+const respond = (obj, code=200, maxAge=0)=>new Response(JSON.stringify(obj),{
+  status: code,
+  headers: {
+    "content-type":"application/json; charset=utf-8",
+    "access-control-allow-origin":"*",
+    ...(maxAge?{"cache-control":`max-age=${maxAge}, s-maxage=${maxAge}`}:{})
+  }
+});
