@@ -2,7 +2,7 @@
   const BASE='https://api.upbit.com/v1';
   async function fetchTicker(market){
     const res=await fetch(`${BASE}/ticker?markets=${encodeURIComponent(market)}`,{headers:{accept:'application/json'}});
-    if(!res.ok)throw new Error(`upbit http ${res.status}`);
+    if(!res.ok) throw new Error(`upbit http ${res.status}`);
     const j=await res.json(); const t=j[0];
     return{
       market:t.market,
@@ -16,7 +16,7 @@
   }
   let timer=null;
   function startAutoUpdate({market='KRW-ETH',onUpdate=()=>{},intervalMs=1000}){
-    if(timer)clearInterval(timer);
+    if(timer) clearInterval(timer);
     fetchTicker(market).then(onUpdate).catch(console.error);
     timer=setInterval(async()=>{ try{ onUpdate(await fetchTicker(market)); } catch(e){ console.error(e); } }, Math.max(500,intervalMs|0));
   }
