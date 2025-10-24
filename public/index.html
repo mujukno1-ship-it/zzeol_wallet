@@ -20,8 +20,10 @@ th,td{padding:10px 8px;border-top:1px solid var(--line);text-align:left} small{o
 .risk.warn{color:var(--warn);border-color:#3a2d14;background:#1a140a}
 .risk.dang{color:var(--err);border-color:#3b1f23;background:#1a0d0f}
 .badge{display:inline-flex;gap:6px;align-items:center}
-.spinner{width:14px;height:14px;border:2px solid #334155;border-top-color:#93c5fd;border-radius:50%;animation:sp 0.9s linear infinite}
+.spinner{width:14px;height:14px;border:2px solid #334155;border-top-color:#93c5fd;border-radius:50%;animation:sp .9s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+.sub{font-size:13px;color:#94a3b8}
+.k{opacity:.85}
 </style>
 </head>
 <body>
@@ -33,7 +35,7 @@ th,td{padding:10px 8px;border-top:1px solid var(--line);text-align:left} small{o
       <input id="q" placeholder="예: 비트코인, BTC, 비트코인캐시, BCH / KRW-ETH" />
       <button id="searchBtn">검색</button>
       <span id="systemBadge" class="pill">시스템: 확인중…</span>
-      <span id="riskChip" class="risk muted">위험도: -</span>
+      <span id="riskChip" class="risk">위험도: -</span>
       <span id="updatedAt" class="muted"><small></small></span>
       <span id="loader" class="badge" style="display:none"><span class="spinner"></span><small>불러오는 중…</small></span>
     </div>
@@ -69,7 +71,9 @@ th,td{padding:10px 8px;border-top:1px solid var(--line);text-align:left} small{o
       <button onclick="loadList('rising')">상승 TOP10</button>
       <button onclick="loadList('spike')">급등</button>
       <button onclick="loadList('dump')">급락</button>
-      <button onclick="loadList('spark')">스파크⚡</button> <!-- NEW -->
+      <button onclick="loadSpark()">스파크⚡</button>
+      <button onclick="loadSpark(true)">스파크 히스토리</button>
+      <span class="sub k">스파크: 최근 3분 상승률+거래량 폭증(캐시 10분 유지, 히스토리 30분)</span>
     </div>
     <table id="listTable" style="margin-top:8px;">
       <thead><tr><th>코인</th><th>현재가</th><th>등락</th></tr></thead>
@@ -153,19 +157,35 @@ async function tick(){
 async function loadList(type){
   $('loader').style.display='inline-flex';
   try{
-    const endpoint=(type==='spark')?'/api/spark':(`/api/list?type=${type}`);
-    const j=await (await fetch(endpoint)).json();
-    const tb=document.querySelector("#listTable tbody"); tb.innerHTML="";
-    (j.list||[]).forEach(c=>{
-      const changeCell=(type==='spark')?`${pct(c.deltaPct)} · Vx${(c.volRatio||0).toFixed(1)}`:`${pct(c.change)}`;
-      const cls=(type==='spark')?(c.deltaPct>=0?'green':'red'):(c.change>=0?'green':'red');
-      const price=c.price ?? c.price_krw ?? 0;
-      const name=c.name ?? c.market?.replace('KRW-','') ?? '-';
-      const tr=document.createElement("tr");
-      tr.innerHTML=`<td>${name}</td><td>${fmt(price)}</td><td class="${cls}">${changeCell}</td>`;
-      tb.appendChild(tr);
-    });
+    const j=await (await fetch(`/api/list?type=${type}`)).json();
+    fillTable(j.list||[], type);
   } finally{$('loader').style.display='none';}
+}
+
+async function loadSpark(history=false){
+  $('loader').style.display='inline-flex';
+  try{
+    const j=await (await fetch('/api/spark')).json();
+    fillTable(history ? (j.history||[]) : (j.list||[]), history?'spark-his':'spark');
+  } finally{$('loader').style.display='none';}
+}
+
+function fillTable(arr, mode){
+  const tb=document.querySelector("#listTable tbody"); tb.innerHTML="";
+  arr.forEach(c=>{
+    const name=c.name ?? c.market?.replace('KRW-','') ?? '-';
+    const price=c.price ?? c.price_krw ?? 0;
+    let changeCell, cls;
+    if(mode==='spark' || mode==='spark-his'){
+      changeCell=`${pct(c.deltaPct)} · Vx${(c.volRatio||0).toFixed(1)}${mode==='spark-his'&&c.at?` · ${new Date(c.at).toLocaleTimeString()}`:''}`;
+      cls=c.deltaPct>=0?'green':'red';
+    }else{
+      changeCell=pct(c.change); cls=c.change>=0?'green':'red';
+    }
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${name}</td><td>${fmt(price)}</td><td class="${cls}">${changeCell}</td>`;
+    tb.appendChild(tr);
+  });
 }
 
 let currentMarket='KRW-ETH', timer=null;
