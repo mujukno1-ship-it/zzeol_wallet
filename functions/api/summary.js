@@ -7,7 +7,7 @@ export const onRequestGet = async ({ request }) => {
     const [upRes, kimRes, ocRes] = await Promise.all([
       fetch("https://api.upbit.com/v1/ticker?markets=" + encodeURIComponent(market), {
         headers: { accept: "application/json" },
-        cf: { cacheTtl: 2, cacheEverything: true },
+        cf: { cacheTtl: 1, cacheEverything: true },
       }),
       fetch(new URL("/api/kimchi", url.origin), { cf: { cacheTtl: 3, cacheEverything: true } }),
       fetch(new URL("/api/onchain", url.origin), { cf: { cacheTtl: 15, cacheEverything: true } }),
@@ -15,7 +15,7 @@ export const onRequestGet = async ({ request }) => {
 
     const upArr  = await safeJson(upRes);   // [{...}] or null
     const kimchi = await safeJson(kimRes);  // { kimchi, ... } or null
-    const oc     = await safeJson(ocRes);   // { ok, stables } or null
+    const oc     = await safeJson(ocRes);   // { ok, total } or null
 
     const upbit = upArr?.[0]
       ? {
