@@ -1,10 +1,10 @@
-// ⚡ 스파크(단기 급상승) 탐지
+// ⚡ Spark detector — keep 24h
 // - 최근 3분 상승률(deltaPct) + 거래량 급증 배율(volRatio)
-// - 감지되면 캐시에 10분 유지(바로 안 사라짐) + 히스토리 로그 30분 유지
+// - 감지 후 캐시/히스토리 모두 24시간 보존 (사용자 체감: 안사라짐)
 
 const g = globalThis;
-g._sparkCache  ||= new Map();   // market -> {market,name,price,deltaPct,volRatio,ts}
-g._sparkHistory||= [];          // [{market,name,price,deltaPct,volRatio,at}]
+g._sparkCache  ||= new Map();  // market -> {market,name,price,deltaPct,volRatio,ts}
+g._sparkHistory||= [];         // [{market,name,price,deltaPct,volRatio,at}]
 
 export const onRequestGet = async () => {
   try{
@@ -17,42 +17,38 @@ export const onRequestGet = async () => {
     const TOP_N = 50;
     const top = tickers.sort((a,b)=>(b.acc_trade_price_24h||0)-(a.acc_trade_price_24h||0)).slice(0,TOP_N).map(t=>t.market);
 
-    const CONCURRENCY = 15;
-    const out=[];
-    for(let i=0;i<top.length;i+=CONCURRENCY){
-      const batch = top.slice(i,i+CONCURRENCY).map(m=>fetchMinuteSpark(m));
+    const CONC=15, out=[];
+    for(let i=0;i<top.length;i+=CONC){
+      const batch = top.slice(i,i+CONC).map(m=>fetchMinuteSpark(m));
       // eslint-disable-next-line no-await-in-loop
       out.push(...(await Promise.all(batch)));
     }
 
-    const THRESH_PCT = 2.0, THRESH_VOL = 3.0;
-    const now = Date.now();
+    const TH_PCT=2.0, TH_VOL=3.0;
+    const now=Date.now();
 
-    // 신규 감지 → 캐시/히스토리 저장
     out.filter(Boolean).forEach(x=>{
-      if(x.deltaPct>=THRESH_PCT && x.volRatio>=THRESH_VOL){
+      if(x.deltaPct>=TH_PCT && x.volRatio>=TH_VOL){
         g._sparkCache.set(x.market, { ...x, ts: now });
-        // 히스토리 중복 방지(최근 60초 내 동일 market은 1회만)
-        const dup = g._sparkHistory.findLast?.(h=>h.market===x.market && (now-h.at)<60000);
-        if(!dup) g._sparkHistory.push({ ...x, at: now });
+        const recentDup = g._sparkHistory.findLast?.(h=>h.market===x.market && (now-h.at)<60000);
+        if(!recentDup) g._sparkHistory.push({ ...x, at: now });
       }
     });
 
-    // 만료 정리: 캐시 10분, 히스토리 30분
-    const TEN = 10*60*1000, THIRTY = 30*60*1000;
-    for(const [k,v] of g._sparkCache) if(now - v.ts > TEN) g._sparkCache.delete(k);
-    while(g._sparkHistory.length && (now - g._sparkHistory[0].at > THIRTY)) g._sparkHistory.shift();
+    // ⏳ 24시간 보존 (사라지지 않게)
+    const KEEP = 24*60*60*1000;
+    for(const [k,v] of g._sparkCache){
+      if(now - v.ts > KEEP) g._sparkCache.delete(k);
+    }
+    while(g._sparkHistory.length && (now - g._sparkHistory[0].at > KEEP)) g._sparkHistory.shift();
 
-    // 응답: 현재 유효 스파크 + 최근 히스토리
     const list = Array.from(g._sparkCache.values())
       .sort((a,b)=> (b.deltaPct*b.volRatio)-(a.deltaPct*a.volRatio))
-      .slice(0,30);
+      .slice(0,100);
 
-    const history = g._sparkHistory
-      .slice(-100)
-      .sort((a,b)=> b.at - a.at);
+    const history = g._sparkHistory.slice(-500).sort((a,b)=> b.at - a.at);
 
-    return json({ ok:true, list, history, params:{THRESH_PCT,THRESH_VOL,TOP_N,keepMin:10,historyMin:30} }, 200, 5);
+    return json({ ok:true, list, history, params:{TH_PCT,TH_VOL,keepHours:24} }, 200, 5);
   }catch(e){ return json({ ok:false, error:String(e) }, 500); }
 };
 
