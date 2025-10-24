@@ -1,118 +1,124 @@
 // handleSearch/handleSearch.js
+// 검색 → 온체인 + 업비트 동시조회, 저가코인 틱 정렬, 호가표시, 현실적인 타점(신호) 제공
+
 let lastReqId = 0;
-let ctrl = null;
+let controller = null;
+let debounceTmr = null;
 
 const NAME2SYMBOL = {
-  '비트코인':'BTC','이더리움':'ETH','솔라나':'SOL','리플':'XRP','에이다':'ADA','시바이누':'SHIB'
+  '비트코인': 'BTC', 'BTC': 'BTC',
+  '이더리움': 'ETH', 'ETH': 'ETH',
+  '솔라나': 'SOL', 'SOL': 'SOL',
+  '리플': 'XRP', 'XRP': 'XRP',
+  '에이다': 'ADA', 'ADA': 'ADA',
+  '시바이누': 'SHIB', 'SHIB': 'SHIB',
 };
 
-export async function handleSearch(raw){
-  const sym = (NAME2SYMBOL[raw?.trim()] || raw?.trim() || 'BTC').toUpperCase();
+function getKrwTickSize(price) {
+  if (price >= 2000000) return 1000;
+  if (price >= 1000000) return 500;
+  if (price >= 500000)  return 100;
+  if (price >= 100000)  return 50;
+  if (price >= 10000)   return 10;
+  if (price >= 1000)    return 1;
+  if (price >= 100)     return 0.1;
+  if (price >= 10)      return 0.01;
+  if (price >= 1)       return 0.001;
+  return 0.0001; // 1원 미만 SHIB 같은 초저가 코인
+}
+function quantizeToTick(price) {
+  const tick = getKrwTickSize(price);
+  return Math.round(price / tick) * tick;
+}
+function formatByTick(price) {
+  const tick = getKrwTickSize(price);
+  const decimals = tick < 1 ? String(tick).split('.')[1].length : 0;
+  return Number(price).toFixed(decimals);
+}
+function setText(sel, val) {
+  const el = document.querySelector(sel);
+  if (el) el.textContent = val;
+}
 
-  if (ctrl) ctrl.abort();
-  ctrl = new AbortController();
-  const my = ++lastReqId;
+async function apiJson(url, signal) {
+  const r = await fetch(url, { signal, cache: 'no-store' });
+  if (!r.ok) throw new Error(`${url} ${r.status}`);
+  return await r.json();
+}
+
+export async function handleSearch(rawInput) {
+  // 요청 ID & 중복취소
+  if (controller) controller.abort();
+  controller = new AbortController();
+  const myReqId = ++lastReqId;
+
+  // 입력 정규화
+  const symbol =
+    NAME2SYMBOL[rawInput.trim()] ||
+    rawInput.trim().toUpperCase();
+  if (!symbol) return;
+
+  // 기본 UI 초기화
+  setText('#search-symbol', symbol);
+  setText('#search-price', '-');
+  setText('#search-change', '-');
+  setText('#search-bid', '-');
+  setText('#search-ask', '-');
+  setText('#search-buy', '-');
+  setText('#search-sell', '-');
+  setText('#search-stop', '-');
 
   try {
-    const qs = encodeURIComponent(sym);
-    const [upbit, chain, kimpView, cvd, ob, derivs, market] = await Promise.all([
-      fetch(`/api/upbit?symbol=${qs}`, {signal: ctrl.signal}).then(r=>r.json()).catch(()=>({})),
-      fetch(`/api/onchain?symbol=${qs}`, {signal: ctrl.signal}).then(r=>r.json()).catch(()=>({})),
-      // onchain에 이미 kimchi 포함시 생략 가능 — 여긴 안전하게 chain.kimchi 사용
-      Promise.resolve({}),
-      fetch(`/api/tick?symbol=${qs}`, {signal: ctrl.signal}).then(r=>r.json()).catch(()=>({})),
-      fetch(`/api/orderbook?symbol=${qs}`, {signal: ctrl.signal}).then(r=>r.json()).catch(()=>({})),
-      fetch(`/api/derivs?symbol=${qs}`, {signal: ctrl.signal}).then(r=>r.json()).catch(()=>({})),
-      fetch(`/api/market`, {signal: ctrl.signal}).then(r=>r.json()).catch(()=>({}))
+    // 온체인 + 업비트 병렬 조회
+    const [onchain, upbit] = await Promise.all([
+      // 온체인 API가 symbol을 받도록 되어 있다면 아래처럼 사용
+      // 아니다면 기존 엔드포인트 그대로 유지
+      apiJson(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, controller.signal).catch(() => null),
+      apiJson(`/api/upbit?symbol=${encodeURIComponent(symbol)}`, controller.signal),
     ]);
 
-    if (my !== lastReqId) return; // 오래된 응답 무시
+    // 오래된 응답 무시
+    if (myReqId !== lastReqId) return;
 
-    // ── 1) 단일 신호 계산 ─────────────────────────
-    const mktRate = toNum(upbit?.changeRate) || 0;
-    const marketSignal = mktRate >= 0.003 ? 1 : mktRate <= -0.003 ? -1 : 0;
+    // 업비트 표시
+    if (upbit) {
+      const { price, changeRate, bid, ask } = upbit;
+      setText('#search-price', isFinite(price) ? formatByTick(price) : '-');
+      setText('#search-change', isFinite(changeRate) ? `${changeRate.toFixed(2)}%` : '-');
+      setText('#search-bid', isFinite(bid) ? formatByTick(bid) : '-');
+      setText('#search-ask', isFinite(ask) ? formatByTick(ask) : '-');
 
-    const mvrv = toNum(chain?.mvrvZ);
-    const funding = toNum(chain?.fundingRate);
-    const chainSignal =
-      (mvrv != null && mvrv < 0 && funding != null && funding < 0) ? 1 :
-      (mvrv != null && mvrv > 6) || (funding != null && funding > 0.02) ? -1 : 0;
+      // === 전략 타점(신호) ===
+      const baseBid = isFinite(bid) ? bid : price;
+      const baseAsk = isFinite(ask) ? ask : price;
+      // 예시 전략: 매수=bid -2%, 매도=ask +2%, 손절=bid -4%
+      let buy  = isFinite(baseBid) ? quantizeToTick(baseBid * 0.98) : null;
+      let sell = isFinite(baseAsk) ? quantizeToTick(baseAsk * 1.02) : null;
+      let stop = isFinite(baseBid) ? quantizeToTick(baseBid * 0.96) : null;
 
-    const kimchi = toNum(chain?.kimchi); // onchain.js에서 계산한 김프(%)
-    const kimpBias =
-      kimchi != null ? (kimchi <= -0.5 ? +0.5 : kimchi >= 2 ? -0.5 : 0) : 0;
+      setText('#search-buy',  isFinite(buy)  ? formatByTick(buy)  : '-');
+      setText('#search-sell', isFinite(sell) ? formatByTick(sell) : '-');
+      setText('#search-stop', isFinite(stop) ? formatByTick(stop) : '-');
+    }
 
-    const cvdVal = toNum(cvd?.cvd) || 0;
-    const cvdBias = cvdVal > 0 ? +0.2 : cvdVal < 0 ? -0.2 : 0;
-
-    const obImb = toNum(ob?.imbalance) || 0; // -1~+1
-    const obBias = obImb * 0.25;
-
-    const oi  = toNum(derivs?.openInterest);
-    const fnd = toNum(derivs?.fundingRate);
-    const oiBias =
-      (oi!=null && fnd!=null)
-        ? (fnd > 0.02 ? -0.2 : fnd < -0.005 ? +0.15 : 0)
-        : 0;
-
-    const atr = toNum(market?.atr);
-    const vwap = toNum(market?.vwap);
-    const regimeBias = (atr!=null && vwap!=null)
-      ? (upbit?.price!=null && vwap!=null
-          ? (upbit.price > vwap ? +0.07 : -0.07)
-          : 0)
-      : 0;
-
-    // ── 2) 가중 합산 ─────────────────────────────
-    const w = {
-      mkt:0.25, chain:0.20, kimp:0.10, cvd:0.15, ob:0.10, oi:0.10, reg:0.10
-    };
-    const score =
-      w.mkt*marketSignal +
-      w.chain*chainSignal +
-      w.kimp*kimpBias +
-      w.cvd*cvdBias +
-      w.ob*obBias +
-      w.oi*oiBias +
-      w.reg*regimeBias;
-
-    const T_BUY = +0.35;
-    const T_SELL = -0.35;
-    let signal = 'HOLD';
-    if (score >= T_BUY) signal = 'BUY';
-    if (score <= T_SELL) signal = 'SELL';
-
-    // ── 3) UI로 넘길 행 데이터 ────────────────────
-    return {
-      코인: sym,
-      현재가: nfmt(upbit?.price),
-      등락: pct(mktRate),
-      김프: kimchi!=null ? kimchi.toFixed(2)+'%' : '-',
-      CVD: cvdVal!=null ? cvdVal.toFixed(2) : '-',
-      호가불균형: obImb!=null ? obImb.toFixed(2) : '-',
-      OI: oi!=null ? oi.toLocaleString() : '-',
-      펀딩: fnd!=null ? (fnd*100).toFixed(2)+'%' : '-',
-      ATR: atr!=null ? atr.toFixed(2) : '-',
-      VWAP: vwap!=null ? vwap.toFixed(2) : '-',
-      매수: signal==='BUY' ? '●' : '',
-      매도: signal==='SELL'? '●' : '',
-      위험도: risk(score),
-      이유: `mkt:${marketSignal}, chain:${chainSignal}, kimp:${kimpBias.toFixed(2)}, cvd:${cvdBias.toFixed(2)}, ob:${obBias.toFixed(2)}, oi:${oiBias.toFixed(2)}, reg:${regimeBias.toFixed(2)} → score:${score.toFixed(2)}`
-    };
-  } catch(e){
-    if (e.name!=='AbortError') console.error('[handleSearch]', e);
-    return { 코인: raw, 매수:'', 매도:'', 이유:'데이터 오류' };
+    // 온체인 결과가 표/위젯으로 반영되는 부분은
+    // 기존 렌더러(사람형 AI, 예열예측, BTC 온체인 상태) 로직이 있으므로 유지
+    // (필요시 onchain 객체를 여기서 setText로 보조 표시 가능)
+  } catch (e) {
+    // 실패 시도 간단 표시
+    setText('#search-price', 'ERR');
   }
 }
 
-// 유틸
-function toNum(x){const n=Number(x);return Number.isFinite(n)?n:null;}
-function nfmt(x){return toNum(x)!=null ? toNum(x).toLocaleString() : '-';}
-function pct(x){return toNum(x)!=null ? (toNum(x)*100).toFixed(2)+'%' : '-';}
-function risk(score){
-  if (score >= 0.50) return '1(낮음)';
-  if (score >= 0.25) return '2';
-  if (score >  -0.25) return '3';
-  if (score >  -0.50) return '4';
-  return '5(높음)';
+// 입력창에 디바운스 적용 예시 (원하는 곳에서 호출)
+export function bindSearchInput(inputSelector = '#search-input') {
+  const el = document.querySelector(inputSelector);
+  if (!el) return;
+  const run = () => {
+    const v = el.value || '';
+    clearTimeout(debounceTmr);
+    debounceTmr = setTimeout(() => handleSearch(v), 180);
+  };
+  el.addEventListener('input', run);
+  el.addEventListener('change', run);
 }
