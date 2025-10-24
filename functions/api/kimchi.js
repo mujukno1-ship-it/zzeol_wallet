@@ -27,9 +27,8 @@ export const onRequestGet = async () => {
 
 async function safeJson(res) {
   if (!res || !res.ok) return null;
-  const ct = res.headers.get("content-type") || "";
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
   if (ct.includes("application/json")) return res.json();
-  // JSON이 아니면 text로 받아보고 오류 피함
   const text = await res.text();
   try { return JSON.parse(text); } catch { return null; }
 }
