@@ -8,32 +8,24 @@
   <style>
     body{background:#0b0f14;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";}
     .wrap{max-width:1080px;margin:40px auto;padding:0 16px}
-    .card{background:#0f151b;border:1px solid #1e293b;border-radius:16px;padding:16px 18px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+    .card{background:#0f151b;border:1px solid #1e293b;border-radius:16px;padding:16px 18px}
     .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     .pill{background:#0a1220;border:1px solid #1f2a44;padding:8px 12px;border-radius:999px}
-    .muted{opacity:.7}
-    .green{color:#16a34a}
-    .red{color:#f43f5e}
-    .grid{display:grid;grid-template-columns:160px 1fr 1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:center}
-    .th{opacity:.8}
-    input{background:#0a1220;border:1px solid #1f2a44;border-radius:10px;padding:10px 12px;color:#e6edf3;min-width:220px}
-    button{background:#1d4ed8;border:none;border-radius:10px;padding:10px 14px;color:#fff;cursor:pointer}
-    .ok{color:#22c55e}.bad{color:#ef4444}
+    .green{color:#16a34a}.red{color:#f43f5e}.muted{opacity:.7}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h2>코인 검색 (KRW 전용) · 매수/매도 타점</h2>
-
-    <div class="card" style="margin-bottom:14px">
+    <div class="card">
       <div class="row">
         <input id="q" placeholder="예: 비트코인 또는 BTC" />
         <button id="searchBtn">검색</button>
-        <span id="systemBadge" class="pill">시스템: <b class="muted">확인중…</b></span>
+        <span id="systemBadge" class="pill">시스템: 확인중…</span>
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:14px">
+    <div class="card" style="margin-top:14px">
       <div class="row" style="gap:8px">
         <span id="symPill" class="pill">ETH</span>
         <span>현재가 <b id="price">-</b></span>
@@ -45,21 +37,6 @@
         <span>손절 <b id="sl" class="muted">-</b></span>
       </div>
     </div>
-
-    <div class="card">
-      <div class="grid th" style="margin-bottom:6px">
-        <div>코인</div><div>현재가</div><div>등락</div><div>매수호가</div><div>매도호가</div><div>매수 타점</div><div>매도 타점</div>
-      </div>
-      <div class="grid">
-        <div id="c_sym">ETH</div>
-        <div id="c_price">-</div>
-        <div id="c_chg" class="muted">-</div>
-        <div id="c_bid" class="muted">-</div>
-        <div id="c_ask" class="muted">-</div>
-        <div id="c_buy" class="muted">-</div>
-        <div id="c_sell" class="muted">-</div>
-      </div>
-    </div>
   </div>
 
   <script src="/net_upbit.js"></script>
@@ -67,41 +44,31 @@
     async function checkOnchain(){
       const b=document.getElementById('systemBadge');
       try{
-        const r=await fetch('/api/onchain');
-        if(!r.ok) throw 0;
-        await r.json();
-        b.innerHTML='시스템: <b class="ok">OK</b>';
-      }catch{ b.innerHTML='시스템: <b class="bad">오류</b>'; }
+        const r=await fetch('/api/onchain'); if(!r.ok) throw 0;
+        await r.json(); b.innerHTML='시스템: <b style="color:#22c55e">OK</b>';
+      }catch{ b.innerHTML='시스템: <b style="color:#ef4444">오류</b>'; }
     }
-    function toMarketCode(input){
-      const t=(input||'').trim().toUpperCase();
-      if(!t)return 'KRW-ETH';
-      if(t==='비트코인'||t==='BTC')return 'KRW-BTC';
-      if(t==='이더리움'||t==='ETH')return 'KRW-ETH';
+    function toMarketCode(v){
+      const t=(v||'').trim().toUpperCase();
+      if(!t) return 'KRW-ETH';
+      if(t==='비트코인'||t==='BTC') return 'KRW-BTC';
+      if(t==='이더리움'||t==='ETH') return 'KRW-ETH';
       return t.startsWith('KRW-')?t:`KRW-${t}`;
     }
-    function updateUI(market,d){
+    function updateUI(m,d){
       const price=d.trade_price;
-      const chg=(d.signed_change_price/d.prev_closing_price)*100; // 중복×100 방지
-      const fmt=v=>Number(v).toLocaleString('ko-KR');
-      const fmt2=v=>`${v>0?'+':''}${v.toFixed(2)}%`;
-      document.getElementById('symPill').textContent=market.replace('KRW-','');
+      const chg=(d.signed_change_price/d.prev_closing_price)*100;
+      const fmt=x=>Number(x).toLocaleString('ko-KR');
+      const fmt2=x=>`${x>0?'+':''}${x.toFixed(2)}%`;
+      document.getElementById('symPill').textContent=m.replace('KRW-','');
       document.getElementById('price').textContent=fmt(price);
       document.getElementById('chg').textContent=fmt2(chg);
       document.getElementById('chg').className=chg>=0?'green':'red';
       document.getElementById('bid').textContent=fmt(d.bid_price);
       document.getElementById('ask').textContent=fmt(d.ask_price);
-      document.getElementById('c_sym').textContent=market.replace('KRW-','');
-      document.getElementById('c_price').textContent=fmt(price);
-      document.getElementById('c_chg').textContent=fmt2(chg);
-      document.getElementById('c_chg').className=chg>=0?'green':'red';
-      document.getElementById('c_bid').textContent=fmt(d.bid_price);
-      document.getElementById('c_ask').textContent=fmt(d.ask_price);
       document.getElementById('buy').textContent=fmt(price*0.99);
       document.getElementById('sell').textContent=fmt(price*1.01);
       document.getElementById('sl').textContent=fmt(price*0.9801);
-      document.getElementById('c_buy').textContent=fmt(price*0.99);
-      document.getElementById('c_sell').textContent=fmt(price*1.01);
     }
     document.getElementById('searchBtn').addEventListener('click',()=>{
       const m=toMarketCode(document.getElementById('q').value);
