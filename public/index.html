@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>쩔어지갑 · KRW 실시간 코인 타점</title>
+  <style>
+    body{background:#0b0f14;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:1080px;margin:40px auto;padding:0 16px}
+    .card{background:#0f151b;border:1px solid #1e293b;border-radius:16px;padding:16px 18px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .pill{background:#0a1220;border:1px solid #1f2a44;padding:8px 12px;border-radius:999px}
+    .green{color:#22c55e}.red{color:#ef4444}.muted{opacity:.7}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>KRW 코인 검색 · 매수/매도 타점</h2>
+    <div class="card">
+      <div class="row">
+        <input id="q" placeholder="예: 비트코인 또는 BTC" />
+        <button id="searchBtn">검색</button>
+        <span id="systemBadge" class="pill">시스템: 확인중…</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span id="symPill" class="pill">ETH</span>
+      <span>현재가: <b id="price">-</b></span>
+      <span>등락: <b id="chg" class="muted">-</b></span>
+      <span>매수: <b id="buy" class="muted">-</b></span>
+      <span>매도: <b id="sell" class="muted">-</b></span>
+    </div>
+  </div>
+
+  <script>
+    async function checkOnchain(){
+      const b=document.getElementById('systemBadge');
+      try{
+        const r=await fetch('/api/onchain'); if(!r.ok) throw 0;
+        await r.json(); b.innerHTML='시스템: <b style="color:#22c55e">OK</b>';
+      }catch{ b.innerHTML='시스템: <b style="color:#ef4444">오류</b>'; }
+    }
+    function toMarketCode(v){
+      const t=(v||'').trim().toUpperCase();
+      if(!t)return 'KRW-ETH';
+      if(t==='비트코인'||t==='BTC')return 'KRW-BTC';
+      if(t==='이더리움'||t==='ETH')return 'KRW-ETH';
+      return t.startsWith('KRW-')?t:`KRW-${t}`;
+    }
+    function updateUI(m,d){
+      const p=d.trade_price;
+      const chg=(d.signed_change_price/d.prev_closing_price)*100;
+      const fmt=v=>Number(v).toLocaleString('ko-KR');
+      const fmt2=v=>`${v>0?'+':''}${v.toFixed(2)}%`;
+      document.getElementById('symPill').textContent=m.replace('KRW-','');
+      document.getElementById('price').textContent=fmt(p);
+      document.getElementById('chg').textContent=fmt2(chg);
+      document.getElementById('chg').className=chg>=0?'green':'red';
+      document.getElementById('buy').textContent=fmt(p*0.99);
+      document.getElementById('sell').textContent=fmt(p*1.01);
+    }
+    document.getElementById('searchBtn').addEventListener('click',()=>{
+      const m=toMarketCode(document.getElementById('q').value);
+      fetch(`/api/upbit?market=${encodeURIComponent(m)}`).then(r=>r.json()).then(d=>updateUI(m,d));
+    });
+    checkOnchain();
+    fetch('/api/upbit?market=KRW-ETH').then(r=>r.json()).then(d=>updateUI('KRW-ETH',d));
+  </script>
+</body>
+</html>
