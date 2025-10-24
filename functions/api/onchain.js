@@ -9,12 +9,10 @@ export const onRequestGet = async () => {
     });
     const j = await res.json();
 
-    // 총합 및 개별 자산
     const totalUSD = j.totalCirculatingUSD || 0;
     const change24h = j.change_24h || 0;
     const coins = j.peggedAssets?.filter(x => ["Tether", "USDC", "Dai"].includes(x.name)) || [];
 
-    // 개별 데이터 변환
     const parsed = coins.map(c => ({
       symbol: c.symbol,
       name: c.name,
@@ -23,8 +21,6 @@ export const onRequestGet = async () => {
     }));
 
     const krw = totalUSD * 1350;
-
-    // 위험도 감지 (3개 모두 음수면 경고)
     const outflowAll = parsed.every(c => c.change24h < 0);
     const risk = outflowAll ? "⚠️ 자금 이탈 경고" : (change24h < 0 ? "주의" : "정상");
 
@@ -53,7 +49,6 @@ export const onRequestGet = async () => {
   }
 };
 
-// 공용 JSON 응답 헬퍼
 const json = (obj, code = 200) =>
   new Response(JSON.stringify(obj), {
     status: code,
