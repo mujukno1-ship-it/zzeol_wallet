@@ -1,27 +1,41 @@
-// 온체인 실시간 버전: DeFiLlama Stablecoin API
+// FullSet ∞ On-Chain Flow v1.0
+// 스테이블코인 자금 유입/유출 감지 (USDT·USDC·DAI)
+
 export const onRequestGet = async () => {
   try {
-    const r = await fetch("https://stablecoins.llama.fi/stablecoins?includePrices=true", {
+    const res = await fetch("https://stablecoins.llama.fi/stablecoins?includePrices=true", {
       headers: { accept: "application/json" },
-      cf: { cacheTtl: 60, cacheEverything: true }
+      cf: { cacheTtl: 60, cacheEverything: true },
     });
-    const j = await r.json();
+    const j = await res.json();
 
-    // 전체 스테이블코인 총 시가총액 (USD)
+    // 총합 및 개별 자산
     const totalUSD = j.totalCirculatingUSD || 0;
     const change24h = j.change_24h || 0;
+    const coins = j.peggedAssets?.filter(x => ["Tether", "USDC", "Dai"].includes(x.name)) || [];
 
-    const krwCap = totalUSD * 1350; // 원화 환산
+    // 개별 데이터 변환
+    const parsed = coins.map(c => ({
+      symbol: c.symbol,
+      name: c.name,
+      mcapUSD: c.circulating?.[0]?.totalCirculatingUSD || 0,
+      change24h: c.change_24h || 0
+    }));
+
+    const krw = totalUSD * 1350;
+
+    // 위험도 감지 (3개 모두 음수면 경고)
+    const outflowAll = parsed.every(c => c.change24h < 0);
+    const risk = outflowAll ? "⚠️ 자금 이탈 경고" : (change24h < 0 ? "주의" : "정상");
 
     return json({
       ok: true,
-      stables: {
-        total: { mcap: Math.round(krwCap), change: change24h }
-      },
+      total: { mcapKRW: Math.round(krw), change24h, risk },
+      coins: parsed,
       src: "defillama"
     });
   } catch (e) {
-    // 백업 로직 (CoinMetrics)
+    // 백업: CoinMetrics USDT 시총
     const backup = await fetch(
       "https://api.coinmetrics.io/v4/timeseries/asset-metrics?assets=usdt&metrics=CapMrktCurUSD",
       { headers: { accept: "application/json" } }
@@ -32,12 +46,14 @@ export const onRequestGet = async () => {
 
     return json({
       ok: true,
-      stables: { total: { mcap: Math.round(krw), change: 0 } },
+      total: { mcapKRW: Math.round(krw), change24h: 0, risk: "백업모드" },
+      coins: [{symbol:"USDT", mcapUSD:cap, change24h:0}],
       src: "coinmetrics"
     });
   }
 };
 
+// 공용 JSON 응답 헬퍼
 const json = (obj, code = 200) =>
   new Response(JSON.stringify(obj), {
     status: code,
