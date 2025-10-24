@@ -1,10 +1,17 @@
 <script>
 /* =========================
+   안전 헬퍼 (엘리먼트 없어도 에러X)
+   ========================= */
+const $ = (id) => document.getElementById(id);
+const setText = (id, v) => { const el=$(id); if(el) el.textContent=v; };
+const setHTML = (id, v) => { const el=$(id); if(el) el.innerHTML=v; };
+const setClass = (id, v) => { const el=$(id); if(el) el.className=v; };
+const showLoader = (on) => { const l=$('loader'); if(l) l.style.display = on ? 'inline-flex' : 'none'; };
+const pct = (v)=>`${v>0?'+':''}${(Number(v)||0).toFixed(2)}%`;
+
+/* =========================
    업비트 KRW 호가단위/표시
    ========================= */
-const $=(id)=>document.getElementById(id);
-const pct=v=>`${v>0?'+':''}${(Number(v)||0).toFixed(2)}%`;
-
 function tickSizeKRW(p){
   p=Number(p)||0;
   if(p>=2000000) return 1000;
@@ -33,14 +40,14 @@ const fmtKRW=(v)=>{const t=tickSizeKRW(v);return Number(v||0).toLocaleString('ko
    설정(쉽게 바꿀 수 있음)
    ========================= */
 const CONF = {
-  BASE_TICKS: 2,              // 스프레드 보정: 기본 N틱
-  MAX_TICKS: 6,               // 최대 확장
-  FEE: 0.0005,                // 왕복 0.05% 가정(원하면 0.0007 등으로)
-  ATR_LEN: 14,                // ATR 기간(분)
-  ATR_K: 0.8,                 // ATR 배수 (0.6~1.2 권장)
-  KIMCHI_1: 2,                // |김치| >= 2% → +1틱
-  KIMCHI_2: 4,                // |김치| >= 4% → +2틱
-  ONCHAIN_WEAK: -1.5          // 온체인 총량 24h <= -1.5% → +1틱
+  BASE_TICKS: 2,          // 스프레드 보정 기본 N틱
+  MAX_TICKS: 6,           // 최대 확장
+  FEE: 0.0005,            // 수수료(0.05%) 보정
+  ATR_LEN: 14,            // ATR 기간(분)
+  ATR_K: 0.8,             // ATR 배수
+  KIMCHI_1: 2,            // |김치| >= 2% → +1틱
+  KIMCHI_2: 4,            // |김치| >= 4% → +2틱
+  ONCHAIN_WEAK: -1.5      // 온체인 총량 24h <= -1.5% → +1틱
 };
 
 /* =========================
@@ -92,32 +99,33 @@ async function loadATR(market, len=CONF.ATR_LEN){
 async function renderSummaryWithTargets(s){
   const up=s?.upbit;
   if(!up){
-    $('systemBadge').innerHTML="시스템: <b style='color:#ef4444'>오류</b>";
+    setHTML('systemBadge',"시스템: <b style='color:#ef4444'>오류</b>");
     return;
   }
   const chg=(up.signed_change_price/up.prev_closing_price)*100;
   const tick=tickSizeKRW(up.trade_price);
 
   // 기본 정보
-  $('symPill').textContent=up.market.replace('KRW-','');
-  $('price').textContent=fmtKRW(up.trade_price);
-  $('chg').textContent=pct(chg); $('chg').className=chg>=0?'green':'red';
+  setText('symPill', up.market.replace('KRW-',''));
+  setText('price', fmtKRW(up.trade_price));
+  setText('chg', pct(chg));
+  setClass('chg', chg>=0?'green':'red');
 
   // 보조지표
   const kp = s?.kimchi?.kimchi ?? null;
-  if(kp!=null){$('kimchi').textContent=pct(kp); $('kimchi').className=kp>=0?'green':'red';}
-  else{$('kimchi').textContent='-';$('kimchi').className='muted';}
+  if(kp!=null){ setText('kimchi', pct(kp)); setClass('kimchi', kp>=0?'green':'red'); }
+  else { setText('kimchi','-'); setClass('kimchi','muted'); }
 
   if(s?.onchain?.ok){
     const t=s.onchain.total;
-    $('onchain').textContent=`₩${Number(t.mcapKRW).toLocaleString('ko-KR')} (${pct(t.change24h)}) ${t.risk||''}`;
-    $('onchain').className=t.change24h<0?'red':(t.change24h>0?'green':'muted');
-  }else{$('onchain').textContent='오류';$('onchain').className='red'}
+    setText('onchain', `₩${Number(t.mcapKRW).toLocaleString('ko-KR')} (${pct(t.change24h)}) ${t.risk||''}`);
+    setClass('onchain', t.change24h<0?'red':(t.change24h>0?'green':'muted'));
+  }else{ setText('onchain','오류'); setClass('onchain','red'); }
 
-  // 위험도 뱃지
+  // 위험도
   const rk=riskScore(chg,kp);
-  $('riskChip').textContent='위험도: '+rk.label;
-  $('riskChip').className='risk '+rk.cls;
+  setText('riskChip','위험도: '+rk.label);
+  setClass('riskChip','risk '+rk.cls);
 
   // ===== 타점 계산 =====
   // ① 스프레드 기반
@@ -144,56 +152,45 @@ async function renderSummaryWithTargets(s){
     }
   }catch{}
 
-  // ③ 수수료 보정(왕복 fee 고려)
+  // ③ 수수료 보정
   rawBuy  = rawBuy  * (1 - CONF.FEE);
   rawSell = rawSell * (1 + CONF.FEE);
 
   // ④ 틱 반올림 + 표시
   const buyTarget  = roundTick(rawBuy , tick, 'down');
   const sellTarget = roundTick(rawSell, tick, 'up');
-  $('buy').textContent = fmtKRW(buyTarget);
-  $('sell').textContent = fmtKRW(sellTarget);
+  setText('buy', fmtKRW(buyTarget));
+  setText('sell', fmtKRW(sellTarget));
 
   // 시스템 상태/업데이트
   const ok=!!up && (s?.kimchi?.kimchi!=null);
-  $('systemBadge').innerHTML=ok?"시스템: <b style='color:#22c55e'>OK</b>":"시스템: <b style='color:#ef4444'>오류</b>";
-  $('updatedAt').innerHTML=`<small>${new Date().toLocaleTimeString()}</small>`;
+  setHTML('systemBadge', ok ? "시스템: <b style='color:#22c55e'>OK</b>" : "시스템: <b style='color:#ef4444'>오류</b>");
+  setHTML('updatedAt', `<small>${new Date().toLocaleTimeString()}</small>`);
 }
 
 /* =========================
-   주기 갱신
-   ========================= */
-let currentMarket='KRW-ETH', timer=null;
-async function tick(){
-  try{$('loader').style.display='inline-flex'; const s=await loadSummary(currentMarket); await renderSummaryWithTargets(s);}
-  catch(e){console.error(e);$('systemBadge').innerHTML="시스템: <b style='color:#ef4444'>오류</b>";}
-  finally{$('loader').style.display='none';}
-}
-document.getElementById('searchBtn').addEventListener('click', ()=>{
-  currentMarket=toMarket(document.getElementById('q').value);
-  clearInterval(timer); tick(); timer=setInterval(tick,1500);
-});
-tick(); timer=setInterval(tick,1500);
-
-/* =========================
-   리스트/스파크(버튼 그대로)
+   리스트/스파크(버튼은 기존 onclick 유지)
    ========================= */
 async function loadList(type){
-  $('loader').style.display='inline-flex';
+  showLoader(true);
   try{
     const j=await (await fetch(`/api/list?type=${type}`)).json();
     fillTable(j.list||[], type);
-  } finally{$('loader').style.display='none';}
+  } catch(e){ console.error(e); }
+  finally{ showLoader(false); }
 }
 async function loadSpark(history=false){
-  $('loader').style.display='inline-flex';
+  showLoader(true);
   try{
     const j=await (await fetch('/api/spark')).json();
     fillTable(history ? (j.history||[]) : (j.list||[]), history?'spark-his':'spark');
-  } finally{$('loader').style.display='none';}
+  } catch(e){ console.error(e); }
+  finally{ showLoader(false); }
 }
 function fillTable(arr, mode){
-  const tb=document.querySelector("#listTable tbody"); tb.innerHTML="";
+  const tb = document.querySelector("#listTable tbody");
+  if(!tb) return;
+  tb.innerHTML="";
   arr.forEach(c=>{
     const name=c.name ?? c.market?.replace('KRW-','') ?? '-';
     const price=c.price ?? c.price_krw ?? 0;
@@ -209,5 +206,47 @@ function fillTable(arr, mode){
     tb.appendChild(tr);
   });
 }
-loadList('rising');
+
+/* =========================
+   주기 갱신 + 안전 바인딩
+   ========================= */
+let currentMarket='KRW-ETH', timer=null;
+
+async function tick(){
+  try{
+    showLoader(true);
+    const s=await loadSummary(currentMarket);
+    await renderSummaryWithTargets(s);
+  }catch(e){
+    console.error(e);
+    setHTML('systemBadge',"시스템: <b style='color:#ef4444'>오류</b>");
+  }finally{
+    showLoader(false);
+  }
+}
+
+function bindSearch(){
+  const btn = $('searchBtn');           // 있으면 바인딩, 없으면 무시
+  if(btn){
+    btn.addEventListener('click', ()=>{
+      const qEl=$('q');
+      currentMarket = toMarket(qEl?.value || '');
+      clearInterval(timer); tick(); timer=setInterval(tick,1500);
+    });
+  }
+}
+
+function startApp(){
+  bindSearch();
+  // 첫 로드
+  tick();
+  timer = setInterval(tick, 1500);
+}
+
+// DOM 준비 상태와 무관하게 안전 실행
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', startApp);
+}else{
+  startApp();
+}
 </script>
