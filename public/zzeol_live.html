@@ -41,19 +41,51 @@
           <tr style="color:#9fb0c0;text-transform:uppercase;font-size:12px">
             <th>TF</th>
             <th>신호</th>
-            <th>현재가</th>
+            <th>현재가 (USDT/KRW)</th>
             <th>ATR(14)</th>
             <th>정확도</th>
             <th>신뢰도</th>
-            <th>매수(진입)</th>
-            <th>TP1</th>
-            <th>TP2</th>
-            <th>손절</th>
+            <th>매수 (USDT/KRW)</th>
+            <th>TP1 (USDT/KRW)</th>
+            <th>TP2 (USDT/KRW)</th>
+            <th>손절 (USDT/KRW)</th>
             <th>근거</th>
           </tr>
         </thead>
         <tbody id="tfBody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- 분석 기반 타점 (시나리오 엔진 v1) -->
+  <div class="card">
+    <div class="row">
+      <h2>분석 기반 타점 — 시나리오 엔진 v1 (BTC/KRW)</h2>
+      <button id="btnAnalyze" style="margin-left:auto;padding:8px 12px;border-radius:8px;background:#1f2d44;color:#e6edf3;border:1px solid #284161">분석 실행</button>
+    </div>
+    <div id="anaBox" style="margin-top:10px;display:none">
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <div class="chip" id="anaSignal">신호: –</div>
+        <div class="chip" id="anaAccuracy">정확도: –</div>
+        <div class="chip" id="anaRisk">위험도: –</div>
+        <div class="chip" id="anaOBI">호가 불균형: –</div>
+      </div>
+      <table style="width:100%;margin-top:10px;border-collapse:separate;border-spacing:0">
+        <thead>
+          <tr style="color:#9fb0c0;text-transform:uppercase;font-size:12px">
+            <th>항목</th>
+            <th>USDT</th>
+            <th>KRW(틱보정)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><b>매수(진입)</b></td><td id="anaEntryU">–</td><td id="anaEntryK">–</td></tr>
+          <tr><td><b>익절1(TP1)</b></td><td id="anaTP1U">–</td><td id="anaTP1K">–</td></tr>
+          <tr><td><b>익절2(TP2)</b></td><td id="anaTP2U">–</td><td id="anaTP2K">–</td></tr>
+          <tr><td><b>손절(SL)</b></td><td id="anaSLU">–</td><td id="anaSLK">–</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:10px;color:#9fb0c0" id="anaWhy">근거: –</div>
     </div>
   </div>
 
@@ -157,10 +189,36 @@
 
     function confFromAcc(a){ return a>80?'높음':a>70?'보통':'낮음'; }
 
-    function rowHTML({label, signal, price, atr, acc, conf, tp1, tp2, sl, why}){
+    function rowHTML({label, signal, price, price_krw, price_krw_tick, atr, acc, conf, tp1, tp1_krw, tp1_krw_tick, tp2, tp2_krw, tp2_krw_tick, sl, sl_krw, sl_krw_tick, why}){
       const cls = acc>80?'#7ce4af':(acc>70?'#e4da7c':'#e47c7c');
+      const fmtKRW = (v)=>'₩ '+Math.round(v).toLocaleString('ko-KR');
+      const sub = (raw, tick)=>`${fmtKRW(raw)} <span style="opacity:.8">(틱 ${fmtKRW(tick)})</span>`;
       return `<tr>
         <td><b>${label}</b></td>
+        <td>${signal}</td>
+        <td style="text-align:right">${price.toFixed(2)}<br><span style="opacity:.7">${sub(price_krw, price_krw_tick)}</span></td>
+        <td style="text-align:right">${atr.toFixed(2)}</td>
+        <td style="text-align:right;color:${cls}"><b>${acc.toFixed(1)}%</b></td>
+        <td>${conf}</td>
+        <td style="text-align:right"><b>${price.toFixed(2)}</b><br><span style="opacity:.7">${sub(price_krw, price_krw_tick)}</span></td>
+        <td style="text-align:right">${tp1.toFixed(2)}<br><span style="opacity:.7">${sub(tp1_krw, tp1_krw_tick)}</span></td>
+        <td style="text-align:right">${tp2.toFixed(2)}<br><span style="opacity:.7">${sub(tp2_krw, tp2_krw_tick)}</span></td>
+        <td style="text-align:right">${sl.toFixed(2)}<br><span style="opacity:.7">${sub(sl_krw, sl_krw_tick)}</span></td>
+        <td style="color:#9fb0c0">${why}</td>
+      </tr>`;
+    }</b></td>
+        <td>${signal}</td>
+        <td style="text-align:right">${price.toFixed(2)}<br><span style="opacity:.7">${fmtKRW(price_krw)}</span></td>
+        <td style="text-align:right">${atr.toFixed(2)}</td>
+        <td style="text-align:right;color:${cls}"><b>${acc.toFixed(1)}%</b></td>
+        <td>${conf}</td>
+        <td style="text-align:right"><b>${price.toFixed(2)}</b><br><span style="opacity:.7">${fmtKRW(price_krw)}</span></td>
+        <td style="text-align:right">${tp1.toFixed(2)}<br><span style="opacity:.7">${fmtKRW(tp1_krw)}</span></td>
+        <td style="text-align:right">${tp2.toFixed(2)}<br><span style="opacity:.7">${fmtKRW(tp2_krw)}</span></td>
+        <td style="text-align:right">${sl.toFixed(2)}<br><span style="opacity:.7">${fmtKRW(sl_krw)}</span></td>
+        <td style="color:#9fb0c0">${why}</td>
+      </tr>`;
+    }</b></td>
         <td>${signal}</td>
         <td style="text-align:right">${price.toFixed(2)}</td>
         <td style="text-align:right">${atr.toFixed(2)}</td>
@@ -195,17 +253,51 @@
       const fr = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT').then(r=>r.json());
       const funding = parseFloat(fr.lastFundingRate)*100;
 
+      // 방향
       const signal = trend==='상승'?'롱(매수 우위)':trend==='하락'?'숏(매도 우위)':'관망';
       const entry = price;
       const dir = (trend==='상승')?+1:(trend==='하락')?-1:0;
       const tp1 = entry + dir*0.5*atr;
       const tp2 = entry + dir*1.0*atr;
       const sl  = entry - dir*1.0*atr;
+
+      // ===== 업비트 KRW 호가 단위 틱 보정 =====
+      function krwTick(v){
+        const p=Math.abs(v);
+        if(p>=2000000) return 1000;
+        if(p>=1000000) return 500;
+        if(p>=500000) return 100;
+        if(p>=100000) return 50;
+        if(p>=50000) return 10;
+        if(p>=10000) return 5;
+        if(p>=1000) return 1;
+        if(p>=100) return 0.1;
+        if(p>=10) return 0.01;
+        if(p>=1) return 0.001;
+        if(p>=0.1) return 0.0001;
+        if(p>=0.01) return 0.00001;
+        return 0.000001;
+      }
+      function roundTickKRW(v, mode){ // mode: -1=내림, 0=반올림, +1=올림
+        const t=krwTick(v); const x=v/t; const y = mode<0?Math.floor(x):mode>0?Math.ceil(x):Math.round(x);
+        return Number((y*t).toFixed(6));
+      }
+      const price_krw = price*usdkrw;
+      const tp1_krw = tp1*usdkrw;
+      const tp2_krw = tp2*usdkrw;
+      const sl_krw = sl*usdkrw;
+
+      // 방향에 따라 틱 스냅 규칙
+      const price_krw_tick = roundTickKRW(price_krw, 0);
+      const tp1_krw_tick = dir>0? roundTickKRW(tp1_krw, +1) : dir<0? roundTickKRW(tp1_krw, -1) : roundTickKRW(tp1_krw, 0);
+      const tp2_krw_tick = dir>0? roundTickKRW(tp2_krw, +1) : dir<0? roundTickKRW(tp2_krw, -1) : roundTickKRW(tp2_krw, 0);
+      const sl_krw_tick  = dir>0? roundTickKRW(sl_krw, -1)  : dir<0? roundTickKRW(sl_krw, +1)  : roundTickKRW(sl_krw, 0);
+
       const acc = calcAccuracy({trend, kimchi, funding, atr, price});
       const conf = confFromAcc(acc);
       const why = `EMA20/50, ATR14, 김프 ${(kimchi>=0?'+':'')}${kimchi.toFixed(2)}%, 펀딩 ${(funding>=0?'+':'')}${funding.toFixed(4)}%`;
 
-      return {price, atr, signal, entry, tp1, tp2, sl, acc, conf, trend, kimchi, funding, why};
+      return {price, price_krw, price_krw_tick, atr, signal, entry, tp1, tp1_krw, tp1_krw_tick, tp2, tp2_krw, tp2_krw_tick, sl, sl_krw, sl_krw_tick, acc, conf, trend, kimchi, funding, why};
     }
 
     async function updateTF(){
@@ -223,6 +315,89 @@
     document.querySelector('#btnTF').onclick = updateTF;
     // 첫 로드에 계산
     updateTF();
+
+    // ===== 시나리오 엔진 v1: 분석 기반 타점 =====
+    async function analyzeScenario(){
+      try{
+        // 공용 데이터 수집
+        const upbit = await fetch('https://api.upbit.com/v1/ticker?markets=KRW-BTC').then(r=>r.json());
+        const upPrice = upbit[0].trade_price;
+        const ob = await fetch('https://api.upbit.com/v1/orderbook?markets=KRW-BTC').then(r=>r.json());
+        const units = ob?.[0]?.orderbook_units||[];
+        const bidVol = units.slice(0,5).reduce((s,u)=>s+u.bid_size,0);
+        const askVol = units.slice(0,5).reduce((s,u)=>s+u.ask_size,0);
+        const obi = bidVol/(askVol||1);
+
+        // 바이낸스 측
+        const bpx = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json());
+        const price = parseFloat(bpx.price);
+        const xr = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=KRW').then(r=>r.json());
+        const usdkrw = xr.rates.KRW;
+        const kimchi = (upPrice/(price*usdkrw)-1)*100;
+        const fr = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT').then(r=>r.json());
+        const funding = parseFloat(fr.lastFundingRate)*100;
+        const kl = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=200').then(r=>r.json());
+        const close = kl.map(k=>parseFloat(k[4]));
+        const high  = kl.map(k=>parseFloat(k[2]));
+        const low   = kl.map(k=>parseFloat(k[3]));
+        // EMA/ATR
+        const e20 = (function(){ const k=2/(21); let e=close[0]; for(let i=1;i<close.length;i++){e=close[i]*k+e*(1-k);} return e;})();
+        const e50 = (function(){ const k=2/(51); let e=close[0]; for(let i=1;i<close.length;i++){e=close[i]*k+e*(1-k);} return e;})();
+        const atr = (function(){ const tr=[]; for(let i=1;i<high.length;i++){const h=high[i],l=low[i],pc=close[i-1];tr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));} let a=tr.slice(0,14).reduce((s,v)=>s+v,0)/14; for(let i=14;i<tr.length;i++){a=(a*13+tr[i])/14;} return a; })();
+        const trend = (price>e20&&e20>e50)?'상승':(price<e20&&e20<e50)?'하락':'횡보';
+
+        // 정확도 기반 가중(기존 로직 + OBI 가감)
+        let penalty=0;
+        if(trend==='횡보') penalty+=20;
+        if(Math.abs(kimchi)>5) penalty+=10;
+        if(Math.abs(funding)>0.05) penalty+=5;
+        if(atr/price>0.015) penalty+=10;
+        const obiPenalty = (obi>1.5||obi<0.67)?5:0; // 불균형 과도 시 보수
+        penalty += obiPenalty;
+        const accuracy = Math.max(50, 100 - penalty);
+
+        // 시나리오: 되돌림 진입(0.25 ATR) + 추세별 목표/손절
+        const dir = trend==='상승'? +1 : trend==='하락'? -1 : 0;
+        let entry = price - dir*0.25*atr;
+        let tp1 = entry + dir*0.75*atr;
+        let tp2 = entry + dir*1.50*atr;
+        let sl  = entry - dir*0.75*atr;
+        // 김프/펀딩/OBI 보정
+        if(kimchi>5 && dir>0){ entry -= 0.15*atr; tp1 -= 0.05*atr; tp2 -= 0.10*atr; }
+        if(kimchi<-3 && dir<0){ entry += 0.15*atr; tp1 += 0.05*atr; tp2 += 0.10*atr; }
+        if(Math.abs(funding)>0.05){ sl = entry - dir*0.9*atr; }
+        if(obi>1.2 && dir>0){ entry += 0.10*atr; }
+        if(obi<0.8 && dir<0){ entry -= 0.10*atr; }
+
+        // KRW 변환 + 업비트 틱 보정
+        function krwTick(v){ const p=Math.abs(v); if(p>=2000000) return 1000; if(p>=1000000) return 500; if(p>=500000) return 100; if(p>=100000) return 50; if(p>=50000) return 10; if(p>=10000) return 5; if(p>=1000) return 1; if(p>=100) return 0.1; if(p>=10) return 0.01; if(p>=1) return 0.001; if(p>=0.1) return 0.0001; if(p>=0.01) return 0.00001; return 0.000001; }
+        function roundTickKRW(v,mode){ const t=krwTick(v); const x=v/t; const y=mode<0?Math.floor(x):mode>0?Math.ceil(x):Math.round(x); return Number((y*t).toFixed(6)); }
+        const entryK = dir>0? roundTickKRW(entry*usdkrw,-1) : dir<0? roundTickKRW(entry*usdkrw,+1) : roundTickKRW(entry*usdkrw,0);
+        const tp1K   = dir>0? roundTickKRW(tp1*usdkrw,+1)   : dir<0? roundTickKRW(tp1*usdkrw,-1)   : roundTickKRW(tp1*usdkrw,0);
+        const tp2K   = dir>0? roundTickKRW(tp2*usdkrw,+1)   : dir<0? roundTickKRW(tp2*usdkrw,-1)   : roundTickKRW(tp2*usdkrw,0);
+        const slK    = dir>0? roundTickKRW(sl*usdkrw,-1)    : dir<0? roundTickKRW(sl*usdkrw,+1)    : roundTickKRW(sl*usdkrw,0);
+
+        // 바인딩
+        const fmt = v=>Number(v).toFixed(2);
+        const krw = v=>'₩ '+Math.round(v).toLocaleString('ko-KR');
+        document.querySelector('#anaBox').style.display='block';
+        document.querySelector('#anaSignal').textContent = '신호: ' + (dir>0?'롱(매수)':'숏(매도)');
+        document.querySelector('#anaAccuracy').textContent = '정확도: ' + accuracy.toFixed(1)+'%';
+        document.querySelector('#anaRisk').textContent = '위험도: ' + (accuracy>80?'낮음':accuracy>70?'보통':'높음');
+        document.querySelector('#anaOBI').textContent = '호가 불균형: ' + obi.toFixed(2);
+        document.querySelector('#anaEntryU').textContent = fmt(entry);
+        document.querySelector('#anaTP1U').textContent = fmt(tp1);
+        document.querySelector('#anaTP2U').textContent = fmt(tp2);
+        document.querySelector('#anaSLU').textContent  = fmt(sl);
+        document.querySelector('#anaEntryK').innerHTML = krw(entryK);
+        document.querySelector('#anaTP1K').innerHTML   = krw(tp1K);
+        document.querySelector('#anaTP2K').innerHTML   = krw(tp2K);
+        document.querySelector('#anaSLK').innerHTML    = krw(slK);
+        document.querySelector('#anaWhy').textContent  = `근거: 추세(${trend}) · ATR ${atr.toFixed(2)} · 김프 ${(kimchi>=0?'+':'')}${kimchi.toFixed(2)}% · 펀딩 ${(funding>=0?'+':'')}${funding.toFixed(4)}% · 호가불균형 ${obi.toFixed(2)} (상위 5틱)`;
+      }catch(e){ console.error(e); }
+    }
+
+    document.querySelector('#btnAnalyze').onclick = analyzeScenario;
   </script>
 </body>
 </html>
