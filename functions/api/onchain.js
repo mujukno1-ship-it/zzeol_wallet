@@ -1,4 +1,4 @@
-// FullSet ∞ On-Chain Flow v1.1
+// FullSet ∞ On-Chain Flow v1.1 (백업 경로 포함)
 export const onRequestGet = async () => {
   try{
     const res = await fetch("https://stablecoins.llama.fi/stablecoins?includePrices=true", {
