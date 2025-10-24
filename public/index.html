@@ -59,8 +59,244 @@ button:hover{background:#334155}
 <!-- ================= 스크립트 전체 붙여넣기 ================= -->
 <!-- 아래는 내가 바로 전에 준 “전체 한방붙여넣기 코드” 그대로 복사해 여기에 붙여넣기 -->
 <script>
-  /** ⚙️ 여기에 방금 준 전체 script 내용 그대로 붙여넣기 **/
+/* ====== 안전 헬퍼 ====== */
+const $ = (id) => document.getElementById(id);
+const setText = (id,v)=>{const el=$(id); if(el) el.textContent=v};
+const setHTML = (id,v)=>{const el=$(id); if(el) el.innerHTML=v};
+const setClass = (id,v)=>{const el=$(id); if(el) el.className=v};
+const showLoader = (on)=>{const l=$('loader'); if(l) l.style.display=on?'inline-flex':'none'};
+const pct = (v)=>`${v>0?'+':''}${(Number(v)||0).toFixed(2)}%`;
+
+/* ====== 업비트 KRW 호가단위/표시 ====== */
+function tickSizeKRW(p){
+  p=Number(p)||0;
+  if(p>=2000000) return 1000;
+  if(p>=1000000) return 500;
+  if(p>=500000)  return 100;
+  if(p>=100000)  return 50;
+  if(p>=10000)   return 10;
+  if(p>=1000)    return 5;
+  if(p>=100)     return 1;
+  if(p>=10)      return 0.1;
+  if(p>=1)       return 0.01;
+  if(p>=0.1)     return 0.001;
+  return 0.0001;
+}
+const dec=(t)=>String(t).includes('.')?String(t).split('.')[1].length:0;
+const roundTick=(v,t,dir='nearest')=>{
+  const n=v/t; let r=n;
+  if(dir==='down') r=Math.floor(n);
+  else if(dir==='up') r=Math.ceil(n);
+  else r=Math.round(n);
+  return Number((r*t).toFixed(dec(t)));
+};
+const fmtKRW=(v)=>{const t=tickSizeKRW(v);return Number(v||0).toLocaleString('ko-KR',{minimumFractionDigits:dec(t),maximumFractionDigits:dec(t)})};
+
+/* ====== 설정 ====== */
+const CONF = {
+  BASE_TICKS: 2,
+  MAX_TICKS : 6,
+  FEE       : 0.0005,
+  ATR_LEN   : 14,
+  ATR_K     : 0.8,
+  KIMCHI_1  : 2,
+  KIMCHI_2  : 4,
+  ONCHAIN_WEAK: -1.5
+};
+
+/* ====== 마켓 매핑 ====== */
+let MARKET_MAP=null;
+(async()=>{try{const r=await fetch('/api/markets'); if(r.ok){const j=await r.json(); MARKET_MAP=j.map;}}catch{}})();
+function toMarket(t){
+  const raw=(t||'').trim(); if(!raw) return 'KRW-ETH';
+  const key=raw.toUpperCase().replace(/\s+/g,'').replace(/-/g,'');
+  if(MARKET_MAP && MARKET_MAP[key]) return MARKET_MAP[key];
+  if(key==='비트코인'||key==='BTC') return 'KRW-BTC';
+  if(key==='이더리움'||key==='ETH') return 'KRW-ETH';
+  if(key==='비트코인캐시'||key==='BCH') return 'KRW-BCH';
+  if(/^KRW-[A-Z]+$/.test(raw.toUpperCase())) return raw.toUpperCase();
+  return 'KRW-'+raw.toUpperCase();
+}
+
+/* ====== 위험도 ====== */
+function riskScore(changePct, kimchiPct){
+  if(kimchiPct==null) return {label:'관망', cls:'warn'};
+  if(Math.abs(changePct)<0.8 && Math.abs(kimchiPct)<1.0) return {label:'관망', cls:'warn'};
+  if(changePct>=1.2 && kimchiPct>=1.5) return {label:'주의', cls:'warn'};
+  if(changePct<=-1.2 || kimchiPct>=4.0) return {label:'경고', cls:'dang'};
+  return {label:'보통', cls:'ok'};
+}
+
+/* ====== API ====== */
+async function loadSummary(market){
+  const r=await fetch(`/api/summary?market=${encodeURIComponent(market)}`);
+  if(!r.ok) throw new Error('summary http '+r.status);
+  return r.json();
+}
+async function loadATR(market, len=CONF.ATR_LEN){
+  try{
+    const r=await fetch(`/api/atr?market=${encodeURIComponent(market)}&len=${len}`);
+    if(!r.ok) return null;
+    return await r.json(); // { ok:true, atr }
+  }catch{return null;}
+}
+
+/* ====== 렌더 + 타점 ====== */
+async function renderSummaryWithTargets(s){
+  const up=s?.upbit;
+  if(!up){ setHTML('systemBadge',"시스템: <b style='color:#ef4444'>오류</b>"); return; }
+
+  const chg=(up.signed_change_price/up.prev_closing_price)*100;
+  const tick=tickSizeKRW(up.trade_price);
+
+  // 기본
+  setText('symPill', up.market.replace('KRW-',''));
+  setText('price', fmtKRW(up.trade_price));
+  setText('chg', pct(chg));
+  setClass('chg', chg>=0?'green':'red');
+
+  // 김프
+  const kp=s?.kimchi?.kimchi ?? null;
+  if(kp!=null){ setText('kimchi', pct(kp)); setClass('kimchi', kp>=0?'green':'red'); }
+  else { setText('kimchi','-'); setClass('kimchi','muted'); }
+
+  // 온체인
+  if(s?.onchain?.ok){
+    const t=s.onchain.total;
+    setText('onchain', `₩${Number(t.mcapKRW).toLocaleString('ko-KR')} (${pct(t.change24h)})`);
+    setClass('onchain', t.change24h<0?'red':(t.change24h>0?'green':'muted'));
+  } else { setText('onchain','오류'); setClass('onchain','red'); }
+
+  // 위험도
+  const rk=riskScore(chg,kp);
+  setText('riskChip','위험도: '+rk.label);
+  setClass('riskChip','risk '+rk.cls);
+
+  // 타점 계산: 스프레드 N틱 + 김프/온체인 보정 + ATR + 수수료 + 틱 반올림
+  let N = CONF.BASE_TICKS;
+  if(kp!=null){
+    if(Math.abs(kp) >= CONF.KIMCHI_2) N += 2;
+    else if(Math.abs(kp) >= CONF.KIMCHI_1) N += 1;
+  }
+  const oc = s?.onchain?.total?.change24h ?? 0;
+  if(oc < CONF.ONCHAIN_WEAK) N += 1;
+  N = Math.min(CONF.MAX_TICKS, Math.max(1,N));
+
+  let rawBuy = up.bid_price - N*tick;
+  let rawSell= up.ask_price + N*tick;
+
+  try{
+    const atr = await loadATR(up.market, CONF.ATR_LEN);
+    if(atr?.ok && atr.atr>0){
+      const mid=(up.bid_price+up.ask_price)/2;
+      const band=CONF.ATR_K*atr.atr;
+      rawBuy = Math.min(rawBuy, mid - band);
+      rawSell= Math.max(rawSell, mid + band);
+    }
+  }catch{}
+
+  rawBuy  *= (1 - CONF.FEE);
+  rawSell *= (1 + CONF.FEE);
+
+  const buyTarget  = roundTick(rawBuy , tick, 'down');
+  const sellTarget = roundTick(rawSell, tick, 'up');
+  setText('buy',  fmtKRW(buyTarget));
+  setText('sell', fmtKRW(sellTarget));
+
+  // 상태
+  const ok=!!up && (s?.kimchi?.kimchi!=null);
+  setHTML('systemBadge', ok ? "시스템: <b style='color:#22c55e'>OK</b>" : "시스템: <b style='color:#ef4444'>오류</b>");
+  setHTML('updatedAt', `<small>${new Date().toLocaleTimeString()}</small>`);
+}
+
+/* ====== 리스트 / 스파크 ====== */
+function fillTable(arr, mode){
+  const tb=document.querySelector('#listTable tbody');
+  if(!tb) return;
+  tb.innerHTML='';
+  (arr||[]).forEach(c=>{
+    const name=c.name ?? c.market?.replace('KRW-','') ?? '-';
+    const price=c.price ?? c.price_krw ?? 0;
+    let changeCell, cls;
+    if(mode==='spark' || mode==='spark-his'){
+      changeCell=`${pct(c.deltaPct)} · Vx${(c.volRatio||0).toFixed(1)}${mode==='spark-his'&&c.at?` · ${new Date(c.at).toLocaleTimeString()}`:''}`;
+      cls=c.deltaPct>=0?'green':'red';
+    }else{
+      changeCell=pct(c.change); cls=c.change>=0?'green':'red';
+    }
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${name}</td><td>${fmtKRW(price)}</td><td class="${cls}">${changeCell}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function _loadList(type){
+  showLoader(true);
+  try{
+    const r=await fetch(`/api/list?type=${encodeURIComponent(type)}`);
+    const j=await r.json();
+    fillTable(j.list||[], type);
+  }catch(e){console.error(e);}
+  finally{showLoader(false);}
+}
+
+async function _loadSpark(history=false){
+  showLoader(true);
+  try{
+    const r=await fetch('/api/spark');
+    const j=await r.json();
+    fillTable(history?(j.history||[]):(j.list||[]), history?'spark-his':'spark');
+  }catch(e){console.error(e);}
+  finally{showLoader(false);}
+}
+
+/* ====== 주기 갱신 ====== */
+let currentMarket='KRW-ETH', timer=null;
+
+async function _tick(){
+  try{
+    showLoader(true);
+    const s=await loadSummary(currentMarket);
+    await renderSummaryWithTargets(s);
+  }catch(e){
+    console.error(e);
+    setHTML('systemBadge',"시스템: <b style='color:#ef4444'>오류</b>");
+  }finally{
+    showLoader(false);
+  }
+}
+
+/* ====== 이벤트 바인딩 & 시작 ====== */
+function bindSearch(){
+  const btn=$('searchBtn');
+  if(btn){
+    btn.addEventListener('click', ()=>{
+      const q=$('q');
+      currentMarket = toMarket(q?.value || '');
+      clearInterval(timer); _tick(); timer=setInterval(_tick,1500);
+    });
+  }
+}
+function _startApp(){
+  bindSearch();
+  _tick();
+  timer=setInterval(_tick,1500);
+}
+
+/* ====== 전역 노출(HTML onclick용) ====== */
+window.loadList  = _loadList;
+window.loadSpark = (his)=>_loadSpark(!!his);
+window.tick      = _tick;
+window.startApp  = _startApp;
+
+/* DOM 준비 후 시작 */
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', _startApp);
+}else{
+  _startApp();
+}
 </script>
+
 
 </body>
 </html>
