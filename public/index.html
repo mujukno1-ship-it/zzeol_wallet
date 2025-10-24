@@ -47,9 +47,7 @@
         <span>매도: <b id="sell" class="muted">-</b></span>
       </div>
       <table>
-        <thead>
-          <tr><th>지표</th><th>값</th><th>설명</th></tr>
-        </thead>
+        <thead><tr><th>지표</th><th>값</th><th>설명</th></tr></thead>
         <tbody>
           <tr>
             <td>김치 프리미엄</td>
@@ -59,7 +57,7 @@
           <tr>
             <td>온체인 샘플</td>
             <td id="onchain">-</td>
-            <td class="muted">DefiLlama Stablecoin Summary(안정화·대체엔드포인트 내장)</td>
+            <td class="muted">Stablecoin 시총(안정화·대체엔드포인트 내장)</td>
           </tr>
         </tbody>
       </table>
@@ -81,7 +79,6 @@
   let market = 'KRW-ETH', timer=null;
 
   function riskScore(changePct, kimchiPct){
-    // 간단한 휴리스틱: 변동성/괴리율 기반
     if (kimchiPct == null) return {label:'관망', cls:'warn'};
     if (Math.abs(changePct) < 0.8 && Math.abs(kimchiPct) < 1.0) return {label:'관망', cls:'warn'};
     if (changePct >= 1.2 && kimchiPct >= 1.5) return {label:'주의', cls:'warn'};
@@ -106,14 +103,12 @@
       $('buy').textContent = fmt(up.trade_price*0.99);
       $('sell').textContent = fmt(up.trade_price*1.01);
 
-      // 위험도 칩
       const kp = s?.kimchi?.kimchi ?? null;
       const rk = riskScore(chg, kp);
       $('riskChip').textContent = '위험도: ' + rk.label;
       $('riskChip').className = 'risk ' + rk.cls;
     }
 
-    // 김프
     if (s?.kimchi?.kimchi != null) {
       const k = s.kimchi.kimchi;
       $('kimchi').textContent = pct(k);
@@ -123,7 +118,6 @@
       $('kimchi').className = 'muted';
     }
 
-    // 온체인
     if (s?.onchain?.ok) {
       const mcap = s.onchain?.stables?.total?.mcap ?? s.onchain?.data?.total?.mcap;
       $('onchain').textContent = mcap ? ('Stable MCap: ₩' + fmt(mcap)) : 'OK';
@@ -133,8 +127,7 @@
       $('onchain').className = 'red';
     }
 
-    // 시스템 배지 (완화 로직: 업비트 + 김프 OK면 OK)
-    const ok = !!up && (s?.kimchi?.kimchi != null);
+    const ok = !!up && (s?.kimchi?.kimchi != null); // 업비트+김프 OK면 시스템 OK
     $('systemBadge').innerHTML = ok ? "시스템: <b style='color:#22c55e'>OK</b>"
                                     : "시스템: <b style='color:#ef4444'>오류</b>";
     $('updatedAt').innerHTML = `<small>${new Date().toLocaleTimeString()}</small>`;
@@ -152,7 +145,6 @@
     timer = setInterval(tick, 1500);
   });
 
-  // 초기 실행
   tick();
   timer = setInterval(tick, 1500);
 </script>
