@@ -7,8 +7,8 @@ export const onRequestGet = async () => {
       fetch("https://open.er-api.com/v6/latest/USD").catch(() => null),
     ]);
 
-    const up = await safeJson(upRes);                     // [{ trade_price }]
-    const cb = await safeJson(cbRes);                     // { data: { amount: "xxxxx" } }
+    const up = await safeJson(upRes);   // [{ trade_price }]
+    const cb = await safeJson(cbRes);   // { data: { amount } }
     const fx = fxRes ? await safeJson(fxRes) : { rates: { KRW: 1350 } };
 
     const krw    = up?.[0]?.trade_price ?? 0;
