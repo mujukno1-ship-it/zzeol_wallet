@@ -6,12 +6,8 @@ export const onRequestGet = async ({ request }) => {
     "https://api.upbit.com/v1/ticker?markets=" + encodeURIComponent(market),
     { headers: { accept: "application/json" } }
   );
-  if (!r.ok) {
-    return new Response(JSON.stringify({ ok:false, status:r.status }), {
-      status: r.status,
-      headers: cors()
-    });
-  }
+  if (!r.ok) return respond({ ok:false, status:r.status }, r.status);
+
   const j = await r.json();
   const t = j[0];
   const out = {
@@ -23,15 +19,14 @@ export const onRequestGet = async ({ request }) => {
     bid_price: t.bid_price,
     timestamp: t.timestamp
   };
-  return new Response(JSON.stringify(out), { headers: json() });
+  return respond(out, 200, 3);
 };
 
-const json = () => ({
-  "content-type": "application/json; charset=utf-8",
-  "cache-control": "max-age=3, s-maxage=3",
-  ...cors()
+const headers = (maxAge=0)=>({
+  "content-type":"application/json; charset=utf-8",
+  "access-control-allow-origin":"*",
+  "access-control-allow-methods":"GET,OPTIONS",
+  ...(maxAge?{"cache-control":`max-age=${maxAge}, s-maxage=${maxAge}`}:{})
 });
-const cors = () => ({
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,OPTIONS"
-});
+const respond = (obj, code=200, cache=0) =>
+  new Response(JSON.stringify(obj), { status:code, headers:headers(cache) });
