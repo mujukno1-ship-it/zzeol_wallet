@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>쩔어지갑 · KRW 실시간 코인 타점</title>
   <style>
-    :root{--bg:#0b0f14;--card:#0f151b;--line:#1e293b;--muted:#a3b1c2;--ok:#22c55e;--err:#ef4444;}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:#e6edf3;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    :root{--bg:#0b0f14;--card:#0f151b;--line:#1e293b;--muted:#a3b1c2;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444;}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:#e6edf3;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
     .wrap{max-width:1080px;margin:40px auto;padding:0 16px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-top:14px}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -17,6 +18,10 @@
     table{width:100%;border-collapse:collapse;margin-top:8px}
     th,td{padding:10px 8px;border-top:1px solid var(--line);text-align:left}
     small{opacity:.75}
+    .risk{padding:6px 10px;border-radius:999px;border:1px solid var(--line)}
+    .risk.ok{color:var(--ok);border-color:#1d3b2a;background:#0d1f16}
+    .risk.warn{color:var(--warn);border-color:#3a2d14;background:#1a140a}
+    .risk.dang{color:var(--err);border-color:#3b1f23;background:#1a0d0f}
   </style>
 </head>
 <body>
@@ -28,6 +33,7 @@
         <input id="q" placeholder="예: 비트코인 또는 BTC / KRW-ETH" />
         <button id="searchBtn">검색</button>
         <span id="systemBadge" class="pill">시스템: 확인중…</span>
+        <span id="riskChip" class="risk muted">위험도: -</span>
         <span id="updatedAt" class="muted"><small></small></span>
       </div>
     </div>
@@ -42,20 +48,18 @@
       </div>
       <table>
         <thead>
-          <tr>
-            <th>지표</th><th>값</th><th>설명</th>
-          </tr>
+          <tr><th>지표</th><th>값</th><th>설명</th></tr>
         </thead>
         <tbody>
           <tr>
             <td>김치 프리미엄</td>
             <td id="kimchi">-</td>
-            <td class="muted">업비트 KRW-BTC vs 바이낸스 BTCUSDT (환율 포함)</td>
+            <td class="muted">업비트 KRW-BTC vs 코인베이스 BTC-USD (환율 포함)</td>
           </tr>
           <tr>
             <td>온체인 샘플</td>
             <td id="onchain">-</td>
-            <td class="muted">DefiLlama Stablecoin Summary 일부</td>
+            <td class="muted">DefiLlama Stablecoin Summary(안정화·대체엔드포인트 내장)</td>
           </tr>
         </tbody>
       </table>
@@ -65,73 +69,90 @@
 <script>
   const $ = (id)=>document.getElementById(id);
   const fmt = v => Number(v).toLocaleString('ko-KR');
-  const fmtPct = v => `${v>0?'+':''}${v.toFixed(2)}%`;
-  const toMarketCode = (t)=>{
+  const pct = v => `${v>0?'+':''}${v.toFixed(2)}%`;
+  const toMarket = (t)=>{
     const x=(t||'').trim().toUpperCase();
     if(!x) return 'KRW-ETH';
     if(x==='비트코인'||x==='BTC') return 'KRW-BTC';
     if(x==='이더리움'||x==='ETH') return 'KRW-ETH';
-    return x.startsWith('KRW-') ? x : `KRW-${x}`;
+    return x.startsWith('KRW-')?x:`KRW-${x}`;
   };
 
-  let timer=null, current='KRW-ETH';
+  let market = 'KRW-ETH', timer=null;
 
-  async function loadSummary(market){
+  function riskScore(changePct, kimchiPct){
+    // 간단한 휴리스틱: 변동성/괴리율 기반
+    if (kimchiPct == null) return {label:'관망', cls:'warn'};
+    if (Math.abs(changePct) < 0.8 && Math.abs(kimchiPct) < 1.0) return {label:'관망', cls:'warn'};
+    if (changePct >= 1.2 && kimchiPct >= 1.5) return {label:'주의', cls:'warn'};
+    if (changePct <= -1.2 || kimchiPct >= 4.0) return {label:'경고', cls:'dang'};
+    return {label:'보통', cls:'ok'};
+  }
+
+  async function load(){
     const r = await fetch(`/api/summary?market=${encodeURIComponent(market)}`);
     if(!r.ok) throw new Error('summary http '+r.status);
     return r.json();
   }
 
-  function render(mkt, s){
-    // 업비트
-    const t = s?.upbit;
-    if(t){
-      const chg = (t.signed_change_price / t.prev_closing_price)*100;
-      $('symPill').textContent = mkt.replace('KRW-','');
-      $('price').textContent = fmt(t.trade_price);
-      $('chg').textContent = fmtPct(chg);
+  function render(s){
+    const up = s?.upbit;
+    if(up){
+      const chg = (up.signed_change_price / up.prev_closing_price)*100;
+      $('symPill').textContent = up.market.replace('KRW-','');
+      $('price').textContent = fmt(up.trade_price);
+      $('chg').textContent = pct(chg);
       $('chg').className = chg>=0?'green':'red';
-      $('buy').textContent = fmt(t.trade_price * 0.99);
-      $('sell').textContent = fmt(t.trade_price * 1.01);
+      $('buy').textContent = fmt(up.trade_price*0.99);
+      $('sell').textContent = fmt(up.trade_price*1.01);
+
+      // 위험도 칩
+      const kp = s?.kimchi?.kimchi ?? null;
+      const rk = riskScore(chg, kp);
+      $('riskChip').textContent = '위험도: ' + rk.label;
+      $('riskChip').className = 'risk ' + rk.cls;
     }
+
     // 김프
-    if(s?.kimchi?.kimchi!=null){
-      const kp = s.kimchi.kimchi;
-      $('kimchi').textContent = fmtPct(kp);
-      if (kp>=0) $('kimchi').className = 'green'; else $('kimchi').className = 'red';
+    if (s?.kimchi?.kimchi != null) {
+      const k = s.kimchi.kimchi;
+      $('kimchi').textContent = pct(k);
+      $('kimchi').className = k>=0?'green':'red';
+    } else {
+      $('kimchi').textContent = '-';
+      $('kimchi').className = 'muted';
     }
+
     // 온체인
-    if(s?.onchain?.ok){
-      const tvl = s.onchain.stables?.total?.mcap ?? s.onchain.data?.total?.mcap;
-      $('onchain').textContent = tvl ? 'Stable MCap: ₩'+fmt(tvl) : 'OK';
-    }else{
+    if (s?.onchain?.ok) {
+      const mcap = s.onchain?.stables?.total?.mcap ?? s.onchain?.data?.total?.mcap;
+      $('onchain').textContent = mcap ? ('Stable MCap: ₩' + fmt(mcap)) : 'OK';
+      $('onchain').className = '';
+    } else {
       $('onchain').textContent = '오류';
+      $('onchain').className = 'red';
     }
-    // 시스템 뱃지 / 갱신시각
-    const ok = !!t && !!s?.onchain?.ok;
-    $('systemBadge').innerHTML = ok ? "시스템: <b style='color:#22c55e'>OK</b>" :
-                                      "시스템: <b style='color:#ef4444'>오류</b>";
+
+    // 시스템 배지 (완화 로직: 업비트 + 김프 OK면 OK)
+    const ok = !!up && (s?.kimchi?.kimchi != null);
+    $('systemBadge').innerHTML = ok ? "시스템: <b style='color:#22c55e'>OK</b>"
+                                    : "시스템: <b style='color:#ef4444'>오류</b>";
     $('updatedAt').innerHTML = `<small>${new Date().toLocaleTimeString()}</small>`;
   }
 
   async function tick(){
-    try{
-      const s = await loadSummary(current);
-      render(current, s);
-    }catch(e){
-      console.error(e);
-      $('systemBadge').innerHTML = "시스템: <b style='color:#ef4444'>오류</b>";
-    }
+    try { render(await load()); }
+    catch(e){ console.error(e); $('systemBadge').innerHTML = "시스템: <b style='color:#ef4444'>오류</b>"; }
   }
 
   $('searchBtn').addEventListener('click', ()=>{
-    current = toMarketCode($('q').value);
-    tick();
+    market = toMarket($('q').value);
     clearInterval(timer);
+    tick();
     timer = setInterval(tick, 1500);
   });
 
-  // 초기 로드
+  // 초기 실행
   tick();
   timer = setInterval(tick, 1500);
 </script>
