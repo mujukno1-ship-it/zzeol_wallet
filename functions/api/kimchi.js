@@ -1,23 +1,40 @@
-// 업비트 KRW-BTC vs 바이낸스 BTCUSDT + 환율 → 김치 프리미엄 계산
+// 업비트 KRW-BTC + 코인베이스 BTC-USD + 환율 → 김치 프리미엄
 export const onRequestGet = async () => {
-  try{
-    const [up, bin, fx] = await Promise.all([
-      fetch("https://api.upbit.com/v1/ticker?markets=KRW-BTC").then(r=>r.json()),
-      fetch("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT").then(r=>r.json()),
-      fetch("https://open.er-api.com/v6/latest/USD").then(r=>r.json()).catch(()=>({rates:{KRW:1350}}))
+  try {
+    const [upRes, cbRes, fxRes] = await Promise.all([
+      fetch("https://api.upbit.com/v1/ticker?markets=KRW-BTC"),
+      fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot"),
+      fetch("https://open.er-api.com/v6/latest/USD").catch(() => null),
     ]);
-    const krw   = up?.[0]?.trade_price ?? 0;   // KRW
-    const usd   = Number(bin?.price ?? 0);     // USDT≈USD
+
+    const up = await safeJson(upRes);                     // [{ trade_price }]
+    const cb = await safeJson(cbRes);                     // { data: { amount: "xxxxx" } }
+    const fx = fxRes ? await safeJson(fxRes) : { rates: { KRW: 1350 } };
+
+    const krw    = up?.[0]?.trade_price ?? 0;
+    const usd    = Number(cb?.data?.amount ?? 0);
     const usdkrw = fx?.rates?.KRW ?? 1350;
-    const kimchi = usd>0 && usdkrw>0 ? ((krw/(usd*usdkrw))-1)*100 : null;
+
+    const kimchi = (usd > 0 && usdkrw > 0)
+      ? ((krw / (usd * usdkrw)) - 1) * 100
+      : null;
 
     return json({ krw, usd, usdkrw, kimchi });
-  }catch(e){
+  } catch (e) {
     return json({ ok:false, error:String(e) }, 500);
   }
 };
 
-const json = (obj, code=200)=>new Response(JSON.stringify(obj), {
+async function safeJson(res) {
+  if (!res || !res.ok) return null;
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return res.json();
+  // JSON이 아니면 text로 받아보고 오류 피함
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+const json = (obj, code=200) => new Response(JSON.stringify(obj), {
   status: code,
   headers: {
     "content-type":"application/json; charset=utf-8",
