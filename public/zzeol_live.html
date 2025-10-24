@@ -3,14 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>코인 검색 (KRW 전용) · 매수/매도 타점 · zzeol wallet</title>
+  <title>코인 검색 (KRW 전용) · 매수/매도 타점 · zzeol wallet · v3</title>
   <style>
-    :root{
-      --bg:#0e1116; --panel:#151a21; --muted:#7e8899; --ok:#1f6f3d; --warn:#7f2a2a; --chip:#222a33; --text:#e6edf3; --acc:#8ab4ff;
-    }
+    :root{ --bg:#0e1116; --panel:#151a21; --muted:#7e8899; --ok:#1f6f3d; --warn:#7f2a2a; --chip:#222a33; --text:#e6edf3; --acc:#8ab4ff; }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"}
-    a{color:var(--acc);text-decoration:none}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
     .container{max-width:1100px;margin:48px auto;padding:0 16px}
     .h1{font-size:28px;font-weight:800;letter-spacing:-.3px;margin:0 0 18px}
     .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -42,7 +39,7 @@
     <div class="row" style="justify-content:space-between;align-items:flex-start">
       <div>
         <div class="h1">코인 검색 (KRW 전용) · 매수/매도 타점</div>
-        <div class="muted">업비트 연결과 온체인 응답 보건 · 전일가 기반 등락률 보정</div>
+        <div class="muted">업비트 연결/온체인 신선도 뱃지 · 전일종가 기반 등락률(업비트 동일)</div>
       </div>
       <div id="health-badges" class="row"></div>
     </div>
@@ -50,36 +47,27 @@
     <div class="panel">
       <div class="row" style="justify-content:space-between;align-items:center">
         <div class="row">
-          <input id="search" class="input" placeholder="예: 비트코인 또는 BTC (현재 KRW-BTC 고정)" />
+          <input id="search" class="input" placeholder="예: 비트코인/BTC, 이더리움/ETH (기본 BTC)" />
           <button class="btn" id="btnFind">검색</button>
           <button class="btn" id="btnTop">상승TOP10</button>
           <button class="btn" id="btnBoom">급등</button>
           <button class="btn" id="btnDump">급락</button>
           <button class="btn" id="btnReset">초기화</button>
         </div>
-        <div class="row">
-          <span class="chip ok">시스템: OK</span>
-        </div>
+        <div class="row"><span class="chip ok">시스템: OK</span></div>
       </div>
     </div>
 
-    <!-- 상단: BTC 정보 카드 -->
-    <div class="panel" id="card">
-      <div class="row kvs" id="tickerChips">
-        <!-- 동적 채움 -->
-      </div>
-    </div>
+    <div class="panel" id="card"><div class="row kvs" id="tickerChips"></div></div>
 
-    <!-- 온체인: 타점 표 바로 위로 이동 (요청사항 반영) -->
     <div class="panel" id="onchain">
       <div class="row" style="justify-content:space-between">
-        <strong>BTC 온체인 상태</strong>
+        <strong id="onchainTitle">온체인 상태</strong>
         <span id="onchainAts" class="muted">–</span>
       </div>
       <div class="row kvs" id="onchainBody" style="margin-top:12px"></div>
     </div>
 
-    <!-- 매수/매도 타점 표 -->
     <div class="panel">
       <table>
         <thead>
@@ -102,134 +90,82 @@
   </div>
 
 <script>
-// =============================
-// 유틸리티
-// =============================
+// =============== 공통 유틸 ===============
 const KR = new Intl.NumberFormat('ko-KR');
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+const fmtKRW = (n)=> (n==null||isNaN(n)?'-':KR.format(Math.round(n)));
+const pctColor=(p)=> p>0?'positive':(p<0?'negative':'');
+const timeAgo=(ts)=>{ if(!ts) return '-'; const m=Math.floor((Date.now()-ts)/60000); if(m<1) return '방금'; if(m<60) return `T-${m}m`; return `T-${Math.floor(m/60)}h`; };
+async function fetchJSON(url, opt={}){ const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), opt.timeout??8000); try{ const res=await fetch(url,{...opt, signal:ctrl.signal}); if(!res.ok) throw new Error('HTTP '+res.status); return await res.json(); } finally{ clearTimeout(t); } }
 
-function fmtKRW(n){ if(n==null||isNaN(n)) return '-'; return KR.format(Math.round(n)); }
-function pctColor(p){ return p>0?'positive':(p<0?'negative':''); }
-function timeAgo(ts){
-  if(!ts) return '-';
-  const diff = Math.max(0, Date.now()-ts);
-  const m = Math.floor(diff/60000);
-  if(m < 1) return '방금';
-  if(m < 60) return `T-${m}m`;
-  const h = Math.floor(m/60); return `T-${h}h`;
-}
+// =============== 업비트 마켓 선택 ===============
+let currentMarket = 'KRW-BTC'; // 기본값
+let currentSymbol = 'BTC';
+let currentKorean = '비트코인';
 
-async function fetchJSON(url, opt={}){
-  const ctrl = new AbortController();
-  const t = setTimeout(()=>ctrl.abort(), opt.timeout ?? 8000);
-  try{
-    const res = await fetch(url,{...opt, signal:ctrl.signal});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    return await res.json();
-  } finally{ clearTimeout(t); }
+function mapToUpbitMarket(q){
+  if(!q) return {market:'KRW-BTC', sym:'BTC', ko:'비트코인'};
+  q = q.trim().toUpperCase();
+  // 한글/심볼 간단 매핑 (필요 시 확장)
+  if(['BTC','비트코인','비트','비트코'].some(x=>q.includes(x))) return {market:'KRW-BTC', sym:'BTC', ko:'비트코인'};
+  if(['ETH','이더리움','이더'].some(x=>q.includes(x))) return {market:'KRW-ETH', sym:'ETH', ko:'이더리움'};
+  // 기본
+  return {market:'KRW-BTC', sym:'BTC', ko:'비트코인'};
 }
 
-// =============================
-// 업비트 데이터 (KRW-BTC)
-// =============================
-async function getUpbitTicker(){
-  const j = await fetchJSON('https://api.upbit.com/v1/ticker?markets=KRW-BTC');
-  return j?.[1];
-}
-async function getUpbitCandleDay(){
-  const j = await fetchJSON('https://api.upbit.com/v1/candles/days?market=KRW-BTC&count=2');
-  return j?.[0];
-}
-async function getUpbitOrderbook(){
-  const j = await fetchJSON('https://api.upbit.com/v1/orderbook?markets=KRW-BTC');
-  return j?.[0]?.orderbook_units?.[0];
-}
+// =============== 업비트 API ===============
+async function getUpbitTicker(market){ return (await fetchJSON(`https://api.upbit.com/v1/ticker?markets=${market}`))?.[0]; }
+async function getUpbitOrderbook(market){ return (await fetchJSON(`https://api.upbit.com/v1/orderbook?markets=${market}`))?.[0]?.orderbook_units?.[0]; }
 
-function calcChangePct(nowPrice, prevCandle){
-  if(!prevCandle) return 0;
-  const prevClose = prevCandle.trade_price ?? prevCandle.prev_closing_price;
-  if(!prevClose || prevClose <= 0 || !nowPrice) return 0;
-  const p = ((nowPrice - prevClose) / prevClose) * 100;
-  if (Math.abs(p) > 30) return 0; // 비정상치 보정
+// ✅ 등락률: ticker.prev_closing_price 기준 (업비트와 동일)
+function calcChangePct(nowPrice, ticker){
+  if(!ticker) return 0; const prevClose = ticker.prev_closing_price; 
+  if(!prevClose || prevClose<=0 || !nowPrice) return 0; 
+  const p=((nowPrice-prevClose)/prevClose)*100; 
+  if(Math.abs(p)>30) return 0; // 비정상치 가드
   return +p.toFixed(2);
 }
 
-// =============================
-// 온체인 (프로젝트 프록시 기준; 없으면 더미 값)
-// =============================
-async function getOnchain(){
-  try{
-    const j = await fetchJSON('/api/onchain/btc/status');
-    return j;
-  }catch(e){
-    // 프록시가 없을 때도 UI 유지: 임시값 제공
-    return {
-      mvrv: 2.1,
-      exchange_netflow: -420.5,
-      funding: 0.003,
-      stable_ratio: 0.72,
-      staking_unlock: '없음',
-      updated_at: new Date().toISOString()
-    };
-  }
+// =============== 온체인 (프록시 없을 때 임시값) ===============
+async function getOnchain(sym){
+  try{ const j=await fetchJSON(`/api/onchain/${sym.toLowerCase()}/status`); return j; }
+  catch(e){ return { mvrv: 2.1, exchange_netflow: -420.5, funding: 0.003, stable_ratio: 0.72, staking_unlock: '없음', updated_at: new Date().toISOString() }; }
 }
 
-// =============================
-// 헬스 체크 뱃지
-// =============================
-async function pingUpbit(){
-  try{
-    const [t,c] = await Promise.all([getUpbitTicker(), getUpbitCandleDay()]);
-    return !!(t?.trade_price && c?.prev_closing_price);
-  }catch{ return false; }
-}
-async function pingOnchain(){
-  try{
-    const oc = await getOnchain();
-    const fresh = oc?.updated_at ? (Date.now()-new Date(oc.updated_at).getTime())/60000 < 15 : true;
-    const hasAny = (oc?.mvrv!=null) || (oc?.funding!=null) || (oc?.stable_ratio!=null);
-    return !!(hasAny && fresh);
-  }catch{ return false; }
-}
+// =============== 헬스 배지 ===============
 async function renderHealth(){
-  const [u,o] = await Promise.all([pingUpbit(), pingOnchain()]);
-  const el = document.querySelector('#health-badges');
-  if(!el) return;
-  el.innerHTML = `
-    <span class="chip ${u?'ok':'warn'}">업비트: ${u?'OK':'오류'}</span>
-    <span class="chip ${o?'ok':'warn'}">온체인: ${o?'OK':'대기/오류'}</span>
-  `;
+  try{
+    const [t,oc] = await Promise.all([
+      getUpbitTicker(currentMarket),
+      getOnchain(currentSymbol)
+    ]);
+    const upOK = !!(t?.trade_price && t?.prev_closing_price);
+    const ocOK = !!( (oc?.mvrv!=null||oc?.funding!=null||oc?.stable_ratio!=null) && (oc?.updated_at? (Date.now()-new Date(oc.updated_at).getTime())/60000<15 : true) );
+    const el=document.querySelector('#health-badges');
+    el.innerHTML = `<span class="chip ${upOK?'ok':'warn'}">업비트: ${upOK?'OK':'오류'}</span>
+                    <span class="chip ${ocOK?'ok':'warn'}">온체인: ${ocOK?'OK':'대기/오류'}</span>`;
+  }catch{ /* noop */ }
 }
 
-// =============================
-// 렌더러
-// =============================
+// =============== 렌더러 ===============
 function renderTickerCard({now,bidask,pct}){
-  const box = document.getElementById('tickerChips');
-  if(!box) return;
-  const sign = pct>0?'+':'';
-  const pctCls = pctColor(pct);
-  const stop = now * 0.99; // 손절 1% 예시 (원하시면 변경)
+  const box=document.getElementById('tickerChips'); if(!box) return; 
+  const sign=pct>0?'+':''; const stop = now*0.99;
   box.innerHTML = `
-    <span class="chip">BTC</span>
+    <span class="chip">${currentSymbol}</span>
     <span class="chip"><b>현재가</b> <span>${fmtKRW(now)}</span></span>
-    <span class="chip ${pctCls}"><b>등락</b> <span>${sign}${pct.toFixed(2)}%</span></span>
+    <span class="chip ${pctColor(pct)}"><b>등락</b> <span>${sign}${pct.toFixed(2)}%</span></span>
     <span class="chip"><b>Bid</b> <span>${fmtKRW(bidask?.bid_price)}</span></span>
     <span class="chip"><b>Ask</b> <span>${fmtKRW(bidask?.ask_price)}</span></span>
     <span class="chip"><b>매수</b> <span>${fmtKRW(now)}</span></span>
     <span class="chip"><b>매도</b> <span>${fmtKRW(now)}</span></span>
-    <span class="chip"><b>손절</b> <span>${fmtKRW(stop)}</span></span>
-  `;
+    <span class="chip"><b>손절</b> <span>${fmtKRW(stop)}</span></span>`;
 }
-
 function renderTable({now,bidask,pct}){
-  const tb = document.getElementById('tbody');
-  if(!tb) return;
-  const stop = now * 0.99;
-  const sign = pct>0?'+':'';
+  const tb=document.getElementById('tbody'); if(!tb) return; const stop=now*0.99; const sign=pct>0?'+':'';
   tb.innerHTML = `
     <tr>
-      <td>BTC</td>
+      <td>${currentSymbol}</td>
       <td class="r">${fmtKRW(now)}</td>
       <td class="r ${pctColor(pct)}">${sign}${pct.toFixed(2)}%</td>
       <td class="r">${fmtKRW(bidask?.bid_price)}</td>
@@ -240,54 +176,49 @@ function renderTable({now,bidask,pct}){
       <td>관망</td>
     </tr>`;
 }
-
 function renderOnchain(oc){
-  const body = document.getElementById('onchainBody');
-  const ts = oc?.updated_at ? new Date(oc.updated_at).getTime() : null;
-  document.getElementById('onchainAts').textContent = ts? `업데이트: ${timeAgo(ts)}` : '업데이트: -';
-  const items = [
-    {k:'MVRV Z-Score', v: oc?.mvrv},
-    {k:'거래소 순유입/순유출', v: oc?.exchange_netflow},
-    {k:'펀딩비', v: oc?.funding},
-    {k:'스테이블 비율', v: oc?.stable_ratio},
-    {k:'스테이킹 언락', v: oc?.staking_unlock}
+  document.getElementById('onchainTitle').textContent = `${currentSymbol} 온체인 상태`;
+  const body=document.getElementById('onchainBody'); const ts=oc?.updated_at? new Date(oc.updated_at).getTime():null; 
+  document.getElementById('onchainAts').textContent= ts? `업데이트: ${timeAgo(ts)}` : '업데이트: -';
+  const items=[
+    {k:'MVRV Z-Score', v:oc?.mvrv},
+    {k:'거래소 순유입/순유출', v:oc?.exchange_netflow},
+    {k:'펀딩비', v:oc?.funding},
+    {k:'스테이블 비율', v:oc?.stable_ratio},
+    {k:'스테이킹 언락', v:oc?.staking_unlock}
   ];
-  body.innerHTML = items.map(x=>{
-    const val = (x.v==null||Number.isNaN(x.v))?'-':x.v;
-    return `<div class="kv"><span class="k">${x.k}</span><span class="v">${val}</span></div>`;
-  }).join('');
+  body.innerHTML = items.map(x=>`<div class="kv"><span class="k">${x.k}</span><span class="v">${(x.v==null||Number.isNaN(x.v))?'-':x.v}</span></div>`).join('');
 }
 
-// =============================
-// 주 루프
-// =============================
+// =============== 리프레시 루프 ===============
 async function refresh(){
   try{
-    const [ticker, candle, ob, oc] = await Promise.all([
-      getUpbitTicker(), getUpbitCandleDay(), getUpbitOrderbook(), getOnchain()
+    const [ticker, ob, oc] = await Promise.all([
+      getUpbitTicker(currentMarket),
+      getUpbitOrderbook(currentMarket),
+      getOnchain(currentSymbol)
     ]);
     const now = ticker?.trade_price ?? 0;
-    const pct = calcChangePct(now, candle);
+    const pct = calcChangePct(now, ticker); // ✅ ticker.prev_closing_price 기준
     renderTickerCard({now, bidask:ob, pct});
     renderTable({now, bidask:ob, pct});
     renderOnchain(oc);
   }catch(e){ console.error(e); }
 }
 
-// 빠른 반응성(1.5초), 과금/쿨다운 고려 시 2~3초로 변경 가능
 setInterval(()=>{ refresh(); renderHealth(); }, 1500);
-
-// 초기 실행
 renderHealth(); refresh();
 
-// 버튼 (현재는 데모 동작; 기존 로직과 충돌하지 않도록 no-op)
-['btnFind','btnTop','btnBoom','btnDump','btnReset'].forEach(id=>{
-  const el = document.getElementById(id);
-  if(el) el.addEventListener('click',()=>{
-    // 기존 프로젝트의 라우팅/필터가 있다면 여기에 연결
-    console.log(id,'clicked');
-  });
-});
+// =============== 검색/버튼 ===============
+function applyQuery(){
+  const q = document.getElementById('search').value;
+  const m = mapToUpbitMarket(q);
+  currentMarket = m.market; currentSymbol = m.sym; currentKorean = m.ko;
+  refresh(); renderHealth();
+}
+['btnFind'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('click', applyQuery); });
+['btnTop','btnBoom','btnDump','btnReset'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('click',()=>console.log(id,'clicked')); });
+
 </script>
 </body>
 </html>
