@@ -1,81 +1,67 @@
 // api/upbit.js
-// Node 22 (Vercel)의 Edge/Serverless 함수. 업비트 현재가 + 최우선 호가(bid/ask) + 스프레드 반환
+import { roundByUpbitTick, fetchJSON } from "../utils/num.js";
 
-export const config = {
-  runtime: 'edge', // 또는 serverless (둘 다 동작)
+export const config = { runtime: "edge" }; // 응답 빠르게
+
+const UPBIT_TICKER = "https://api.upbit.com/v1/ticker?markets=";
+const UPBIT_ORDERBOOK = "https://api.upbit.com/v1/orderbook?markets=";
+
+const MAP = {
+  BTC: "KRW-BTC", ETH: "KRW-ETH", XRP: "KRW-XRP", SHIB: "KRW-SHIB",
+  ADA: "KRW-ADA", SOL: "KRW-SOL", DOGE: "KRW-DOGE",
 };
-
-const NAME2SYMBOL = {
-  '비트코인': 'BTC', 'BTC': 'BTC',
-  '이더리움': 'ETH', 'ETH': 'ETH',
-  '솔라나': 'SOL', 'SOL': 'SOL',
-  '리플': 'XRP', 'XRP': 'XRP',
-  '에이다': 'ADA', 'ADA': 'ADA',
-  '시바이누': 'SHIB', 'SHIB': 'SHIB',
-};
-
-function json(res, status = 200) {
-  return new Response(JSON.stringify(res), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      'access-control-allow-origin': '*',
-    },
-  });
-}
-
-async function fetchJson(url, timeoutMs = 5000) {
-  const controller = new AbortController();
-  const tmr = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const r = await fetch(url, { signal: controller.signal });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } finally {
-    clearTimeout(tmr);
-  }
-}
 
 export default async function handler(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const raw = (searchParams.get('symbol') || '').trim();
-    const sym = NAME2SYMBOL[raw] || raw.toUpperCase();
+    const symbol = (searchParams.get("symbol") || "BTC").toUpperCase();
+    const market = MAP[symbol];
+    if (!market) {
+      return new Response(JSON.stringify({ error: "UNSUPPORTED_SYMBOL" }), { status: 400 });
+    }
 
-    if (!sym) return json({ error: 'Missing symbol' }, 400);
-
-    const market = `KRW-${sym}`;
-    // 업비트: ticker + orderbook
-    const [ticker, orderbook] = await Promise.all([
-      fetchJson(`https://api.upbit.com/v1/ticker?markets=${market}`),
-      fetchJson(`https://api.upbit.com/v1/orderbook?markets=${market}`),
+    // 병렬로 가격/호가 호출
+    const [ticker] = await Promise.all([
+      fetchJSON(UPBIT_TICKER + market, { timeout: 3500, retries: 1 }),
     ]);
 
-    if (!ticker?.length) return json({ error: 'Ticker not found' }, 404);
-    if (!orderbook?.length) return json({ error: 'Orderbook not found' }, 404);
+    // orderbook은 느릴 수 있어 분리/옵션 호출
+    let order = null;
+    try {
+      const ob = await fetchJSON(UPBIT_ORDERBOOK + market, { timeout: 2000, retries: 0 });
+      order = ob?.[0] || null;
+    } catch (_) {}
 
-    const t = ticker[0];
-    const ob = orderbook[0];
-    const u0 = ob.orderbook_units?.[0] || {};
-    const bid = Number(u0.bid_price ?? NaN);
-    const ask = Number(u0.ask_price ?? NaN);
-    const price = Number(t.trade_price ?? NaN);
-    const changeRate = Number(t.signed_change_rate ?? 0) * 100; // %
+    const t = Array.isArray(ticker) ? ticker[0] : ticker;
+    const price = Number(t?.trade_price ?? 0);
+    const prev = Number(t?.prev_closing_price ?? 0);
+    const change = ((price - prev) / (prev || price)) * 100;
 
-    const spread = isFinite(ask - bid) ? ask - bid : null;
+    let bid = price, ask = price;
+    if (order && order.orderbook_units && order.orderbook_units[0]) {
+      bid = Number(order.orderbook_units[0].bid_price);
+      ask = Number(order.orderbook_units[0].ask_price);
+    }
 
-    return json({
-      symbol: sym,
+    // 틱 반올림(저가코인 단위 문제 해결)
+    const buyTarget  = roundByUpbitTick(price * 0.9995);
+    const sellTarget = roundByUpbitTick(price * 1.0015);
+    const stopLoss   = roundByUpbitTick(price * 0.99);
+
+    return new Response(JSON.stringify({
+      symbol,
       market,
       price,
-      changeRate, // %
-      bid,        // 최우선 매수
-      ask,        // 최우선 매도
-      spread,
+      prev,
+      change,
+      bid,
+      ask,
+      buyTarget,
+      sellTarget,
+      stopLoss,
       ts: Date.now(),
-    });
+    }), { headers: { "content-type": "application/json" }});
   } catch (e) {
-    return json({ error: String(e?.message || e) }, 500);
+    return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500 });
   }
 }
