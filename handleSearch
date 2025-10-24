@@ -1,102 +1,82 @@
 // handleSearch/handleSearch.js
+
 let lastReqId = 0;
 let controller = null;
 
-// 한글 ↔ 심볼 매핑
+// 한글 ⇄ 심볼 매핑
 const NAME2SYMBOL = {
-  '비트코인': 'BTC', '이더리움': 'ETH', '솔라나': 'SOL',
-  '리플': 'XRP', '에이다': 'ADA', '시바이누': 'SHIB'
+  '비트코인': 'BTC',
+  '이더리움': 'ETH',
+  '솔라나': 'SOL',
+  '리플': 'XRP',
+  '에이다': 'ADA',
+  '시바이누': 'SHIB',
 };
 
+// 통합 신호 계산 (업비트 + 온체인)
+function combineSignals({ upbit, onchain }) {
+  const rate = Number(upbit?.changeRate ?? 0);     // 업비트 등락률(소수)
+  const mvrv = Number(onchain?.mvrvZ ?? 0);        // 온체인 MVRV Z-Score
+  const funding = Number(onchain?.fundingRate ?? 0); // 온체인 펀딩비율
+
+  // 업비트 단독 신호
+  const market =
+    rate > 0.003 ? 'BUY' :
+    rate < -0.003 ? 'SELL' : 'HOLD';
+
+  // 온체인 단독 신호 (예시 기준치)
+  const chain =
+    (mvrv < 0 && funding < 0) ? 'BUY' :
+    (mvrv > 6 || funding > 0.02) ? 'SELL' : 'HOLD';
+
+  // 통합 신호
+  const both =
+    (market === 'BUY' && chain === 'BUY') ? 'BUY' :
+    (market === 'SELL' && chain === 'SELL') ? 'SELL' : 'HOLD';
+
+  const reason = `업비트:${market}, 온체인:${chain}, Δ=${(rate * 100).toFixed(2)}%, MVRV=${mvrv.toFixed(2)}, 펀딩=${(funding * 100).toFixed(2)}%`;
+  return { signal: both, reason, market, chain };
+}
+
 export async function handleSearch(rawInput) {
+  // 심볼 파싱
   const symbol = (NAME2SYMBOL[rawInput.trim()] || rawInput.trim()).toUpperCase();
 
-  // 진행 중 요청 취소
+  // 이전 요청 취소
   if (controller) controller.abort();
   controller = new AbortController();
   const myReqId = ++lastReqId;
 
   try {
-    const r = await fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal });
-    const data = await r.json();
+    // 업비트 + 온체인 동시 요청
+    const [upbitRes, chainRes] = await Promise.allSettled([
+      fetch(`/api/upbit?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal }).then(r => r.json()),
+      fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal }).then(r => r.json())
+    ]);
 
-    // 오래된 응답 버림
-    if (myReqId !== lastReqId) return;
+    if (myReqId !== lastReqId) return; // 오래된 응답 무시
 
-    const sig = normalizeSignal(data.signal);
-    const row = {
-      코인: data.symbol || symbol,
-      현재가: nfmt(data.price),
-      등락: (isNum(data.price) && isNum(data.ma200))
-        ? (((data.price - data.ma200) / data.ma200) * 100).toFixed(2) + '%'
-        : '-',
-      매수: sig === '매수' ? '●' : '',
-      매도: sig === '매도' ? '●' : '',
-      손절: nfmt(data?.levels?.stop),
-      익절: nfmt(data?.levels?.take),
+    const upbit = upbitRes.status === 'fulfilled' ? upbitRes.value : {};
+    const onchain = chainRes.status === 'fulfilled' ? chainRes.value : {};
+
+    // 통합 신호 계산
+    const { signal, reason, market, chain } = combineSignals({ upbit, onchain });
+
+    // 화면에 쓸 수 있게 반환(또는 여기서 DOM 업데이트)
+    return {
+      name: symbol,
+      price: upbit?.price ?? '-',
+      changeRate: upbit?.changeRate ?? '-',
+      mvrv: onchain?.mvrvZ ?? '-',
+      funding: onchain?.fundingRate ?? '-',
+      signal,      // BUY / SELL / HOLD
+      market,      // 업비트 단독 신호
+      chain,       // 온체인 단독 신호
+      reason       // 설명 문자열
     };
-
-    renderSearchRow(row); // 항상 1행만 유지
   } catch (e) {
-    if (e.name !== 'AbortError') {
-      console.error('[handleSearch]', e);
-    }
+    if (myReqId !== lastReqId) return; // 오래된 응답 무시
+    console.error('handleSearch error', e);
+    return { name: symbol, signal: 'ERR', reason: '데이터 오류' };
   }
-}
-
-/** ───── 렌더링 ───── */
-function renderSearchRow(r) {
-  const tbody = document.getElementById('search-body');
-  if (!tbody) return;
-  tbody.innerHTML = `
-    <tr>
-      <td>${r.코인}</td>
-      <td>${r.현재가}</td>
-      <td>${r.등락}</td>
-      <td>${r.매수}</td>
-      <td>${r.매도}</td>
-      <td>${r.손절}</td>
-      <td>${r.익절}</td>
-    </tr>
-  `;
-}
-
-/** ───── 유틸 ───── */
-function normalizeSignal(sig) {
-  if (!sig) return null;
-  const s = String(sig).toLowerCase();
-  if (/buy|long|매수/.test(s)) return '매수';
-  if (/sell|short|매도/.test(s)) return '매도';
-  return null;
-}
-function isNum(x) {
-  return typeof x === 'number' && Number.isFinite(x);
-}
-function nfmt(x) {
-  return isNum(x) ? x.toLocaleString() : '-';
-}
-import { combineSignals } from '../strategies/signal';
-
-async function fetchRow(symbol) {
-  const [upbit, onchain] = await Promise.all([
-    fetch(`/api/upbit?symbol=${encodeURIComponent(symbol)}`).then(r=>r.json()),
-    fetch(`/api/onchain?symbol=${encodeURIComponent(symbol)}`).then(r=>r.json()),
-  ]);
-
-  const sig = combineSignals({ upbit, onchain });
-
-  return {
-    symbol,
-    // 표에 뿌릴 값들
-    price: upbit?.price ?? null,
-    changeRate: upbit?.changeRate ?? null,
-    mvrvZ: onchain?.mvrvZ ?? null,
-    fundingRate: onchain?.fundingRate ?? null,
-
-    // 신호 세트
-    marketSignal: sig.market,   // 시장 신호
-    onchainSignal: sig.chain,   // 온체인 신호
-    signal: sig.both,           // 둘 다 일치할 때만 BUY/SELL
-    reason: sig.reason.join(' | ')
-  };
 }
