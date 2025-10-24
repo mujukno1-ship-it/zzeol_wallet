@@ -227,6 +227,18 @@ function rowHTML(market, name, t, stat, btc){
     <td class="price">${fKRW(lv.cut)}</td>
     <td>${adj.risk.toFixed(2)}</td>
     <td><span class="act ${adj.act}">${adj.act==='buy'?'매수':adj.act==='sell'?'매도':'관망'}</span> · ${adj.msg}</td>`;
+<!-- 🔻 검색 요약 블록 예시 -->
+<div class="search-summary" style="margin:10px 0;">
+  <span>코인: <b id="search-symbol">-</b></span>
+  <span>현재가: <b id="search-price">-</b></span>
+  <span>등락: <b id="search-change">-</b></span>
+  <span>매수호가(Bid): <b id="search-bid">-</b></span>
+  <span>매도호가(Ask): <b id="search-ask">-</b></span>
+  <span>매수 타점: <b id="search-buy">-</b></span>
+  <span>매도 타점: <b id="search-sell">-</b></span>
+  <span>손절: <b id="search-stop">-</b></span>
+</div>
+
 }
 function wirePins(tb){ tb.querySelectorAll('.pin').forEach(x=>x.onclick=()=>{const m=x.dataset.m; if(st.pinned.has(m)) st.pinned.delete(m); else st.pinned.add(m); savePinned(); renderPinned();}); }
 
