@@ -1,110 +1,120 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>쩔어지갑 · KRW 실시간 코인 타점</title>
-  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval';">
+  <meta charset="utf-8">
+  <title>KRW 코인 검색 · 매수/매도 타점</title>
   <style>
-    body {
-      background-color: #0b0b0b;
-      color: #e6e6e6;
-      font-family: "Pretendard", sans-serif;
-      text-align: center;
-      padding: 20px;
-    }
-    h2 { color: #fff; margin-bottom: 15px; }
-    .box { margin: 15px auto; padding: 20px; border: 1px solid #333; border-radius: 10px; max-width: 700px; background: #111; }
-    button {
-      background: #222; color: #fff; border: none; padding: 8px 15px; margin: 3px; border-radius: 6px;
-      cursor: pointer; transition: 0.2s;
-    }
-    button:hover { background: #555; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { padding: 10px; border-bottom: 1px solid #222; }
-    th { background: #1b1b1b; }
-    .highlight { color: #00ff88; font-weight: bold; }
-    .warn { color: #ffcc00; }
-    .danger { color: #ff4444; }
+    body { background:#0d1117; color:#e6edf3; font-family:sans-serif; margin:20px; }
+    input,button { padding:8px 10px; border-radius:6px; }
+    input { border:1px solid #30363d; background:#161b22; color:#e6edf3; }
+    button { border:1px solid #238636; background:#238636; color:white; cursor:pointer; }
+    button:hover { background:#2ea043; }
+    .result { margin-top:20px; padding:15px; background:#161b22; border:1px solid #30363d; border-radius:8px; }
+    .error { color:#ff7b72; }
   </style>
 </head>
 <body>
   <h2>KRW 코인 검색 · 매수/매도 타점</h2>
+  <input id="coinInput" placeholder="예: BTC, ETH, 시바이누" />
+  <button onclick="searchCoin()">검색</button>
+  <div id="status"></div>
+  <div id="result" class="result" style="display:none"></div>
 
-  <div class="box">
-    <input id="coinInput" type="text" placeholder="예: 비트코인 또는 BTC/KRW" />
-    <button onclick="searchCoin()">검색</button>
-    <span id="status" class="warn">시스템: 대기</span>
-    <span id="risk" class="warn">위험도: -</span>
-  </div>
+<script>
+/* ============================
+   초보자용 — API 순차 시도 + 에러 표시
+============================= */
 
-  <div id="resultBox" class="box">
-    <table>
-      <thead><tr><th>지표</th><th>값</th><th>설명</th></tr></thead>
-      <tbody id="resultBody">
-        <tr><td>코인</td><td id="coinName">-</td><td>현재가격/등락</td></tr>
-        <tr><td>현재가</td><td id="price">-</td><td>매수/매도 타점 기준</td></tr>
-        <tr><td>등락</td><td id="change">-</td><td>전일 대비 등락률</td></tr>
-        <tr><td>김치 프리미엄</td><td id="kimchi">-</td><td>업비트 KRW-BTC vs 코인베이스 BTC-USD</td></tr>
-        <tr><td>온체인 자금흐름</td><td id="onchain">-</td><td>Stablecoin 순유입/유출</td></tr>
-        <tr><td>매수 타점</td><td id="buy">-</td><td>추천 매수가격</td></tr>
-        <tr><td>매도 타점</td><td id="sell">-</td><td>추천 매도가격</td></tr>
-        <tr><td>손절 라인</td><td id="cut">-</td><td>위험 관리 기준 손절가</td></tr>
-      </tbody>
-    </table>
-    <div id="zzeolMsg" style="margin-top:15px; color:#00bfff; font-weight:600;"></div>
-  </div>
+// API 후보 주소 3개 (순서대로 시도)
+const API_LIST = [
+  '/api/summary', // Cloudflare Pages 함수
+  '/functions/api/summary', // 예전 경로
+  'https://satoshi-proxy.mujukno1.workers.dev/summary' // 워커 (선택)
+];
 
-  <script>
-    const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev"; // ✅ Cloudflare Worker API 경로
-    const statusEl = document.getElementById('status');
-    const riskEl = document.getElementById('risk');
-    const msgEl = document.getElementById('zzeolMsg');
+// 상태 표시 함수
+function setStatus(msg, color='#e6edf3') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.style.color = color;
+}
 
-    async function searchCoin() {
-      const coin = document.getElementById("coinInput").value.trim().toUpperCase();
-      if (!coin) return alert("코인명을 입력하세요 (예: BTC, ETH, SHIB)");
-      statusEl.textContent = "시스템: 데이터 요청 중...";
-      try {
-        const res = await fetch(`${API_BASE}/summary?market=${coin}-KRW`);
-        if (!res.ok) throw new Error("API 호출 실패");
-        const data = await res.json();
+// JSON이 아닌 HTML이면 에러라고 판단
+function looksLikeHTML(text) {
+  const t = text.trim().toLowerCase();
+  return t.startsWith('<!doctype') || t.startsWith('<html');
+}
 
-        document.getElementById("coinName").textContent = coin;
-        document.getElementById("price").textContent = `${data.price?.toLocaleString()} 원`;
-        document.getElementById("change").textContent = `${data.change}%`;
-        document.getElementById("kimchi").textContent = `${data.kimchiPremium || "-"}%`;
-        document.getElementById("onchain").textContent = data.onchainFlow || "정상";
+// 실제 데이터 가져오기
+async function getSummary(market) {
+  let lastError = null;
+  for (const base of API_LIST) {
+    try {
+      const url = `${base}?market=${encodeURIComponent(market)}`;
+      setStatus(`🔄 시도 중: ${url}`);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        // 매수·매도·손절 타점 계산 (샘플)
-        const base = Number(data.price || 0);
-        const buy = Math.floor(base * 0.985);
-        const sell = Math.floor(base * 1.015);
-        const cut = Math.floor(base * 0.97);
-        document.getElementById("buy").textContent = buy.toLocaleString();
-        document.getElementById("sell").textContent = sell.toLocaleString();
-        document.getElementById("cut").textContent = cut.toLocaleString();
-
-        // 위험도 판단
-        let risk = "보통", color = "warn";
-        if (data.change > 5) { risk = "주의"; color = "danger"; }
-        if (data.change < -3) { risk = "낮음"; color = "highlight"; }
-        riskEl.className = color;
-        riskEl.textContent = `위험도: ${risk}`;
-
-        // 쩔어한마디 (AI 스타일 문구)
-        let msg = "시장은 안정적입니다.";
-        if (risk === "주의") msg = "급등 위험, 분할매도로 대응하세요.";
-        else if (risk === "낮음") msg = "조정 마무리 단계, 저점 매수 유효.";
-        msgEl.textContent = `💬 쩔어한마디: ${msg}`;
-
-        statusEl.textContent = "시스템: OK";
-      } catch (err) {
-        console.error(err);
-        statusEl.textContent = "시스템: 오류";
-        msgEl.textContent = "❌ 데이터 로드 실패. 서버 점검 중일 수 있습니다.";
-      }
+      const text = await res.text();
+      if (looksLikeHTML(text)) throw new Error('HTML 응답 (404 페이지)');
+      const json = JSON.parse(text);
+      if (json.ok) return json;
+      throw new Error(json.error || 'API 오류');
+    } catch (err) {
+      console.warn('실패:', err);
+      lastError = err;
     }
-  </script>
+  }
+  throw lastError || new Error('모든 경로 실패');
+}
+
+// 업비트 마켓 형식 변환 (예: ETH → KRW-ETH)
+function toMarketName(t) {
+  t = t.trim().toUpperCase();
+  if (t.startsWith('KRW-')) return t;
+  const map = { '비트코인':'KRW-BTC', '이더리움':'KRW-ETH', '시바이누':'KRW-SHIB' };
+  return map[t] || 'KRW-' + t;
+}
+
+// 메인 함수: 검색 버튼 눌렀을 때
+async function searchCoin() {
+  const coin = document.getElementById('coinInput').value.trim();
+  if (!coin) { setStatus('❗ 코인명을 입력하세요', '#ff7b72'); return; }
+
+  const market = toMarketName(coin);
+  setStatus('데이터 불러오는 중...');
+  document.getElementById('result').style.display = 'none';
+
+  try {
+    const data = await getSummary(market);
+    showResult(data);
+    setStatus('✅ 불러오기 성공!');
+  } catch (err) {
+    console.error(err);
+    setStatus('❌ 데이터 로드 실패: ' + err.message, '#ff7b72');
+  }
+}
+
+// 결과 표시
+function showResult(d) {
+  const box = document.getElementById('result');
+  box.style.display = 'block';
+  box.innerHTML = `
+    <b>코인:</b> ${d.symbol}<br>
+    <b>현재가:</b> ${d.price?.toLocaleString() || '-'} 원<br>
+    <b>등락:</b> ${d.change?.toFixed(2) || 0}%<br>
+    <b>김치 프리미엄:</b> ${d.kimchi?.toFixed(2) || 0}%<br>
+    <b>매수 타점:</b> ${d.buy?.toLocaleString() || '-'} 원<br>
+    <b>매도 타점:</b> ${d.sell?.toLocaleString() || '-'} 원<br>
+    <b>손절 라인:</b> ${d.stop?.toLocaleString() || '-'} 원<br>
+    <b>위험도:</b> ${d.risk || '-'}<br>
+    <b>쩔어 한마디:</b> ${
+      d.risk === 'danger' ? '🔥 과열 주의! 보수적 접근' :
+      d.risk === 'caution' ? '⚠️ 변동성 구간! 분할매수 권장' :
+      '✅ 안정 구간! 추세 유지 중'
+    }
+  `;
+}
+</script>
 </body>
 </html>
