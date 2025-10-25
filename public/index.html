@@ -196,6 +196,44 @@ window.addEventListener('load', ()=>{
   $('#q').value='ETH';
   load();
 });
+<!-- ⚡ 스파크 코인 자동로드 -->
+<script>
+async function loadSparkCoins() {
+  const tbody = document.querySelector('#spark-body');
+  tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; color:#9aa0ab;">불러오는 중...</td></tr>`;
+  try {
+    const res = await fetch('/api/spark?minRise=2&minVolRatio=3&limit=60', { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error('서버 응답 오류');
+
+    if (!data.items || data.items.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; color:#aaa;">현재 스파크 코인이 없습니다.</td></tr>`;
+      return;
+    }
+
+    // 표 채우기
+    tbody.innerHTML = data.items.map(c => `
+      <tr>
+        <td style="padding:8px;">${c.market}</td>
+        <td style="padding:8px;">${c.price.toLocaleString('ko-KR')}</td>
+        <td style="padding:8px; color:#1ec780;">+${c.rise3m.toFixed(2)}%</td>
+        <td style="padding:8px;">${c.volRatio.toFixed(2)}x</td>
+        <td style="padding:8px; color:#9aa0ab;">${new Date(c.ts).toLocaleTimeString()}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#ff5577; padding:12px;">스파크 코인 불러오기 실패: ${err.message}</td></tr>`;
+  }
+}
+
+// 페이지 열리면 자동으로 실행
+window.addEventListener('load', () => {
+  loadSparkCoins();
+  // 15초마다 새로고침
+  setInterval(loadSparkCoins, 15000);
+});
+</script>
+  
 </script>
  <!-- ⚡ 스파크 코인 항상 표시 -->
 <section id="spark-section" style="margin-top:18px">
