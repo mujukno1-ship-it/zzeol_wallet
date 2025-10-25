@@ -1,20 +1,27 @@
-// ===============================
-// 사토시의지갑 - 업비트 김프 + 온체인 (자동 자리 생성 버전)
-// ===============================
+// =====================================================
+// 사토시의지갑 - 김프/온체인 직결 모드 (프록시 無)
+// - Upbit, CoinGecko, open.er-api, DefiLlama 직접 호출
+// - 자리(id) 없으면 자동 생성
+// - 10초마다 갱신 + 간단 타점(z-score) 계산
+// =====================================================
 
-const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+// ── 유틸
+async function fetchJson(u) {
+  const r = await fetch(u, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status} @ ${u}`);
+  return r.json();
+}
+const $ = (s) => document.querySelector(s);
 
-// ─────────────────────────────────────────────
-// [A] 김프 카드에 표시 슬롯이 없으면 자동으로 만들어줌
-// ─────────────────────────────────────────────
+// ── 김프 카드 자리를 자동 준비
 function ensureKimchiSlots() {
-  // "김치 프리미엄" 카드 DOM을 추정해서 찾기(첫 번째 카드로 폴백)
+  // 카드 후보
   let card =
     Array.from(document.querySelectorAll(".metric-card")).find((c) =>
       (c.textContent || "").includes("김치 프리미엄")
     ) || document.querySelectorAll(".metric-card")[0] || document.body;
 
-  // 상단 % 자리
+  // 상단 %
   if (!document.getElementById("kimchi-premium")) {
     const top = document.createElement("div");
     top.id = "kimchi-premium";
@@ -25,7 +32,7 @@ function ensureKimchiSlots() {
     card.prepend(top);
   }
 
-  // 리스트 컨테이너 확보
+  // 리스트
   let list = card.querySelector("ul");
   if (!list) {
     list = document.createElement("ul");
@@ -34,14 +41,13 @@ function ensureKimchiSlots() {
     list.style.margin = "8px 0";
     card.appendChild(list);
   }
-
   const need = [
     ["upbit-krw", "업비트 KRW"],
     ["global-krw", "글로벌 KRW"],
-    ["binance-usd", "Binance(USD)"], // USD 표기도 추가
+    ["binance-usd", "글로벌 USD"],
     ["usd-krw", "USD/KRW"],
+    ["signal", "시그널"],
   ];
-
   for (const [id, label] of need) {
     if (!document.getElementById(id)) {
       const li = document.createElement("li");
@@ -49,7 +55,6 @@ function ensureKimchiSlots() {
       list.appendChild(li);
     }
   }
-
   if (!document.getElementById("status")) {
     const s = document.createElement("div");
     s.id = "status";
@@ -60,90 +65,106 @@ function ensureKimchiSlots() {
   }
 }
 
-// ─────────────────────────────────────────────
-// [B] 김치 프리미엄 불러오기
-// ─────────────────────────────────────────────
-async function loadKimchi(symbol = "BTC") {
+// ── 온체인 카드 자리(선택) 준비
+function ensureOnchainSlots() {
+  let card =
+    Array.from(document.querySelectorAll(".metric-card")).find((c) =>
+      (c.textContent || "").includes("온체인")
+    ) || document.querySelectorAll(".metric-card")[1] || document.body;
+
+  if (!document.getElementById("onchain-tvl")) {
+    const line = document.createElement("div");
+    line.innerHTML = `TVL: <span id="onchain-tvl">-</span>`;
+    card.appendChild(line);
+  }
+}
+
+// ── z-score 기반 간단 타점(최근 30개)
+const premHist = [];
+function signalFromPremium(p) {
+  premHist.push(p);
+  if (premHist.length > 30) premHist.shift();
+  const m = premHist.reduce((a, b) => a + b, 0) / premHist.length;
+  const sd =
+    Math.sqrt(premHist.reduce((a, b) => a + (b - m) ** 2, 0) / premHist.length) || 1;
+  const z = (p - m) / sd;
+
+  if (z <= -1.5) return "매수 진입";
+  if (z <= -1.0) return "매수 관찰";
+  if (z >= 1.5) return "매도 익절";
+  if (z >= 1.0) return "매도 관찰";
+  return "중립";
+}
+
+// ── 김프 업데이트 (10초)
+async function updatePremium() {
   ensureKimchiSlots();
 
-  const elPct = document.getElementById("kimchi-premium");
-  const elUpbit = document.getElementById("upbit-krw");
-  const elGlobal = document.getElementById("global-krw");
-  const elUsd = document.getElementById("binance-usd");
-  const elUsdKrw = document.getElementById("usd-krw");
-  const elStatus = document.getElementById("status");
+  const elPct = $("#kimchi-premium");
+  const elUpbit = $("#upbit-krw");
+  const elGlobal = $("#global-krw");
+  const elUsd = $("#binance-usd");
+  const elUsdKrw = $("#usd-krw");
+  const elSig = $("#signal");
+  const elStatus = $("#status");
 
   try {
-    const r = await fetch(`${API_BASE}/premium?symbol=${symbol}`);
-    const j = await r.json();
+    // 1) 업비트 KRW
+    const up = await fetchJson("https://api.upbit.com/v1/ticker?markets=KRW-BTC");
+    const upbit = Number(up?.[0]?.trade_price || 0);
 
-    // 디버깅이 필요하면 아래 한 줄을 잠깐 켜세요
-    // console.log("premium resp:", j);
+    // 2) 글로벌 USD (CoinGecko)
+    const cg = await fetchJson(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    );
+    const usd = Number(cg?.bitcoin?.usd || 0);
 
-    if (!j.ok || typeof j.premiumPct !== "number") throw new Error("no data");
+    // 3) 환율 USD→KRW (open.er-api)
+    const fx = await fetchJson("https://open.er-api.com/v6/latest/USD");
+    const usdkrw = Number(fx?.rates?.KRW || 0);
 
-    elPct.textContent = `${j.premiumPct.toFixed(2)}%`;
-    elUpbit.textContent = `${Number(j.upbitPrice).toLocaleString()} 원`;
-    elGlobal.textContent = `${Math.round(j.globalKrw).toLocaleString()} 원`;
-    elUsd.textContent = `${Number(j.globalUsd).toLocaleString()} $`;
-    elUsdKrw.textContent = `${Number(j.usdkrw).toFixed(2)}`;
+    const globalKrw = usd * usdkrw;
+    const prem =
+      upbit && globalKrw ? ((upbit - globalKrw) / globalKrw) * 100 : null;
 
-    elStatus.textContent = ""; // “불러오는 중…” 제거
-  } catch (e) {
-    elPct.textContent = "--%";
-    elUpbit.textContent = "-";
-    elGlobal.textContent = "-";
-    elUsd.textContent = "-";
-    elUsdKrw.textContent = "-";
-    elStatus.textContent = "오류";
+    // 화면 반영
+    if (prem != null) elPct.textContent = `${prem.toFixed(2)}%`;
+    elUpbit.textContent = upbit ? `${Math.round(upbit).toLocaleString()} 원` : "-";
+    elGlobal.textContent = globalKrw
+      ? `${Math.round(globalKrw).toLocaleString()} 원`
+      : "-";
+    elUsd.textContent = usd ? `${usd.toLocaleString()} $` : "-";
+    elUsdKrw.textContent = usdkrw ? usdkrw.toFixed(2) : "-";
+
+    // 시그널
+    if (prem != null) elSig.textContent = signalFromPremium(prem);
+
+    // 상태 클리어
+    if (prem != null) elStatus.textContent = "";
+  } catch (_) {
+    // 조용히 유지
   }
 }
 
-// ─────────────────────────────────────────────
-// [C] 온체인 TVL
-// ─────────────────────────────────────────────
-async function loadOnchain(symbol = "ETH") {
-  // 온체인 카드 쪽은 기존 자리(id)가 있다고 가정 (없어도 그냥 - 표시)
-  const tvlEl = document.querySelector("#onchain-tvl");
-  const addrEl = document.querySelector("#onchain-active");
+// ── 온체인(TVL) 업데이트 (60초)
+async function updateOnchain() {
+  ensureOnchainSlots();
+  const el = $("#onchain-tvl");
   try {
-    const r = await fetch(`${API_BASE}/onchain?symbol=${symbol}`);
-    const j = await r.json();
-    if (!j.ok) throw new Error("onchain");
-
-    if (tvlEl) tvlEl.textContent = Number(j.tvl || 0).toLocaleString("en-US");
-    if (addrEl) addrEl.textContent = "-";
-  } catch {
-    if (tvlEl) tvlEl.textContent = "-";
-    if (addrEl) addrEl.textContent = "-";
+    const chains = await fetchJson("https://api.llama.fi/chains");
+    const eth = chains.find((c) => String(c.name).toLowerCase() === "ethereum");
+    const tvl = Number(eth?.tvl || 0);
+    if (tvl) el.textContent = tvl.toLocaleString("en-US");
+  } catch (_) {
+    // 유지
   }
 }
 
-// ─────────────────────────────────────────────
-// [D] 초기 실행 + 자동 갱신 (깜빡임 최소화)
-// ─────────────────────────────────────────────
+// ── 초기 실행 & 주기 갱신
 function init() {
-  loadKimchi();
-  loadOnchain();
-  setInterval(loadKimchi, 10000);  // 10초
-  setInterval(loadOnchain, 60000); // 1분
+  updatePremium();
+  updateOnchain();
+  setInterval(updatePremium, 10_000);  // 10초
+  setInterval(updateOnchain, 60_000);  // 60초
 }
-
 window.addEventListener("load", init);
-const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
-
-async function tick() {
-  try {
-    const p = await fetch(`${API_BASE}/premium?symbol=BTC`).then(r=>r.json());
-    const o = await fetch(`${API_BASE}/onchain?symbol=ETH`).then(r=>r.json());
-    if (p.ok && typeof p.premiumPct === "number") {
-      document.querySelector("#kimchi-premium").textContent = `${p.premiumPct.toFixed(2)}%`;
-      document.querySelector("#upbit-krw").textContent   = `${Math.round(p.upbitPrice).toLocaleString()} 원`;
-      document.querySelector("#global-krw").textContent  = `${Math.round(p.globalKrw).toLocaleString()} 원`;
-      document.querySelector("#usd-krw").textContent     = `${p.usdkrw.toFixed(2)}`;
-    }
-    if (o.ok) document.querySelector("#onchain-tvl").textContent = `${Math.round(o.tvl).toLocaleString("en-US")}`;
-    const s = document.querySelector("#status"); if (s) s.textContent = "";
-  } catch { /* 화면은 조용히 유지 */ }
-}
-tick(); setInterval(tick, 10000);
