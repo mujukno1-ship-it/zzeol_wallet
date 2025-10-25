@@ -130,3 +130,20 @@ function init() {
 }
 
 window.addEventListener("load", init);
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+
+async function tick() {
+  try {
+    const p = await fetch(`${API_BASE}/premium?symbol=BTC`).then(r=>r.json());
+    const o = await fetch(`${API_BASE}/onchain?symbol=ETH`).then(r=>r.json());
+    if (p.ok && typeof p.premiumPct === "number") {
+      document.querySelector("#kimchi-premium").textContent = `${p.premiumPct.toFixed(2)}%`;
+      document.querySelector("#upbit-krw").textContent   = `${Math.round(p.upbitPrice).toLocaleString()} 원`;
+      document.querySelector("#global-krw").textContent  = `${Math.round(p.globalKrw).toLocaleString()} 원`;
+      document.querySelector("#usd-krw").textContent     = `${p.usdkrw.toFixed(2)}`;
+    }
+    if (o.ok) document.querySelector("#onchain-tvl").textContent = `${Math.round(o.tvl).toLocaleString("en-US")}`;
+    const s = document.querySelector("#status"); if (s) s.textContent = "";
+  } catch { /* 화면은 조용히 유지 */ }
+}
+tick(); setInterval(tick, 10000);
