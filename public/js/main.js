@@ -1,47 +1,58 @@
-// ✅ 사토시의지갑 main.js (ID 매칭판)
-const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+(() => {
+  const PROXY = 'https://satoshi-proxy.mujukno1.workers.dev';
 
-function setText(sel, text) { const el = document.querySelector(sel); if (el) el.textContent = text; }
+  const $ = (id) => document.getElementById(id);
+  const setText = (id, v) => { const n = $(id); if (n) n.textContent = v; };
+  const fmt = {
+    pct: (x) => (x==null || isNaN(x)) ? '--%' : `${Number(x).toFixed(2)}%`,
+    krw: (x) => (x==null || isNaN(x)) ? '-'   : Number(x).toLocaleString('ko-KR'),
+    num: (x) => (x==null || isNaN(x)) ? '-'   : Number(x).toLocaleString('en-US'),
+  };
 
-async function loadPremium() {
-  try {
-    const res = await fetch(`${API_BASE}/premium?symbol=BTC`);
-    const j = await res.json();
-    if (!j.ok || typeof j.premiumPct !== "number") throw new Error(j.error || "premium not ready");
-
-    setText("#kimchi-premium", `${j.premiumPct.toFixed(2)}%`);
-    setText("#upbit-krw", j.upbitPrice ? `${Math.round(j.upbitPrice).toLocaleString()} 원` : "-");
-    setText("#global-krw", j.globalKrw ? `${Math.round(j.globalKrw).toLocaleString()} 원` : "-");
-    setText("#usd-krw", j.usdkrw ? j.usdkrw.toFixed(2) : "-");
-    setText("#status", "");
-    console.log("✅ premium OK", j);
-  } catch (e) {
-    setText("#kimchi-premium", "--%");
-    setText("#status", "오류");
-    console.warn("premium error:", e);
+  async function j(url){
+    const r = await fetch(url, { cache:'no-store' });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
   }
-}
 
-async function loadOnchain() {
-  try {
-    const res = await fetch(`${API_BASE}/onchain?symbol=ETH`);
-    const j = await res.json();
-    if (!j.ok) throw new Error(j.error || "onchain not ready");
+  async function loadKimchi(){
+    try{
+      const d = await j(`${PROXY}/api/premium?symbol=BTC`);
+      if(!d || d.ok!==true) throw new Error('invalid payload');
 
-    setText("#onchain-tvl", j.tvl ? Number(j.tvl).toLocaleString("en-US") : "-");
-    setText("#onchain-active", j.activeAddress ? Number(j.activeAddress).toLocaleString("en-US") : "-");
-    console.log("✅ onchain OK", j);
-  } catch (e) {
-    setText("#onchain-tvl", "-");
-    setText("#onchain-active", "-");
-    console.warn("onchain error:", e);
+      setText('kimchi-premium', fmt.pct(d.premiumPct));
+      setText('upbit-krw', fmt.krw(d.upbitPrice));
+      setText('global-krw', fmt.krw(d.globalKrw));
+      setText('usd-krw', fmt.num(d.usdkrw));
+      setText('status', '');
+      console.log('✅ premium OK', d);
+    }catch(e){
+      console.warn('premium error:', e);
+      setText('kimchi-premium','--%');
+      setText('upbit-krw','-'); setText('global-krw','-'); setText('usd-krw','-');
+      setText('status','오류');
+    }
   }
-}
 
-window.addEventListener("load", () => {
-  console.log("✅ using /public/js/main.js (final2)");
-  loadPremium();
-  loadOnchain();
-  setInterval(loadPremium, 10_000);
-  setInterval(loadOnchain, 60_000);
-});
+  async function loadOnchain(){
+    try{
+      const d = await j(`${PROXY}/api/onchain?symbol=ETH`);
+      if(!d || d.ok!==true) throw new Error('invalid payload');
+
+      setText('onchain-tvl', fmt.num(d.tvl));
+      setText('onchain-active', d.activeAddress ? fmt.num(d.activeAddress) : '-');
+      console.log('✅ onchain OK', d);
+    }catch(e){
+      console.warn('onchain error:', e);
+      setText('onchain-tvl','-'); setText('onchain-active','-');
+    }
+  }
+
+  function boot(){
+    loadKimchi(); loadOnchain();
+    setInterval(loadKimchi, 15000);
+    setInterval(loadOnchain, 30000);
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
+})();
