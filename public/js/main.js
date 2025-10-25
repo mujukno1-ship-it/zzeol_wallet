@@ -95,7 +95,7 @@ async function loadSummary() {
 */
 const SPARK = {
   cache: new Map(),             // market -> { ...item, lastSeen }
-  LINGER_MS: 2 * 60 * 1000,     // 2분 유지
+  LINGER_MS: 2 * 60 * 1000,     // 24시간 유지
   FIRST_LOADED: false,
   PARAMS: 'minRise=1&minVolRatio=1.2&limit=60' // 보기 좋게 완화 기본값
 };
