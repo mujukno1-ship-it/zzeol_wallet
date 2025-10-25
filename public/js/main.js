@@ -106,3 +106,4 @@ window.addEventListener("DOMContentLoaded", () => {
   // 20초마다 갱신
   setInterval(refreshAll, 20000);
 });
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
