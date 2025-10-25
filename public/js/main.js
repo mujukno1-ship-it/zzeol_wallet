@@ -1,10 +1,9 @@
 // ===============================
-// 사토시의지갑 main.js 완전교체본
+// 사토시의지갑 main.js 완전교체본 (2025-10-25 최신)
 // ===============================
 
 const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
 
-// DOM 헬퍼
 const $ = (s) => document.querySelector(s);
 
 function ensureSlots() {
@@ -96,4 +95,5 @@ function init() {
   setInterval(updatePremium, 10000);
   setInterval(updateOnchain, 60000);
 }
+
 window.addEventListener("load", init);
