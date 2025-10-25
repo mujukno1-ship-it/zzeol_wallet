@@ -1,76 +1,18 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>쩔어지갑 · KRW 실시간 코인 타점</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%231d4ed8'/%3E%3Ctext x='32' y='40' font-size='28' text-anchor='middle' fill='white'%3Ez%3C/text%3E%3C/svg%3E">
-  <style>
-    body{background:#0b0f14;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
-    .wrap{max-width:1080px;margin:40px auto;padding:0 16px}
-    .card{background:#0f151b;border:1px solid #1e293b;border-radius:16px;padding:16px 18px;box-shadow:0 4px 20px rgba(0,0,0,.2)}
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .pill{background:#0a1220;border:1px solid #1f2a44;padding:8px 12px;border-radius:999px}
-    .green{color:#22c55e}.red{color:#ef4444}.muted{opacity:.7}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h2>KRW 코인 검색 · 매수/매도 타점</h2>
-    <div class="card">
-      <div class="row">
-        <input id="q" placeholder="예: 비트코인 또는 BTC" />
-        <button id="searchBtn">검색</button>
-        <span id="systemBadge" class="pill">시스템: 확인중…</span>
-      </div>
-    </div>
-    <div class="card" style="margin-top:14px">
-      <span id="symPill" class="pill">ETH</span>
-      <span>현재가: <b id="price">-</b></span>
-      <span>등락: <b id="chg" class="muted">-</b></span>
-      <span>매수: <b id="buy" class="muted">-</b></span>
-      <span>매도: <b id="sell" class="muted">-</b></span>
-    </div>
-  </div>
+<!-- 김치 프리미엄 -->
+<div class="metric-card">
+  <h3>김치 프리미엄</h3>
+  <div id="kimchi-premium">--%</div>
+  <ul>
+    <li>업비트 KRW: <span id="upbit-krw">-</span></li>
+    <li>글로벌 KRW: <span id="global-krw">-</span></li>
+    <li>USD/KRW: <span id="usd-krw">-</span></li>
+  </ul>
+  <div id="status">불러오는 중...</div>
+</div>
 
-  <script src="/net_upbit.js"></script>
-  <script>
-    async function checkOnchain(){
-      const b=document.getElementById('systemBadge');
-      try{
-        const r=await fetch('/api/onchain'); if(!r.ok) throw 0;
-        await r.json(); b.innerHTML='시스템: <b style="color:#22c55e">OK</b>';
-      }catch{ b.innerHTML='시스템: <b style="color:#ef4444">오류</b>'; }
-    }
-
-    function toMarketCode(t){
-      const x=(t||'').trim().toUpperCase();
-      if(!x)return 'KRW-ETH';
-      if(x==='비트코인'||x==='BTC')return 'KRW-BTC';
-      if(x==='이더리움'||x==='ETH')return 'KRW-ETH';
-      return x.startsWith('KRW-')?x:`KRW-${x}`;
-    }
-
-    function updateUI(m,d){
-      const p=d.trade_price;
-      const chg=(d.signed_change_price/d.prev_closing_price)*100;
-      const fmt=v=>Number(v).toLocaleString('ko-KR');
-      const fmt2=v=>`${v>0?'+':''}${v.toFixed(2)}%`;
-      document.getElementById('symPill').textContent=m.replace('KRW-','');
-      document.getElementById('price').textContent=fmt(p);
-      document.getElementById('chg').textContent=fmt2(chg);
-      document.getElementById('chg').className=chg>=0?'green':'red';
-      document.getElementById('buy').textContent=fmt(p*0.99);
-      document.getElementById('sell').textContent=fmt(p*1.01);
-    }
-
-    document.getElementById('searchBtn').addEventListener('click',()=>{
-      const m=toMarketCode(document.getElementById('q').value);
-      window.Upbit.startAutoUpdate({market:m,onUpdate:d=>updateUI(m,d)});
-    });
-
-    checkOnchain();
-    window.Upbit.startAutoUpdate({market:'KRW-ETH',onUpdate:d=>updateUI('KRW-ETH',d)});
-  </script>
-</body>
-</html>
+<!-- 온체인 지표 -->
+<div class="metric-card">
+  <h3>온체인 지표</h3>
+  <div>TVL: <span id="onchain-tvl">-</span></div>
+  <div>활성 주소수: <span id="onchain-active">-</span></div>
+</div>
