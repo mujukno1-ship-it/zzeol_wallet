@@ -2,61 +2,50 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KRW 코인 검색 · 매수/매도 타점</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KRW 코인 검색 · 타점 · 스파크</title>
   <style>
-    body{background:#0d0f13;color:#e6e6e6;font-family:"Noto Sans KR",sans-serif;margin:0;padding:0;}
-    .wrap{max-width:1100px;margin:25px auto;padding:0 15px;}
-    h1{font-size:22px;margin-bottom:14px;}
-    input{background:#12151b;color:#e6e6e6;border:1px solid #2c3142;border-radius:8px;padding:8px 12px;}
-    button{background:#2c3142;color:#fff;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;}
-    button:hover{background:#3a4060;}
-    .panel{background:#151821;border:1px solid #232634;border-radius:10px;padding:12px;margin-top:12px;}
-    table{width:100%;border-collapse:collapse;}
-    th,td{padding:10px 12px;border-bottom:1px solid #222634;text-align:left;font-size:14px;}
-    th{color:#9aa0ab;}
-    .muted{color:#9aa0ab;}
-    .pos{color:#00e68a;}
-    .neg{color:#ff6b6b;}
-    .badge{display:inline-block;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:6px;}
-    .ok{background:#142c3b;color:#74d7ff;}
-    .warn{background:#3b3212;color:#ffd37b;}
-    .danger{background:#3b1114;color:#ffb5be;}
-    #spark-body tr td{transition:background-color 0.3s ease;}
+    :root{
+      --bg:#0e0f13; --panel:#16181f; --text:#e6e6e6; --muted:#9aa0ab;
+      --pos:#1ec780; --neg:#ff5577; --warn:#f5a524;
+      --chip:#1b1f2a; --border:#232634;
+    }
+    html,body{background:var(--bg); color:var(--text); margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial;}
+    .wrap{max-width:1120px; margin:28px auto; padding:0 16px;}
+    h1{font-size:22px; margin:0 0 14px;}
+    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    input{background:#0c0d11; color:var(--text); border:1px solid var(--border); padding:10px 12px; border-radius:10px; width:260px; outline:none;}
+    button{background:#23283b; color:var(--text); border:0; padding:10px 14px; border-radius:10px; cursor:pointer}
+    button.primary{background:#3856ff}
+    .panel{background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:12px;}
+    table{width:100%; border-collapse:collapse;}
+    th,td{padding:12px 14px; border-bottom:1px solid #222532; text-align:left; font-size:14px}
+    th{color:#aab1bc; background:#12141b; font-weight:600}
+    td.val{font-variant-numeric:tabular-nums}
+    .muted{color:var(--muted)}
+    .badge{padding:6px 10px; border-radius:999px; font-size:12px; background:#1b1f2a; color:#d5d8df}
+    .ok{background:#0f2b3d; color:#7dd3fc}
+    .warn{background:#3a2b12; color:#f6d28b}
+    .danger{background:#3a1117; color:#ffb3c2}
+    #spark-body tr td{transition:background-color .25s ease;}
     #spark-body tr:hover td{background:#1b1e27;}
-    #loading-msg{color:#9aa0ab;text-align:center;padding:10px;font-size:13px;}
+    #loading-msg{color:var(--muted); text-align:center; padding:10px; font-size:13px;}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>KRW 코인 검색 · 매수/매도 타점</h1>
+    <h1>KRW 코인 검색 · 타점 · 스파크</h1>
 
-    <div style="margin-bottom:10px;">
-      <input id="q" placeholder="예: BTC 또는 KRW-ETH" />
-      <button id="btn">검색</button>
-      <span id="sys" class="badge ok">시스템: OK</span>
-      <span id="risk" class="badge warn">위험도: -</span>
+    <!-- 검색창 (기존 기능 유지) -->
+    <div class="row" style="margin-bottom:10px">
+      <input id="q" type="text" placeholder="예: BTC, ETH 또는 KRW-ETH" />
+      <button id="btn" class="primary">검색</button>
+      <span id="risk" class="badge">위험도: -</span>
     </div>
 
-    <!-- 기존 검색 결과 패널 -->
-    <div class="panel">
-      <table>
-        <tbody>
-          <tr><th>코인</th><td id="sym">-</td><td class="muted">현재가격/등락</td></tr>
-          <tr><th>현재가</th><td id="price">-</td><td class="muted">매수/매도 타점 기준</td></tr>
-          <tr><th>등락</th><td id="chg">-</td><td class="muted">전일 대비 등락률</td></tr>
-          <tr><th>매수</th><td id="buy">-</td><td class="muted">추천 매수가</td></tr>
-          <tr><th>매도</th><td id="sell">-</td><td class="muted">추천 매도가</td></tr>
-          <tr><th>손절</th><td id="stop">-</td><td class="muted">위험관리 손절가</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div id="one" class="panel muted" style="font-size:13px;">검색해주세요.</div>
-
-    <!-- ⚡ 스파크 코인 항상 표시 -->
-    <div class="panel" id="spark-panel">
-      <h3 style="margin:0 0 8px 0;">⚡ 스파크 코인 (15초마다 자동 갱신)</h3>
+    <!-- ⚡ 스파크: 검색란 바로 아래, 항상 표시 -->
+    <section class="panel" id="spark-panel">
+      <h3 style="margin:10px 14px">⚡ 스파크 코인</h3>
       <div id="loading-msg">불러오는 중...</div>
       <table>
         <thead>
@@ -73,107 +62,225 @@
         </thead>
         <tbody id="spark-body"></tbody>
       </table>
+    </section>
+
+    <!-- 검색 결과 요약(기존 기능) -->
+    <div class="panel">
+      <table>
+        <tbody>
+          <tr><th>코인</th><td class="val" id="sym">-</td><td class="muted">현재가격/등락</td></tr>
+          <tr><th>현재가</th><td class="val" id="price">-</td><td class="muted">매수/매도 타점 기준</td></tr>
+          <tr><th>등락</th><td class="val" id="chg">-</td><td class="muted">전일 대비 등락률</td></tr>
+          <tr><th>매수</th><td class="val" id="buy">-</td><td class="muted">권장 매수가</td></tr>
+          <tr><th>매도</th><td class="val" id="sell">-</td><td class="muted">권장 매도가</td></tr>
+          <tr><th>손절</th><td class="val" id="stop">-</td><td class="muted">위험 관리 기준 손절가</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel muted" id="one" style="font-size:13px; padding:12px 14px">검색해주세요.</div>
+
+    <div class="muted" style="margin-top:12px; font-size:12px">
+      API: <a href="/api/summary?market=KRW-ETH" target="_blank">/api/summary</a> ·
+      <a href="/api/spark" target="_blank">/api/spark</a>
     </div>
   </div>
 
 <script>
+/* ================= 공통 유틸 ================= */
 const $ = s => document.querySelector(s);
 const fmt = new Intl.NumberFormat('ko-KR');
-const pct = n => (Number(n) >= 0 ? '+' : '') + Number(n).toFixed(2) + '%';
-const KRW = v => (v < 1 ? v.toFixed(4) : fmt.format(Math.round(v)));
+const pct = v => `${(Number(v)||0).toFixed(2)}%`;
+const KRW = v => (Number(v)<1 ? Number(v||0).toFixed(4) : fmt.format(Math.round(Number(v)||0)));
+const looksLikeHTML = t => (t||'').trim().toLowerCase().startsWith('<');
 
-function tick(p){
-  if(p>=2000000)return 1000;
-  if(p>=1000000)return 500;
-  if(p>=500000)return 100;
-  if(p>=100000)return 50;
-  if(p>=10000)return 10;
-  if(p>=1000)return 1;
-  if(p>=100)return 0.1;
-  if(p>=10)return 0.01;
-  if(p>=1)return 0.001;
+function tickKRW(p){
+  p = Number(p)||0;
+  if(p>=2000000) return 1000;
+  if(p>=1000000) return 500;
+  if(p>=500000)  return 100;
+  if(p>=100000)  return 50;
+  if(p>=10000)   return 10;
+  if(p>=1000)    return 1;
+  if(p>=100)     return 0.1;
+  if(p>=10)      return 0.01;
+  if(p>=1)       return 0.001;
   return 0.0001;
 }
-function rTick(v,d="nearest"){
-  const t=tick(v),n=v/t;
-  if(d==="up")return Math.ceil(n)*t;
-  if(d==="down")return Math.floor(n)*t;
+const roundTick=(v,dir='nearest')=>{
+  const t=tickKRW(v); const n=Number(v)/t;
+  if(dir==='up') return Math.ceil(n)*t;
+  if(dir==='down') return Math.floor(n)*t;
   return Math.round(n)*t;
+};
+
+/* ================= 기존 기능: 검색 요약 ================= */
+async function loadSummary(){
+  try{
+    const q = ($('#q').value||'ETH').trim().toUpperCase();
+    const market = q.startsWith('KRW-') ? q : (q.length<=5? `KRW-${q}` : q);
+
+    const res = await fetch(`/api/summary?market=${encodeURIComponent(market)}`, {cache:'no-store'});
+    const text = await res.text();
+    if(looksLikeHTML(text)) throw new Error('HTML_RESPONSE');
+    const j = JSON.parse(text);
+    if(!j.ok) throw new Error(j.error||'API 오류');
+
+    const p = Number(j.price)||0;
+    const chg = Number(j.change)||0;
+    $('#sym').textContent = j.symbol || market;
+    $('#price').textContent = KRW(p);
+    $('#chg').innerHTML = (chg>=0)? `<span style="color:var(--pos)">+${pct(chg)}</span>` : `<span style="color:var(--neg)">${pct(chg)}</span>`;
+    $('#buy').textContent  = KRW(roundTick(p*0.994));
+    $('#sell').textContent = KRW(roundTick(p*1.006));
+    $('#stop').textContent = KRW(roundTick(p*0.978));
+
+    // 쩔어 한마디
+    let line = '보통 구간: 추세 따라 분할 접근.';
+    if((j.risk||'')==='danger') line = '변동성 ↑ : 급등락 주의. 분할/짧은 손절 권장.';
+    else if((j.risk||'')==='caution') line = '주의 구간: 거래량 확인하며 진입.';
+    $('#one').textContent = line;
+  }catch(e){
+    $('#one').textContent = '데이터 로드 실패. 잠시 후 재시도.';
+  }
+}
+$('#btn').addEventListener('click', loadSummary);
+$('#q').addEventListener('keydown', e=>{ if(e.key==='Enter') loadSummary(); });
+
+/* ================= 새 기능: 스파크(항시 표시·무깜빡) =================
+   - 접속 시 바로 표시, 15초마다 갱신
+   - 첫 로딩만 '불러오는 중...' 노출 → 데이터 오면 숨김
+   - 새 데이터 없어도 최대 24시간 유지(최근감지), 동시 10개까지만
+======================================================================= */
+const SPARK = {
+  cache: new Map(),                        // market -> { ...item, lastSeen }
+  LINGER_MS: 24 * 60 * 60 * 1000,         // ✅ 24시간 유지
+  FIRST_LOADED: false,
+  PARAMS: 'minRise=1&minVolRatio=1.2&limit=60' // 보기 좋은 기본값
+};
+
+function patchRow(tbody, item){
+  const id = item.market;
+  let tr = tbody.querySelector(`tr[data-id="${id}"]`);
+  const isStale = !!item._stale;
+
+  const price = Number(item.price)||0;
+  const buy   = roundTick(price*0.985,'down'); // -1.5%
+  const sell  = roundTick(price*1.03,'up');    // +3%
+  const stop  = roundTick(price*0.97,'down');  // -3%
+
+  const riskObj = (item.rise3m>5) ? {label:'높음', cls:'danger'}
+                 : (item.rise3m>2) ? {label:'보통', cls:'warn'} : {label:'낮음', cls:'ok'};
+
+  const msg = (item.rise3m>6)?'급등 주의! 익절 준비.'
+            : (item.rise3m>3)?'단타 구간, 추세 유지.' : '관망 구간, 세력 확인.';
+
+  const name = item.kor || item.market.replace('KRW-','');
+  const time = new Date(item.ts||Date.now()).toLocaleTimeString('ko-KR',{hour12:false});
+
+  const html = `
+    <td>${name}</td>
+    <td class="val">${KRW(price)}</td>
+    <td class="val" style="color:#00e3b2">${KRW(buy)}</td>
+    <td class="val" style="color:#ffd166">${KRW(sell)}</td>
+    <td class="val" style="color:#ff6b6b">${KRW(stop)}</td>
+    <td><span class="badge ${riskObj.cls}">위험도: ${riskObj.label}</span></td>
+    <td class="muted">${time}${isStale?' · 최근감지':''}</td>
+    <td class="muted">${msg}</td>
+  `;
+
+  if(!tr){
+    tr = document.createElement('tr');
+    tr.setAttribute('data-id', id);
+    if(isStale) tr.style.opacity='0.55';
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  }else{
+    tr.style.opacity = isStale ? '0.55' : '';
+    // 깜빡임 없이 셀만 교체
+    const temp=document.createElement('tbody');
+    temp.innerHTML=`<tr>${html}</tr>`;
+    const newTds=temp.querySelectorAll('td');
+    const oldTds=tr.querySelectorAll('td');
+    newTds.forEach((td,i)=>{ if(oldTds[i] && oldTds[i].innerHTML!==td.innerHTML){ oldTds[i].innerHTML=td.innerHTML; }});
+  }
+}
+
+function gcStaleRows(tbody){
+  const now=Date.now();
+  for(const [k,v] of SPARK.cache){
+    if(now - v.lastSeen > SPARK.LINGER_MS){
+      SPARK.cache.delete(k);
+      const tr = tbody.querySelector(`tr[data-id="${k}"]`);
+      tr && tr.remove();
+    }
+  }
 }
 
 async function loadSpark(){
-  const msg=$('#loading-msg');
-  msg.style.display='block';
-  const body=$('#spark-body');
-  body.innerHTML=''; // 기존 잔상 제거
+  const msg  = $('#loading-msg');
+  const body = $('#spark-body');
+  if(!body) return;
+
+  if(!SPARK.FIRST_LOADED && msg) msg.style.display='block';
 
   try{
-    const r=await fetch('/api/spark?minRise=1&minVolRatio=1.2',{cache:'no-store'});
-    const t=await r.text();
-    const j=JSON.parse(t);
+    const r = await fetch(`/api/spark?${SPARK.PARAMS}`, {cache:'no-store'});
+    const j = await r.json();
 
-    if(!j.ok){throw new Error(j.error||'스파크 오류');}
+    const now = Date.now();
+    if(j.ok && Array.isArray(j.items)){
+      // 새 데이터 캐시에 반영 (lastSeen 갱신)
+      j.items.forEach(it=>{
+        const prev = SPARK.cache.get(it.market) || {};
+        SPARK.cache.set(it.market, {...prev, ...it, lastSeen: now});
+      });
 
-    const items=j.items;
-    if(!items || items.length===0){
-      msg.innerText='현재 포착된 스파크 코인이 없습니다.';
-      return;
+      // 캐시값 최신순 정렬
+      const list = Array.from(SPARK.cache.values())
+        .sort((a,b)=>(b.lastSeen-a.lastSeen)||(b.rise3m-a.rise3m));
+
+      // ✅ 상위 10개만 표시/보관
+      const top = list.slice(0,10);
+      const overflow = list.slice(10);
+
+      // 화면 패치 (이번 fetch에 없으면 _stale로)
+      top.forEach(it=>{
+        const _stale = (now - it.lastSeen > 15*1000);
+        patchRow(body, {...it, _stale});
+      });
+
+      // 초과 항목 제거(표/캐시)
+      overflow.forEach(it=>{
+        SPARK.cache.delete(it.market);
+        const tr = body.querySelector(`tr[data-id="${it.market}"]`);
+        tr && tr.remove();
+      });
+
+      // 24시간 경과 항목 정리
+      gcStaleRows(body);
     }
-    msg.style.display='none'; // 불러오기 문구 제거
 
-    body.innerHTML=items.map(x=>{
-      const name=x.market.replace('KRW-','');
-      const price=Number(x.price)||0;
-      const buy=rTick(price*0.985);
-      const sell=rTick(price*1.03);
-      const stop=rTick(price*0.97);
-      const risk=(x.rise3m>5)?'높음':(x.rise3m>2?'보통':'낮음');
-      const riskColor=(risk==='높음')?'danger':(risk==='보통'?'warn':'ok');
-      const time=new Date(x.ts).toLocaleTimeString('ko-KR',{hour12:false});
-      const msgTxt=(x.rise3m>5)?'급등 주의':'단기 추세 지속';
-      return `
-        <tr>
-          <td>${name}</td>
-          <td>${KRW(price)}</td>
-          <td>${KRW(buy)}</td>
-          <td>${KRW(sell)}</td>
-          <td>${KRW(stop)}</td>
-          <td><span class="badge ${riskColor}">${risk}</span></td>
-          <td>${time}</td>
-          <td>${msgTxt}</td>
-        </tr>`;
-    }).join('');
+    // 첫 로딩 문구 숨김(데이터가 1개라도 있으면)
+    if(!SPARK.FIRST_LOADED && msg){
+      if(SPARK.cache.size>0){ msg.style.display='none'; SPARK.FIRST_LOADED=true; }
+      else msg.textContent='현재 포착된 스파크 코인이 없습니다.';
+    }
   }catch(e){
-    msg.innerText='스파크 데이터 불러오기 실패';
+    if(!SPARK.FIRST_LOADED && msg) msg.textContent='스파크 데이터 불러오기 실패';
+    // 실패해도 표는 유지(무깜빡)
   }
 }
 
-async function loadSummary(){
-  try{
-    const q=$('#q').value.trim().toUpperCase();
-    const market=q.startsWith('KRW-')?q:`KRW-${q}`;
-    const res=await fetch(`/api/summary?market=${market}`);
-    const j=await res.json();
+/* ================= 초기 구동 ================= */
+window.addEventListener('load', ()=>{
+  // 기본 검색값 세팅
+  const qEl=$('#q'); if(qEl && !qEl.value) qEl.value='ETH';
+  loadSummary();
 
-    const p=j.price||0;
-    $('#sym').textContent=market;
-    $('#price').textContent=KRW(p);
-    $('#chg').innerHTML=(j.change>=0)?`<span class="pos">${pct(j.change)}</span>`:`<span class="neg">${pct(j.change)}</span>`;
-    $('#buy').textContent=KRW(rTick(p*0.985));
-    $('#sell').textContent=KRW(rTick(p*1.015));
-    $('#stop').textContent=KRW(rTick(p*0.97));
-    $('#one').textContent='쩔어한마디: 단기 변동 주의, 분할 접근이 유리.';
-  }catch(e){
-    $('#one').textContent='데이터 로드 실패.';
-  }
-}
-
-$('#btn').addEventListener('click',loadSummary);
-$('#q').addEventListener('keydown',e=>{if(e.key==='Enter')loadSummary();});
-
-window.addEventListener('load',()=>{
+  // 스파크: 접속 즉시 로드 + 15초마다 무깜빡 갱신
   loadSpark();
-  setInterval(loadSpark,15000); // 15초마다 갱신
+  setInterval(loadSpark, 15000);
 });
 </script>
 </body>
