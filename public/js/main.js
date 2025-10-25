@@ -253,6 +253,94 @@ window.addEventListener('load', () => {
   // 새 기능: 스파크 항상 표시 + 15초마다 부드럽게 갱신
   loadSpark();
   setInterval(loadSpark, 15000);
+// === API 기본값 (이미 정의돼 있으면 이 줄은 생략) ======================
+const API_BASE = window.API_BASE || "https://satoshi-proxy.mujukno1.workers.dev/api";
+// =====================================================================
+
+// 공통 유틸
+const fmtNum = (n) => (n == null || isNaN(n) ? "-" : n.toLocaleString());
+const tsToStr = (ts) => {
+  try { return new Date(Number(ts)).toLocaleString(); } catch { return ""; }
+};
+
+// 김프 렌더링
+function renderPremium(d) {
+  const pctEl = document.getElementById("premium-pct");
+  const label = document.getElementById("premium-label");
+  const upbit = document.getElementById("premium-upbit");
+  const global = document.getElementById("premium-global");
+  const bin = document.getElementById("premium-binance");
+  const usdkrw = document.getElementById("premium-usdkrw");
+  const ts = document.getElementById("premium-ts");
+
+  if (!d || d.error) {
+    pctEl.textContent = "--%";
+    label.textContent = "오류";
+    label.style.background = "#7f1d1d";
+    return;
+  }
+
+  pctEl.textContent = `${d.premium_pct > 0 ? "+" : ""}${d.premium_pct.toFixed(2)}%`;
+  upbit.textContent = `${fmtNum(d.upbit_krw)} 원`;
+  global.textContent = `${fmtNum(d.global_krw)} 원`;
+  bin.textContent = `${fmtNum(d.binance_usd)} $`;
+  usdkrw.textContent = `${fmtNum(d.usdkrw)} 원/$`;
+  ts.textContent = `업데이트: ${tsToStr(d.ts)}`;
+
+  // 색상 레이블
+  let bg = "#374151", txt = "보합";
+  if (d.premium_pct >= 1) { bg = "#14532d"; txt = "김프 (고)"; }
+  else if (d.premium_pct > 0) { bg = "#166534"; txt = "김프"; }
+  else if (d.premium_pct <= -1) { bg = "#7f1d1d"; txt = "역프 (고)"; }
+  else if (d.premium_pct < 0) { bg = "#b91c1c"; txt = "역프"; }
+  label.textContent = txt;
+  label.style.background = bg;
+}
+
+// 온체인 렌더링(더미 대응)
+function renderOnchain(d) {
+  const tvl = document.getElementById("onchain-tvl");
+  const active = document.getElementById("onchain-active");
+  const note = document.getElementById("onchain-note");
+  const ts = document.getElementById("onchain-ts");
+
+  tvl.textContent = d && d.tvl != null ? fmtNum(d.tvl) : "준비중";
+  active.textContent = d && d.active_addresses != null ? fmtNum(d.active_addresses) : "준비중";
+  note.textContent = d && d.note ? d.note : "";
+  ts.textContent = d && d.ts ? `업데이트: ${tsToStr(d.ts)}` : "";
+}
+
+// 데이터 갱신 루프
+async function updatePremium() {
+  try {
+    const r = await fetch(`${API_BASE}/premium`, { cache: "no-store" });
+    renderPremium(await r.json());
+  } catch {
+    renderPremium(null);
+  }
+}
+async function updateOnchain() {
+  try {
+    const sym = (document.getElementById("onchain-symbol")?.value || "ETH").toUpperCase();
+    const r = await fetch(`${API_BASE}/onchain?symbol=${encodeURIComponent(sym)}`, { cache: "no-store" });
+    renderOnchain(await r.json());
+  } catch {
+    renderOnchain(null);
+  }
+}
+
+// 주기적 갱신 (폴링 3초)
+function startInsightsPolling() {
+  updatePremium(); updateOnchain();
+  setInterval(updatePremium, 3000);
+  setInterval(updateOnchain, 5000);
+}
+
+// 심볼 변경 이벤트
+document.getElementById("onchain-symbol")?.addEventListener("change", updateOnchain);
+
+// 초기화
+document.addEventListener("DOMContentLoaded", startInsightsPolling);
 
   // 온체인(선택)
   pingOnchain('ETH');
