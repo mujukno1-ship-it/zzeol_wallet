@@ -165,3 +165,13 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(updatePremium, 3000);
   setInterval(updateOnchain, 5000);
 });
+(async () => {
+  try {
+    const p = await (await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/premium", {cache:"no-store"})).json();
+    console.log("premium test:", p);
+    const o = await (await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/onchain?symbol=ETH", {cache:"no-store"})).json();
+    console.log("onchain test:", o);
+  } catch(e) {
+    console.error("front fetch error:", e);
+  }
+})();
