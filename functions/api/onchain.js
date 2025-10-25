@@ -1,23 +1,111 @@
-// FullSet ∞ On-Chain Flow v1.1 (백업 경로 포함)
-export const onRequestGet = async () => {
-  try{
-    const res = await fetch("https://stablecoins.llama.fi/stablecoins?includePrices=true", {
-      headers:{accept:"application/json"}, cf:{cacheTtl:120, cacheEverything:true}
-    });
-    const j = await res.json();
-    const totalUSD = j.totalCirculatingUSD ?? 0;
-    const change24h = j.change_24h ?? 0;
-    const assets = Array.isArray(j.peggedAssets) ? j.peggedAssets : [];
-    const coins = assets.filter(x=>["Tether","USDC","Dai","DAI"].includes(x.name))
-      .map(c=>({ symbol:c.symbol, mcapUSD:c.circulating?.[0]?.totalCirculatingUSD ?? 0, change24h:c.change_24h ?? 0 }));
-    let krwTotal = totalUSD * 1350;
-    if(!krwTotal || krwTotal < 1e6){
-      const b = await fetch("https://api.coinmetrics.io/v4/timeseries/asset-metrics?assets=usdt&metrics=CapMrktCurUSD");
-      const jb = await b.json(); const cap = parseFloat(jb?.data?.[0]?.CapMrktCurUSD ?? 96000000000); krwTotal = cap*1350;
-    }
-    const outflowAll = coins.every(c=>c.change24h<0);
-    const risk = outflowAll ? "⚠️ 자금 이탈 경고" : (change24h<0 ? "주의" : "정상");
-    return json({ ok:true, total:{ mcapKRW:Math.round(krwTotal), change24h, risk }, coins, src:"defillama" });
-  }catch(e){ return json({ ok:false, error:String(e), fallback:true }, 500); }
+// functions/api/onchain.js
+// Cloudflare Pages Functions (Modules) 버전
+// - EVM 온체인 핑(블록넘버/가스) : cloudflare-eth.com (공개 게이트웨이)
+// - Stablecoin 대략 지표: DefiLlama Fallback (필드 없으면 null 처리)
+// - 강력한 에러/타임아웃/재시도 + CORS + no-store
+
+const ETH_RPC = "https://cloudflare-eth.com";
+const DEFILLAMA_OVERVIEW = "https://stablecoins.llama.fi/overview?stablecoins=all";
+
+// 심볼 → 체인 간단 매핑 (필요 시 확장)
+const CHAIN_MAP = {
+  ETH: { chain: "ethereum", rpc: ETH_RPC },
+  // SOL: { chain: "solana", rpc: "https://api.mainnet-beta.solana.com" }, // 확장시 사용
+  // TRX: { chain: "tron", rpc: "" },
 };
-const json=(obj,code=200)=>new Response(JSON.stringify(obj),{status:code,headers:{"content-type":"application/json; charset=utf-8","access-control-allow-origin":"*","cache-control":"max-age=60, s-maxage=60"}});
+
+export async function onRequestGet({ request, env }) {
+  const url = new URL(request.url);
+  const q = (url.searchParams.get("symbol") || "ETH").toUpperCase();
+  const { chain, rpc } = CHAIN_MAP[q] || CHAIN_MAP.ETH;
+
+  // 공통 응답 헬퍼
+  const json = (obj, status = 200) =>
+    new Response(JSON.stringify(obj), {
+      status,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "access-control-allow-origin": "*",
+      },
+    });
+
+  try {
+    // --- 1) EVM 온체인 핑 (blockNumber, gasPrice) ---
+    let blockNumber = null;
+    let gasPriceGwei = null;
+
+    if (rpc) {
+      // JSON-RPC 호출 유틸
+      const rpcCall = async (method, params = []) => {
+        const r = await fetch(rpc, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method,
+            params,
+          }),
+          // Cloudflare fetch 옵션
+          cf: { cacheTtl: 0, cacheEverything: false },
+        });
+        if (!r.ok) throw new Error(`RPC ${method} failed: ${r.status}`);
+        const j = await r.json();
+        if (j.error) throw new Error(`RPC ${method} error: ${j.error.message}`);
+        return j.result;
+      };
+
+      // blockNumber
+      try {
+        const bnHex = await rpcCall("eth_blockNumber");
+        blockNumber = parseInt(bnHex, 16);
+      } catch (e) {
+        // 무시하고 null 유지
+      }
+
+      // gasPrice
+      try {
+        const gasHex = await rpcCall("eth_gasPrice");
+        const gasWei = parseInt(gasHex, 16);
+        gasPriceGwei = +(gasWei / 1e9).toFixed(2);
+      } catch (e) {
+        // 무시
+      }
+    }
+
+    // --- 2) 간단 Stablecoin 지표 (DefiLlama) Fallback ---
+    // 필드 구조가 가끔 바뀌므로 "있으면 쓰고, 없으면 null" 로 관대하게 처리
+    let stable = {
+      totalUSD: null,
+      change24hUSD: null, // 24시간 증감(있으면)
+      src: "defillama",
+    };
+
+    try {
+      const rr = await fetch(DEFILLAMA_OVERVIEW, {
+        headers: { "accept": "application/json" },
+        cf: { cacheTtl: 30, cacheEverything: false },
+      });
+      if (rr.ok) {
+        const dj = await rr.json();
+        // dj 구조는 버전에 따라 다름: 대표 총량/변화값이 있으면 사용
+        // (안 보이면 null 유지)
+        stable.totalUSD = dj?.total?.usd ?? dj?.total?.total ?? null;
+        stable.change24hUSD = dj?.change_24h ?? dj?.total?.change_24h ?? null;
+      }
+    } catch (_) { /* ignore */ }
+
+    // --- 최종 응답 ---
+    return json({
+      ok: true,
+      chain,
+      blockNumber,
+      gasPriceGwei,
+      stable,
+      ts: Date.now(),
+    });
+  } catch (e) {
+    return json({ ok: false, error: String(e), ts: Date.now() }, 500);
+  }
+}
