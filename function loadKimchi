@@ -1,0 +1,24 @@
+async function loadKimchi(symbol = "BTC") {
+  const target = document.querySelector("#kimchi-premium");
+  try {
+    const res = await fetch(`${API_BASE}/premium?symbol=${symbol}`);
+    const data = await res.json();
+
+    if (!data.ok) {
+      target.textContent = "-";
+      return;
+    }
+
+    const pct = data.premiumPct?.toFixed(2);
+    const upbit = data.upbitPrice?.toLocaleString();
+    const usdkrw = data.usdkrw?.toFixed(2);
+
+    document.querySelector("#kimchi-premium").textContent = `${pct}%`;
+    document.querySelector("#upbit-krw").textContent = `${upbit} 원`;
+    document.querySelector("#usd-krw").textContent = `${usdkrw}`;
+  } catch (e) {
+    target.textContent = "-";
+  }
+}
+loadKimchi();
+setInterval(loadKimchi, 10000); // 10초마다 자동 업데이트
