@@ -1,50 +1,45 @@
-// ==== render.js (시작)
-const RENDER = (() => {
-  function text(id, v){ const el=document.getElementById(id); if(el) el.textContent = v; }
+// public/js/render.js
+import { fmt } from './api.js';
 
-  function paintPremium(p){
-    if(!p || !p.ok){ text('kimchi-premium', '-'); return; }
-    const prem = p.premiumPct==null ? null : Number(p.premiumPct).toFixed(2);
-    const cls  = (p.premiumPct>0)?'bad':'good';
-    document.getElementById('kimchi-premium').innerHTML =
-      prem==null?'-':`<span class="${cls}">${prem}%</span>`;
-    text('upbit-krw', IND.formatKRW(p.upbitPrice));
-    text('global-usd', IND.formatUSD(p.globalUsd));
-    text('usdkrw', Number(p.usdkrw||0).toLocaleString('ko-KR'));
-    text('sources', `global: ${p.src?.global||'-'} / fx: ${p.src?.fx||'-'} / krw: ${p.src?.krw||'Upbit'}`);
+export function renderPremium(dom, p) {
+  const pctEl = document.getElementById('kimp-pct');
+  const upEl  = document.getElementById('upbit-krw');
+  const gEl   = document.getElementById('global-usd');
+  const uEl   = document.getElementById('usdkrw');
+  const symEl = document.getElementById('sym-kimp');
+
+  if (!p) {
+    pctEl.textContent = upEl.textContent = gEl.textContent = uEl.textContent = '-';
+    return;
   }
+  symEl.textContent = p.symbol;
+  pctEl.textContent = fmt.pct(p.premiumPct);
+  pctEl.className = 'metric ' + (p.premiumPct > 0 ? 'bad' : 'good');
+  upEl.textContent = fmt.krw(p.upbitPrice);
+  gEl.textContent  = fmt.usd(p.globalUsd);
+  uEl.textContent  = p.usdkrw ? p.usdkrw.toLocaleString('ko-KR') : '-';
+}
 
-  function paintOnchain(o, symbol){
-    text('sym-onchain', symbol);
-    if(!o || !o.ok){ text('onchain-tvl','-'); return; }
-    text('onchain-tvl', Number(o.tvl||0).toLocaleString('en-US',{maximumFractionDigits:0})+' USD');
-  }
+export function renderOnchain(o) {
+  document.getElementById('sym-onchain').textContent = o?.symbol ?? 'ETH';
+  document.getElementById('onchain-tvl').textContent  = o ? fmt.compactUSD(o.tvl) : '-';
+}
 
-  function paintSignal(p){
-    if(!p || !p.ok){ text('sig-price','-'); text('sig-buy','-'); text('sig-sell','-'); text('sig-stop','-'); text('sig-risk','-'); return; }
-    const sig = IND.signalFromUpbitKRW(p.upbitPrice);
-    text('sig-price', sig.priceKRW);
-    text('sig-buy',   sig.buyKRW);
-    text('sig-sell',  sig.sellKRW);
-    text('sig-stop',  sig.stopKRW);
-    text('sig-risk',  sig.risk);
-  }
+export function renderSignal(sig) {
+  document.getElementById('sig-price').textContent = sig ? (sig.price?.toLocaleString('ko-KR') + ' ₩') : '-';
+  document.getElementById('sig-buy').textContent   = sig ? sig.buy?.toLocaleString('ko-KR') + ' ₩'  : '-';
+  document.getElementById('sig-sell').textContent  = sig ? sig.sell?.toLocaleString('ko-KR') + ' ₩' : '-';
+  document.getElementById('sig-stop').textContent  = sig ? sig.stop?.toLocaleString('ko-KR') + ' ₩' : '-';
+  document.getElementById('sig-risk').textContent  = sig ? `${sig.risk} / 5` : '-';
+}
 
-  function paintCommentary(p, o){
-    const lines = [];
-    if(p?.premiumPct!=null){
-      const prem = p.premiumPct.toFixed(2);
-      lines.push(`김프 ${prem}%`);
-    }
-    if(o?.tvl!=null){
-      const t = Number(o.tvl).toLocaleString('en-US');
-      lines.push(`TVL ${t} USD`);
-    }
-    const msg = lines.length? `시장 눈치 보기. 손절 라인 먼저! 🛡` : '-';
-    text('commentary', msg);
-    text('updated', new Date().toLocaleString());
-  }
+export function renderCommentary(text, ts) {
+  document.getElementById('commentary').textContent = text ?? '-';
+  document.getElementById('updated').textContent = ts ? new Date(ts).toLocaleString() : '-';
+}
 
-  return { paintPremium, paintOnchain, paintSignal, paintCommentary };
-})();
-// ==== render.js (끝)
+export function renderHealth(ok) {
+  const el = document.getElementById('proxy-health');
+  el.textContent = ok ? '정상' : '오류';
+  el.className = ok ? 'good' : 'bad';
+}
