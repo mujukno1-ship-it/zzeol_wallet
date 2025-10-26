@@ -1,31 +1,30 @@
-// ==== search.js (시작)
-(function(){
-  const input = document.getElementById('q');
-  const clear = document.getElementById('clear');
-  const MAP = window.APP_CFG.MAP;
+// public/js/search.js
+import { getPremium } from './api.js';
+import { /* 필요하면 getOnchain */ } from './api.js';
 
-  function guessSymbolFromKorean(q){
-    q = (q||'').trim();
-    if(!q) return null;
-    if(/비트|btc/i.test(q)) return 'BTC';
-    if(/이더|eth/i.test(q)) return 'ETH';
-    if(/솔라|sol/i.test(q)) return 'SOL';
-    if(/리플|xrp/i.test(q)) return 'XRP';
-    return null;
+const input = document.getElementById('search-input');
+const clearBtn = document.getElementById('search-clear');
+
+async function search(symbolKoOrEn) {
+  // 간단 매핑: 한글 → 티커 (필요 시 확장)
+  const map = { '비트코인':'BTC', '이더리움':'ETH', '리플':'XRP' };
+  const symbol = map[symbolKoOrEn.trim()] || symbolKoOrEn.toUpperCase();
+
+  try {
+    const p = await getPremium(symbol);
+    document.querySelector('#kimchi .pct').textContent = `${(p.premiumPct ?? 0).toFixed(2)}%`;
+    document.querySelector('#kimchi .upbit').textContent = p.upbitPrice?.toLocaleString() + ' ₩';
+    document.getElementById('updated').textContent = new Date().toLocaleString();
+  } catch (e) {
+    console.error(e);
   }
+}
 
-  function apply(q){
-    let sym = (q||'').toUpperCase();
-    if(!window.APP_CFG.MAP[sym]) sym = guessSymbolFromKorean(q) || 'BTC';
-    window.STATE.symbol = sym;
-    window.runOnce();  // main.js의 데이터 갱신
-  }
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') search(input.value);
+});
 
-  input?.addEventListener('keydown', (e)=>{
-    if(e.key==='Enter'){ apply(input.value); }
-  });
-  clear?.addEventListener('click', ()=>{
-    input.value = ''; input.focus();
-  });
-})();
-// ==== search.js (끝)
+clearBtn.addEventListener('click', () => {
+  input.value = '';
+  input.focus();
+});
