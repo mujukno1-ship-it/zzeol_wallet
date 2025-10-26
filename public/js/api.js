@@ -1,31 +1,25 @@
-(function () {
-  const fmt = new Intl.NumberFormat("ko-KR");
-  const fmtUSD = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
-  const fmtKRW = new Intl.NumberFormat("ko-KR");
+// ==== api.js (시작)
+const API = (() => {
+  const U = window.APP_CFG;
 
-  function n(x, d = 0) {
-    if (x === null || x === undefined || !isFinite(x)) return "-";
-    return d ? x.toFixed(d) : fmt.format(Math.round(x));
+  async function json(url) {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return r.json();
   }
 
-  async function getJson(url, init) {
-    const res = await fetch(url, init);
-    if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
-    return res.json();
+  // 김치 프리미엄 (프록시 /api/premium?symbol=BTC)
+  async function getPremium(symbol) {
+    const q = encodeURIComponent(symbol);
+    return json(`${U.PROXY_URL}/api/premium?symbol=${q}`);
   }
 
-  // 프록시가 있으면 프록시 경유 요청
-  async function getViaProxy(path) {
-    if (!window.PROXY_BASE) throw new Error("NO_PROXY");
-    return getJson(`${window.PROXY_BASE}${path}`);
+  // 온체인 TVL (프록시 /api/onchain?symbol=ETH)
+  async function getOnchain(symbol) {
+    const q = encodeURIComponent(symbol);
+    return json(`${U.PROXY_URL}/api/onchain?symbol=${q}`);
   }
 
-  window.$api = {
-    getJson,
-    getViaProxy,
-    n,
-    fmt,
-    fmtUSD,
-    fmtKRW,
-  };
+  return { getPremium, getOnchain };
 })();
+// ==== api.js (끝)
