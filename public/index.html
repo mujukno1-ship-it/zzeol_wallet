@@ -1,46 +1,61 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🔥 사토시의지갑 실시간 김프 & 온체인 🔥</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>사토시의지갑 - 실시간 업비트 연동</title>
   <style>
-    body{background:#0a0f1a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:960px;margin:40px auto;padding:0 16px}
-    .card{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:20px;margin:12px 0}
-    h1{display:flex;gap:.5rem;align-items:center}
+    body{background:#0a0f1a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:1080px;margin:40px auto;padding:0 16px}
+    h1{display:flex;gap:.6rem;align-items:center}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .card{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:18px}
+    .muted{opacity:.75}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1f2937}
+    .big{font-size:1.35rem;font-weight:700}
+    .ok{color:#86efac} .warn{color:#fbbf24} .bad{color:#f87171}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .vgap{display:flex;flex-direction:column;gap:8px}
   </style>
 </head>
 <body>
   <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
 
-  <div class="card" id="kimp">김프 불러오는 중…</div>
-  <div class="card" id="onchain">온체인 지표 불러오는 중…</div>
-  <p id="updated" style="opacity:.7"></p>
+  <div class="row">
+    <div class="card vgap">
+      <div><span class="pill">📊 김치 프리미엄</span></div>
+      <div id="kimpPct" class="big">-</div>
+      <div class="grid2">
+        <div>업비트 KRW: <b id="upbitPrice">-</b></div>
+        <div>USD/KRW: <span id="usdkrw">-</span></div>
+        <div>글로벌 USD: <span id="globalUsd">-</span></div>
+        <div>소스: <span id="src">-</span></div>
+      </div>
+    </div>
 
-  <script>
-    async function load() {
-      try {
-        const k = await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/premium?symbol=BTC").then(r=>r.json());
-        const o = await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/onchain?symbol=ETH").then(r=>r.json());
+    <div class="card vgap">
+      <div><span class="pill">🧠 온체인 TVL(ETH)</span></div>
+      <div id="tvl" class="big">-</div>
+      <div>소스: <span id="tvlSrc">-</span></div>
+    </div>
+  </div>
 
-        document.getElementById("kimp").innerHTML =
-          `📊 김치 프리미엄: <b>${(k.premiumPct ?? 0).toFixed(2)}%</b><br>
-           업비트 KRW: ${k.upbitPrice?.toLocaleString()} ₩<br>
-           USD/KRW: ${k.usdkrw ?? '-'}<br>
-           소스: ${k.src?.global ?? '-'} / ${k.src?.fx ?? '-'} / ${k.src?.krw ?? '-'}`;
+  <div class="row" style="margin-top:14px">
+    <div class="card vgap">
+      <div><span class="pill">🎯 시그널</span></div>
+      <div>현재가: <b id="nowPrice">-</b></div>
+      <div>매수: <b id="buyPrice">-</b></div>
+      <div>매도: <b id="sellPrice">-</b></div>
+      <div>손절: <b id="stopPrice" class="bad">-</b></div>
+      <div>위험도: <b id="riskScore">-</b> / 5</div>
+    </div>
 
-        document.getElementById("onchain").innerHTML =
-          `🧠 온체인 TVL(ETH): <b>${(o.tvl ?? 0).toLocaleString()} USD</b><br>
-           소스: ${o.src ?? '-'}`;
+    <div class="card vgap">
+      <div><span class="pill">🗣️ 쩔어 한마디</span></div>
+      <div id="comment" class="big">-</div>
+      <div class="muted">업데이트: <span id="updated">-</span></div>
+    </div>
+  </div>
 
-        document.getElementById("updated").textContent =
-          "업데이트: " + new Date().toLocaleString();
-      } catch (e) {
-        document.getElementById("kimp").textContent = "김프 로딩 오류";
-        document.getElementById("onchain").textContent = "온체인 로딩 오류";
-      }
-    }
-    load();
-  </script>
+  <script type="module" src="./js/main.js"></script>
 </body>
 </html>
