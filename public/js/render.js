@@ -1,45 +1,53 @@
-// public/js/render.js
-import { fmt } from './api.js';
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
 
-export function renderPremium(dom, p) {
-  const pctEl = document.getElementById('kimp-pct');
-  const upEl  = document.getElementById('upbit-krw');
-  const gEl   = document.getElementById('global-usd');
-  const uEl   = document.getElementById('usdkrw');
-  const symEl = document.getElementById('sym-kimp');
+function setHTML(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
 
-  if (!p) {
-    pctEl.textContent = upEl.textContent = gEl.textContent = uEl.textContent = '-';
-    return;
-  }
-  symEl.textContent = p.symbol;
-  pctEl.textContent = fmt.pct(p.premiumPct);
-  pctEl.className = 'metric ' + (p.premiumPct > 0 ? 'bad' : 'good');
-  upEl.textContent = fmt.krw(p.upbitPrice);
-  gEl.textContent  = fmt.usd(p.globalUsd);
-  uEl.textContent  = p.usdkrw ? p.usdkrw.toLocaleString('ko-KR') : '-';
+export function renderPremium(p) {
+  // 주요 수치
+  if (!p) return;
+  const pct = (p.premiumPct ?? 0);
+  const pctStr = isFinite(pct) ? `${pct.toFixed(2)}%` : "-";
+
+  // 카드 상단 퍼센트
+  setText("kimp", pctStr);
+
+  // 세부항목(있으면 채움)
+  setText("kimp-krw", p.upbitPrice ? p.upbitPrice.toLocaleString("ko-KR") + " ₩" : "-");
+  setText("usdkrw",  p.usdkrw ? p.usdkrw.toLocaleString("ko-KR") : "-");
+
+  // 소스 표기
+  const srcGlobal = p.src?.global ?? "CoinGecko";
+  const srcFx     = p.src?.fx ?? "open.er-api.com";
+  const srcKrw    = p.src?.krw ?? "Upbit";
+
+  setText("src-global", srcGlobal);
+  setText("src-fx",     srcFx);
+  setText("src-krw",    srcKrw);
 }
 
 export function renderOnchain(o) {
-  document.getElementById('sym-onchain').textContent = o?.symbol ?? 'ETH';
-  document.getElementById('onchain-tvl').textContent  = o ? fmt.compactUSD(o.tvl) : '-';
+  if (!o) return;
+  const tvl = o.tvl ?? null;
+  setText("onchain-tvl", tvl ? tvl.toLocaleString("en-US") + " USD" : "-");
+  setText("src-onchain", o.src ?? "DefiLlama");
 }
 
-export function renderSignal(sig) {
-  document.getElementById('sig-price').textContent = sig ? (sig.price?.toLocaleString('ko-KR') + ' ₩') : '-';
-  document.getElementById('sig-buy').textContent   = sig ? sig.buy?.toLocaleString('ko-KR') + ' ₩'  : '-';
-  document.getElementById('sig-sell').textContent  = sig ? sig.sell?.toLocaleString('ko-KR') + ' ₩' : '-';
-  document.getElementById('sig-stop').textContent  = sig ? sig.stop?.toLocaleString('ko-KR') + ' ₩' : '-';
-  document.getElementById('sig-risk').textContent  = sig ? `${sig.risk} / 5` : '-';
+export function renderCommentary(msg, isoTime) {
+  setText("commentary", msg || "-");
+  const updated = document.getElementById("updated");
+  if (updated) {
+    const d = isoTime ? new Date(isoTime) : new Date();
+    updated.textContent = d.toLocaleString("ko-KR");
+  }
 }
 
-export function renderCommentary(text, ts) {
-  document.getElementById('commentary').textContent = text ?? '-';
-  document.getElementById('updated').textContent = ts ? new Date(ts).toLocaleString() : '-';
-}
-
-export function renderHealth(ok) {
-  const el = document.getElementById('proxy-health');
-  el.textContent = ok ? '정상' : '오류';
-  el.className = ok ? 'good' : 'bad';
+export function renderTopError(msg) {
+  const box = document.getElementById("search-results");
+  if (box) box.innerHTML = `<span class="bad">⚠ ${msg}</span>`;
 }
