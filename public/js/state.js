@@ -1,10 +1,9 @@
-// public/js/state.js
+import { DEFAULT_SYMBOL_KIMP, DEFAULT_SYMBOL_ONCHAIN } from "./config.js";
+
 export const AppState = {
-  symbol: 'BTC',
-  onchainSymbol: 'ETH',
-  premium: null,   // {upbitPrice, globalUsd, usdkrw, premiumPct}
-  onchain: null,   // {tvl}
-  signal: null,    // {buy, sell, stop, risk, price}
-  commentary: '-',
-  updatedAt: '-',
+  symbolKimp: DEFAULT_SYMBOL_KIMP,
+  symbolOnchain: DEFAULT_SYMBOL_ONCHAIN,
+  premium: null,
+  onchain: null,
+  updatedAt: null,
 };
