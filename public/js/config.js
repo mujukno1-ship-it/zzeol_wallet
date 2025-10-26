@@ -1,9 +1,26 @@
-// public/js/modules/config.js
-export const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev";
-export const SYMBOL = "BTC";   // 업비트 코인 심볼
-export const CHAIN  = "ETH";   // 온체인 TVL용
-export const REFRESH_MS = 10_000; // 10초마다 갱신
+// ==============================
+// ⚙️ 연동 설정 (여기만 바꾸면 끝)
+// ==============================
+export const CONFIG = {
+  // 기본/백업 API 엔드포인트(자동 Failover)
+  API_BASE_URLS: [
+    "https://satoshi-proxy.mujukno1.workers.dev",  // 기본
+    // "https://<추가-백업-도메인>",               // 필요시 백업 추가
+  ],
 
-// 손절/목표 기본 파라미터(필요시 조정)
-export const DEFAULT_STOP_PCT = 0.02; // 2% 손절
-export const BASE_TAKE_PCT    = 0.012; // 1.2% 기본 익절
+  // 기본 조회 심볼
+  PREMIUM_SYMBOL: "BTC",
+  ONCHAIN_SYMBOL: "ETH",
+
+  // 요청 타임아웃(ms)
+  TIMEOUT_MS: 7000,
+
+  // 캐시 (API 장애시 화면에 마지막 값 유지)
+  CACHE_TTL_MS: 30_000, // 30초
+
+  // 허용 Origin (보안용 – 필요시 사용)
+  ALLOW_ORIGINS: [
+    // "https://zzeol-wallet.vercel.app",
+    // "https://zzeol-wallet.pages.dev",
+  ],
+};
