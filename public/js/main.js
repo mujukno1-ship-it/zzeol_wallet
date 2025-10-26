@@ -58,3 +58,13 @@ function deriveKimp(p){
 
 tick();
 setInterval(tick, REFRESH_MS);
+// === 검색 기능 연결 ===
+if (window.Search) {
+  window.Search.init({
+    maxResults: 12,
+    onPick: (item) => {
+      console.log("선택된 코인:", item.symbol);
+      // 필요 시 여기에: 선택한 코인으로 데이터 갱신 로직 연결
+    }
+  });
+}
