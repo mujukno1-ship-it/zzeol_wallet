@@ -1,51 +1,60 @@
-// public/js/main.js
-import { CONFIG, getPremium, getOnchain, health } from './api.js';
-import { AppState } from './state.js';
-import { makeSignal, makeOneLine } from './indicators.js';
-import { renderPremium, renderOnchain, renderSignal, renderCommentary, renderHealth } from './render.js';
-import { mountSearch } from './search.js';
+import { AppState } from "./state.js";
+import { apiPremium, apiOnchain } from "./api.js";
+import { renderPremium, renderOnchain, renderCommentary, renderTopError } from "./render.js";
 
-async function loadAll(symbolForKimp = AppState.symbol, symbolForOnchain = AppState.onchainSymbol) {
+async function loadAll() {
   try {
     const [p, o] = await Promise.all([
-      getPremium(symbolForKimp),
-      getOnchain(symbolForOnchain),
+      apiPremium(AppState.symbolKimp),
+      apiOnchain(AppState.symbolOnchain),
     ]);
-    AppState.symbol = p.symbol;
-    AppState.onchainSymbol = o.symbol;
-    AppState.premium = p;
-    AppState.onchain = o;
-    AppState.signal = makeSignal(p);
-    AppState.commentary = makeOneLine(p, o);
+
+    if (!p?.ok) throw new Error("premium api failed");
+    if (!o?.ok) throw new Error("onchain api failed");
+
+    AppState.premium  = p;
+    AppState.onchain  = o;
     AppState.updatedAt = new Date().toISOString();
 
-    renderPremium(document, p);
+    renderPremium(p);
     renderOnchain(o);
-    renderSignal(AppState.signal);
-    renderCommentary(AppState.commentary, AppState.updatedAt);
+    renderCommentary("시장 눈치 보기. 손절 라인 먼저!", AppState.updatedAt);
   } catch (e) {
     console.error(e);
-    renderCommentary('데이터 조회 오류. 잠시 후 다시 시도해주세요.', new Date().toISOString());
+    renderTopError("데이터 불러오기에 실패했습니다 (프록시/경로/CORS 확인).");
+    renderCommentary("데이터 조회 오류. 잠시 후 다시 시도해주세요.", new Date().toISOString());
   }
 }
 
-async function boot() {
-  // 프록시 헬스체크
-  const h = await health();
-  renderHealth(!!h.ok);
+function wireSearch() {
+  const input = document.querySelector("input#search-input");
+  const clearBtn = document.querySelector("#search-clear");
+  if (!input) return;
 
-  // 초기 로딩
-  await loadAll();
+  // 엔터로 검색
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const q = (input.value || "").trim();
+      if (!q) return;
 
-  // 검색 이벤트
-  mountSearch(async (sym) => {
-    // BTC면 onchain은 ETH 유지, ETH 검색 시 onchain도 ETH로
-    const onchainSym = sym === 'ETH' ? 'ETH' : 'ETH';
-    await loadAll(sym, onchainSym);
+      // 한글/영문 코인명 → 심볼 맵핑이 있다면 여기에 넣어도 OK. 일단 심볼 그대로 씁니다.
+      AppState.symbolKimp = q.toUpperCase();
+      AppState.symbolOnchain = q.toUpperCase();
+      loadAll();
+    }
   });
 
-  // 주기 업데이트
-  setInterval(loadAll, CONFIG.REFRESH_MS);
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      AppState.symbolKimp = "BTC";
+      AppState.symbolOnchain = "ETH";
+      loadAll();
+    });
+  }
 }
 
-boot();
+window.addEventListener("DOMContentLoaded", () => {
+  wireSearch();
+  loadAll();
+});
