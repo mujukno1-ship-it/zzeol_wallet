@@ -1,32 +1,23 @@
-import { PROXY_BASE } from "./config.js";
+/* ==== START: public/js/api.js ==== */
+(function () {
+  const BASE = window.APP_CONFIG.PROXY_BASE;
 
-async function fetchJson(url, opts = {}) {
-  const u = new URL(url);
-  u.searchParams.set("_", Date.now());             // 캐시 무력화
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), opts.timeout ?? 12000);
-
-  try {
-    const res = await fetch(u.toString(), {
-      ...opts,
-      signal: ctrl.signal,
-      headers: { "Accept": "application/json", ...(opts.headers || {}) }
-    });
+  async function getJSON(url) {
+    const res = await fetch(url, { headers: { "cache-control": "no-cache" } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } finally {
-    clearTimeout(t);
+    return res.json();
   }
-}
 
-export async function apiHealth() {
-  return fetchJson(`${PROXY_BASE}/api/health`);
-}
+  async function getPremium(symbol) {
+    symbol = symbol || window.APP_CONFIG.DEFAULT_SYMBOL;
+    return getJSON(`${BASE}/api/premium?symbol=${encodeURIComponent(symbol)}`);
+  }
 
-export async function apiPremium(symbol) {
-  return fetchJson(`${PROXY_BASE}/api/premium?symbol=${encodeURIComponent(symbol)}`);
-}
+  async function getOnchain(symbol) {
+    symbol = symbol || window.APP_CONFIG.DEFAULT_CHAIN_SYMBOL;
+    return getJSON(`${BASE}/api/onchain?symbol=${encodeURIComponent(symbol)}`);
+  }
 
-export async function apiOnchain(symbol) {
-  return fetchJson(`${PROXY_BASE}/api/onchain?symbol=${encodeURIComponent(symbol)}`);
-}
+  window.API = { getPremium, getOnchain };
+})();
+ /* ==== END: public/js/api.js ==== */
