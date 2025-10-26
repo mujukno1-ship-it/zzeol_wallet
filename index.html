@@ -1,47 +1,25 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>💰 사토시의지갑 - 실시간 업비트 연동</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    :root{--bg:#0e1525;--panel:#0b1220;--line:#1e2a44;--text:#e6edf3;--muted:#9aa8c7;}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
-    .wrap{max-width:1200px;margin:40px auto;padding:0 16px}
-    h1{font-size:28px;margin:0 0 20px}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .metric-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
-    h3{margin:0 0 10px}
-    ul{list-style:none;padding:0;margin:8px 0 0}
-    .muted{color:var(--muted)}
-    @media (max-width:900px){.grid{grid-template-columns:1fr}}
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔥 사토시의지갑 실시간 김프 & 온체인 🔥</title>
 </head>
-<body>
-  <div class="wrap">
-    <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
+<body style="background:#0a0f1a;color:white;font-family:sans-serif;text-align:center;">
+  <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
+  <div id="kimp"></div>
+  <div id="onchain"></div>
+  <p id="updated"></p>
 
-    <div class="grid">
-      <div class="metric-card">
-        <h3>🇰🇷 김치 프리미엄</h3>
-        <div id="kimchi-premium" style="font-size:32px;font-weight:700">--%</div>
-        <ul>
-          <li>업비트 KRW: <span id="upbit-krw">-</span></li>
-          <li>글로벌 KRW: <span id="global-krw">-</span></li>
-          <li>USD/KRW: <span id="usd-krw">-</span></li>
-        </ul>
-        <div id="status" class="muted" style="margin-top:8px">불러오는 중...</div>
-      </div>
-
-      <div class="metric-card">
-        <h3>🔗 온체인 지표</h3>
-        <div>TVL: <span id="onchain-tvl">-</span></div>
-        <div class="muted" style="margin-top:6px">활성 주소수: <span id="onchain-active">-</span></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ES Module로 분리된 연동 코드 사용 -->
-  <script type="module" src="/public/js/main.js?v=20251026"></script>
+  <script>
+    async function load() {
+      const k = await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/premium?symbol=BTC").then(r=>r.json());
+      const o = await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/onchain?symbol=ETH").then(r=>r.json());
+      document.getElementById("kimp").innerHTML = `📊 김치 프리미엄: <b>${(k.premiumPct||0).toFixed(2)}%</b>`;
+      document.getElementById("onchain").innerHTML = `🧠 온체인 TVL: <b>${(o.tvl||0).toLocaleString()} USD</b>`;
+      document.getElementById("updated").innerText = "업데이트: " + new Date().toLocaleString();
+    }
+    load();
+  </script>
 </body>
 </html>
