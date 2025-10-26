@@ -4,6 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>사토시의지갑 - 실시간 업비트 연동</title>
+    <!-- 🔍 검색창 영역 시작 -->
+  <div class="search-wrap" style="margin: 12px 0; text-align:center;">
+    <input id="search-input" type="text" placeholder="코인명/심볼 검색…" 
+           style="padding:8px;width:250px;border-radius:8px;border:1px solid #888;background:#111;color:#fff;">
+    <button id="search-clear" title="지우기" 
+            style="margin-left:5px;padding:8px 12px;border:none;border-radius:8px;background:#444;color:#fff;cursor:pointer;">✕</button>
+    <div id="search-results" 
+         style="margin-top:10px;background:#222;padding:10px;border-radius:8px;max-width:400px;margin-left:auto;margin-right:auto;">
+    </div>
+  </div>
+  <!-- 🔍 검색창 영역 끝 -->
+
   <style>
     body{background:#0a0f1a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:1080px;margin:40px auto;padding:0 16px}
     h1{display:flex;gap:.6rem;align-items:center}
@@ -56,6 +68,7 @@
     </div>
   </div>
 
-  <script type="module" src="./js/main.js"></script>
+   <script src="/public/js/main.js"></script>
+  <script src="/public/js/search.js"></script> 
 </body>
 </html>
