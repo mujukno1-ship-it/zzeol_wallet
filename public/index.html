@@ -1,82 +1,91 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>💰 사토시의지갑 - 실시간 업비트 연동</title>
-  <link rel="icon" href="/favicon.ico"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💰 사토시의지갑 - 실시간 업비트 연동 🔥</title>
   <style>
-    :root{--bg:#0b1220;--card:#121a2a;--text:#e8eefc;--muted:#9fb0d0;--accent:#56b2ff;--bad:#ff6b6b;--good:#4cd964}
+    :root{
+      --bg:#0e1621; --card:#141f2b; --text:#e7eef5; --muted:#9fb3c8; --accent:#4cc3ff; --bad:#ff6b6b; --good:#4cd964;
+    }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,malgun gothic,Helvetica,Arial,sans-serif}
-    .wrap{max-width:1120px;margin:36px auto;padding:0 16px}
-    h1{font-size:28px;margin:0 0 16px;display:flex;gap:8px;align-items:center}
-    .search-wrap{display:flex;gap:8px;align-items:center;margin:10px 0 20px}
-    .search-input{flex:1;min-width:260px;padding:10px 12px;border-radius:8px;border:1px solid #24314b;background:#0f1626;color:var(--text);outline:none}
-    .btn{padding:9px 12px;border-radius:8px;background:#1f2a44;color:var(--text);border:1px solid #2d3b5b;cursor:pointer}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-    @media (max-width:860px){.grid{grid-template-columns:1fr}}
-    .card{background:var(--card);border:1px solid #1b2741;border-radius:14px;padding:16px}
-    .card h3{margin:0 0 10px;font-size:16px;color:var(--muted);display:flex;gap:6px;align-items:center}
-    .metric{font-size:22px;font-weight:700;margin:6px 0 2px}
-    .row{display:flex;justify-content:space-between;gap:12px;margin:6px 0;color:var(--muted)}
-    .small{font-size:12px;color:var(--muted)}
-    .accent{color:var(--accent)}
-    .good{color:var(--good)} .bad{color:var(--bad)}
-    .hint{margin-top:8px;font-size:12px;color:#89a1c7}
+    body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+    h1{font-weight:800;letter-spacing:.3px;margin:26px 16px 10px}
+    .searchbar{display:flex;gap:8px;align-items:center;margin:0 16px 10px}
+    .searchbar input{flex:1;background:#0b141e;border:1px solid #223243;color:var(--text);border-radius:10px;padding:10px 12px;outline:0}
+    .searchbar button{background:#203140;border:0;color:#c8d6e5;padding:10px 12px;border-radius:10px;cursor:pointer}
+    .grid{display:grid;gap:14px;margin:10px 16px 40px}
+    @media(min-width:880px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:var(--card);border:1px solid #1f2c39;border-radius:14px;padding:14px 16px}
+    .card h3{margin:0 0 10px;font-weight:800}
+    .row{display:flex;justify-content:space-between;gap:10px;margin:4px 0}
+    .metric{font-weight:700}
+    .small{color:var(--muted);font-size:12px}
+    .good{color:var(--good)} .bad{color:var(--bad)} .accent{color:var(--accent)}
+    .hint{color:#95a9bd;font-size:12px;margin-top:8px}
+    .pill{display:inline-block;background:#1e3143;border:1px solid #2d4257;border-radius:999px;padding:2px 8px;font-size:12px;margin-left:6px}
+    footer{color:var(--muted);font-size:12px;margin:18px 16px 30px}
+    a{color:var(--accent);text-decoration:none}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
+  <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
 
-    <div class="search-wrap">
-      <input id="q" class="search-input" placeholder="비트코인, 이더리움, 솔라나… 검색" />
-      <button id="clear" class="btn">✖</button>
+  <!-- 검색 -->
+  <div class="searchbar">
+    <input id="search-input" type="text" placeholder="코인명/심볼 검색… (예: 비트코인, 이더리움, BTC, ETH)" />
+    <button id="search-clear" title="지우기">✕</button>
+  </div>
+  <div id="search-results" class="small" style="margin:0 16px 10px;"></div>
+
+  <div class="grid">
+    <!-- 김치 프리미엄 -->
+    <div class="card">
+      <h3>📊 김치 프리미엄 <span id="sym-kimp" class="pill">BTC</span></h3>
+      <div class="row"><span>프리미엄:</span><span class="metric" id="kimp-pct">-</span></div>
+      <div class="row"><span>업비트 KRW:</span><span class="metric" id="upbit-krw">-</span></div>
+      <div class="row"><span>글로벌 USD:</span><span class="metric" id="global-usd">-</span></div>
+      <div class="row"><span>USD/KRW:</span><span class="metric" id="usdkrw">-</span></div>
+      <div class="row small"><span>소스:</span><span>CoinGecko / open.er-api.com / Upbit</span></div>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <h3>📊 김치 프리미엄</h3>
-        <div class="metric" id="kimchi-premium">-</div>
-        <div class="row"><span>업비트 KRW</span><span id="upbit-krw">-</span></div>
-        <div class="row"><span>글로벌 USD</span><span id="global-usd">-</span></div>
-        <div class="row"><span>USD/KRW</span><span id="usdkrw">-</span></div>
-        <div class="row small"><span>소스</span><span id="sources">-</span></div>
-      </div>
+    <!-- 온체인 TVL -->
+    <div class="card">
+      <h3>🧠 온체인 TVL(<span id="sym-onchain">ETH</span>)</h3>
+      <div class="row"><span>TVL:</span><span class="metric" id="onchain-tvl">-</span></div>
+      <div class="row small"><span>소스:</span><span>DefiLlama</span></div>
+    </div>
 
-      <div class="card">
-        <h3>💗 온체인 TVL(<span id="sym-onchain">ETH</span>)</h3>
-        <div class="metric" id="onchain-tvl">-</div>
-        <div class="row small"><span>소스</span><span>DefiLlama</span></div>
-      </div>
+    <!-- 시그널 -->
+    <div class="card">
+      <h3>🎯 시그널</h3>
+      <div class="row"><span>현재가:</span><span class="metric" id="sig-price">-</span></div>
+      <div class="row"><span>매수:</span><span id="sig-buy">-</span></div>
+      <div class="row"><span>매도:</span><span id="sig-sell">-</span></div>
+      <div class="row"><span>손절:</span><span id="sig-stop">-</span></div>
+      <div class="row"><span>위험도:</span><span id="sig-risk">-</span></div>
+      <div class="hint">※ 단순 계산형 참고지표(테스트). 실제 매매 책임은 본인에게 있습니다.</div>
+    </div>
 
-      <div class="card">
-        <h3>🎯 시그널</h3>
-        <div class="row"><span>현재가</span><span id="sig-price">-</span></div>
-        <div class="row"><span>매수</span><span id="sig-buy">-</span></div>
-        <div class="row"><span>매도</span><span id="sig-sell">-</span></div>
-        <div class="row"><span>손절</span><span id="sig-stop">-</span></div>
-        <div class="row"><span>위험도</span><span id="sig-risk">-</span></div>
-        <div class="hint">※ 단순 계산형 보조지표(테스트). 실제 매매 책임은 본인에게 있습니다.</div>
-      </div>
-
-      <div class="card">
-        <h3>🧠 쩔어 한마디</h3>
-        <div id="commentary">-</div>
-        <div class="small" style="margin-top:8px">업데이트: <span id="updated">-</span></div>
-      </div>
+    <!-- 쩔어 한마디 -->
+    <div class="card">
+      <h3>🧠 쩔어 한마디<span id="ai-pill" class="pill">베타</span></h3>
+      <div id="commentary" class="metric">-</div>
+      <div class="small" style="margin-top:8px">업데이트: <span id="updated">-</span></div>
     </div>
   </div>
 
-  <!-- JS -->
-  <script src="/public/js/config.js"></script>
-  <script src="/public/js/api.js"></script>
-  <script src="/public/js/state.js"></script>
-  <script src="/public/js/indicators.js"></script>
-  <script src="/public/js/render.js"></script>
+  <footer>
+    프록시 상태: <span id="proxy-health" class="small">점검중…</span> ·
+    <a href="https://zzeolwallet.vercel.app" target="_blank">프로젝트</a>
+  </footer>
+
+  <!-- JS: 모듈 로드 (중요!) -->
   <script type="module" src="/public/js/api.js"></script>
-<script type="module" src="/public/js/main.js"></script>
-<script type="module" src="/public/js/search.js"></script>
+  <script type="module" src="/public/js/state.js"></script>
+  <script type="module" src="/public/js/indicators.js"></script>
+  <script type="module" src="/public/js/render.js"></script>
+  <script type="module" src="/public/js/search.js"></script>
+  <script type="module" src="/public/js/main.js"></script>
 </body>
 </html>
