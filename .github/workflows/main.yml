@@ -10,6 +10,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Deploy to Vercel (Free Plan Auto)
+      - name: Deploy to Vercel (쩔다 자동 무한배포)
         run: |
-          curl -X POST "https://api.vercel.com/v1/integrations/deploy/prj_xxxxxxxxxxxxxxx?buildCache=true"
+          curl -X POST "https://api.vercel.com/v1/integrations/deploy/prj_g5K80P2KPadTyzMuKoddVTtGdAr?buildCache=true"
