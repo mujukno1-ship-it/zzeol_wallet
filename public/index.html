@@ -1,146 +1,84 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>💰 사토시의지갑 - 실시간 업비트 연동</title>
-  <link rel="icon" href="/favicon.ico">
   <style>
-    body {
-      background: #0a0f1a;
-      color: #fff;
-      font-family: "Noto Sans KR", sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 0;
-    }
-
-    h1 {
-      margin-top: 30px;
-      font-size: 26px;
-    }
-
-    .card {
-      background: #121826;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
-      padding: 15px 20px;
-      margin: 15px auto;
-      width: 400px;
-      text-align: left;
-      transition: 0.3s;
-    }
-
-    .card:hover {
-      transform: scale(1.02);
-    }
-
-    .search-wrap {
-      margin: 20px auto;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .search-input {
-      width: 240px;
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: none;
-      outline: none;
-      font-size: 15px;
-      background: #1c2235;
-      color: #fff;
-    }
-
-    #search-clear {
-      background: #ff5555;
-      border: none;
-      color: white;
-      border-radius: 6px;
-      padding: 7px 10px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    #search-clear:hover {
-      background: #ff7777;
-    }
-
-    #search-results {
-      position: absolute;
-      background: #1b2236;
-      width: 260px;
-      border-radius: 8px;
-      margin-top: 4px;
-      max-height: 180px;
-      overflow-y: auto;
-      z-index: 1000;
-    }
-
-    .search-item {
-      padding: 8px;
-      text-align: left;
-      border-bottom: 1px solid #333;
-      cursor: pointer;
-    }
-
-    .search-item:hover {
-      background: #2b3348;
-    }
-
-    footer {
-      margin: 25px 0;
-      color: #999;
-      font-size: 13px;
-    }
+    :root{--bg:#0d141b;--card:#121a23;--text:#e6edf3;--muted:#9fb0c0;--brand:#3aa0ff;--ok:#20c997;--warn:#ffb020;--bad:#ff6b6b}
+    *{box-sizing:border-box} body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    h1{font-size:28px;margin:4px 0 20px} .wrap{max-width:1080px;margin:0 auto}
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .card{background:var(--card);border-radius:14px;padding:18px;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+    .kpi{font-size:14px;color:var(--muted);margin-bottom:8px}
+    .val{font-size:20px;font-weight:700}
+    .src{font-size:12px;color:var(--muted);margin-top:6px}
+    .row{display:flex;gap:10px;align-items:center}
+    .pill{background:#0b1823;border:1px solid #1d3346;border-radius:999px;padding:4px 10px;font-size:12px;color:var(--muted)}
+    .search-bar{display:flex;gap:8px;margin-bottom:14px}
+    input[type="text"]{flex:1;outline:none;border:1px solid #1d3346;background:#0b1823;color:var(--text);padding:10px 12px;border-radius:10px}
+    button{border:0;background:#1d3346;color:#cfe3f5;border-radius:10px;padding:10px 14px;cursor:pointer}
+    button:hover{background:#27435a}
+    .list{display:grid;gap:6px}
+    .muted{color:var(--muted)} .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
   </style>
 </head>
-
 <body>
+<div class="wrap">
   <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
 
-  <!-- 🔍 검색창 시작 -->
-  <div class="search-wrap">
-    <input id="search-input" class="search-input" type="text" placeholder="코인명/심볼 검색..." />
-    <button id="search-clear" title="지우기">X</button>
-  </div>
-  <div id="search-results"></div>
-  <!-- 🔍 검색창 끝 -->
-
-  <div class="card">
-    <h3>📊 김치 프리미엄</h3>
-    <p id="kimp">-</p>
+  <div class="search-bar">
+    <input id="q" type="text" placeholder="코인명/심볼 검색…" />
+    <button id="q-clear">지우기 ✕</button>
   </div>
 
-  <div class="card">
-    <h3>💗 온체인 TVL(ETH)</h3>
-    <p id="onchain">-</p>
+  <div class="grid">
+
+    <div class="card">
+      <div class="kpi">📊 김치 프리미엄</div>
+      <div class="val" id="kimp">-</div>
+      <div class="list muted" style="margin-top:8px">
+        <div>업비트 KRW: <span id="upbit-krw">-</span></div>
+        <div>글로벌 USD: <span id="global-usd">-</span></div>
+        <div>USD/KRW: <span id="usd-krw">-</span></div>
+      </div>
+      <div class="src">소스: <span id="src-kimp">-</span></div>
+    </div>
+
+    <div class="card">
+      <div class="kpi">💗 온체인 TVL(ETH)</div>
+      <div class="val"><span id="tvl">-</span> <span class="muted">USD</span></div>
+      <div class="src">소스: <span id="src-onchain">-</span></div>
+    </div>
+
+    <div class="card">
+      <div class="kpi">🎯 시그널</div>
+      <div class="list">
+        <div>현재가: <span id="p-now">-</span></div>
+        <div>매수: <span id="p-buy">-</span></div>
+        <div>매도: <span id="p-sell">-</span></div>
+        <div>손절: <span id="p-stop">-</span></div>
+        <div>위험도: <span id="risk">-</span> <span class="muted">/ 5</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="kpi">🧠 쩔어 한마디</div>
+      <div id="talk">-</div>
+      <div class="src muted" style="margin-top:8px">업데이트: <span id="updated">-</span></div>
+    </div>
+
   </div>
+</div>
 
-  <div class="card">
-    <h3>🎯 시그널</h3>
-    <p>현재가: <span id="price">-</span></p>
-    <p>매수: <span id="buy">-</span></p>
-    <p>매도: <span id="sell">-</span></p>
-    <p>손절: <span id="cut">-</span></p>
-    <p>위험도: <span id="risk">-</span> / 5</p>
-  </div>
-
-  <div class="card">
-    <h3>🧠 쩔어 한마디</h3>
-    <p id="comment">-</p>
-    <p id="updated">업데이트: -</p>
-  </div>
-
-  <footer>업데이트 시각 기준 자동 갱신 | 사토시의지갑 2025</footer>
-
- <!-- ... 중략 ... -->
-<script type="module" src="/public/js/main.js"></script>
-</body>
-</html>
-
-  <!-- SCRIPTS: END -->
+<script src="./js/config.js"></script>
+<script src="./js/state.js"></script>
+<script src="./js/api.js"></script>
+<script src="./js/indicators.js"></script>
+<script src="./js/risk.js"></script>
+<script src="./js/commentary.js"></script>
+<script src="./js/render.js"></script>
+<script src="./js/search.js"></script>
+<script src="./js/main.js"></script>
 </body>
 </html>
