@@ -4,162 +4,148 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>💰 사토시의지갑 - 실시간 업비트 연동</title>
+  <link rel="icon" href="/favicon.ico">
   <style>
     body {
-      font-family: "Pretendard", sans-serif;
-      background-color: #0b0f19;
+      background: #0a0f1a;
       color: #fff;
-      margin: 0;
-      padding: 20px;
+      font-family: "Noto Sans KR", sans-serif;
       text-align: center;
+      margin: 0;
+      padding: 0;
     }
+
     h1 {
-      margin-bottom: 20px;
+      margin-top: 30px;
+      font-size: 26px;
     }
+
+    .card {
+      background: #121826;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+      padding: 15px 20px;
+      margin: 15px auto;
+      width: 400px;
+      text-align: left;
+      transition: 0.3s;
+    }
+
+    .card:hover {
+      transform: scale(1.02);
+    }
+
     .search-wrap {
-      margin-bottom: 30px;
+      margin: 20px auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
     }
-    .search-wrap input {
-      padding: 10px;
+
+    .search-input {
+      width: 240px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+      font-size: 15px;
+      background: #1c2235;
+      color: #fff;
+    }
+
+    #search-clear {
+      background: #ff5555;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    #search-clear:hover {
+      background: #ff7777;
+    }
+
+    #search-results {
+      position: absolute;
+      background: #1b2236;
       width: 260px;
       border-radius: 8px;
-      border: 1px solid #888;
-      background: #111;
-      color: #fff;
+      margin-top: 4px;
+      max-height: 180px;
+      overflow-y: auto;
+      z-index: 1000;
     }
-    .search-wrap button {
-      margin-left: 6px;
-      padding: 10px 12px;
-      border: none;
-      border-radius: 8px;
-      background: #444;
-      color: #fff;
+
+    .search-item {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid #333;
       cursor: pointer;
     }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 20px;
-      justify-content: center;
+
+    .search-item:hover {
+      background: #2b3348;
     }
-    .metric-card {
-      background-color: #161b26;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.3);
-      text-align: left;
+
+    footer {
+      margin: 25px 0;
+      color: #999;
+      font-size: 13px;
     }
-    .metric-card h3 {
-      margin-top: 0;
-    }
-    ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    li {
-      margin-bottom: 6px;
-    }
-    .src, .ts {
-      margin-top: 8px;
-      font-size: 0.9em;
-      color: #aaa;
-    }
-  /* === [검색 자동완성 시작] =================================== */
-.search-wrap { position: relative; }
-.autocomplete {
-  position: absolute;
-  top: 42px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 260px;
-  max-height: 260px;
-  overflow-y: auto;
-  background: #0f1420;
-  border: 1px solid #2a3446;
-  border-radius: 10px;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
-  z-index: 50;
-  text-align: left;
-}
-.autocomplete .item {
-  padding: 10px 12px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-.autocomplete .item:hover {
-  background: #1a2233;
-}
-.autocomplete .sym  { color:#9cc1ff; font-weight:600; }
-.autocomplete .name { color:#d0d6e4; }
-.autocomplete .mkt  { color:#9aa4b2; font-size:.85em; }
-/* === [검색 자동완성 끝] ===================================== */
-  
   </style>
 </head>
 
 <body>
   <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
 
-  <!-- 🔍 검색창 -->
+  <!-- 🔍 검색창 시작 -->
   <div class="search-wrap">
-    <input id="search-input" type="text" placeholder="코인명 또는 심볼 검색..." />
-    <button id="search-clear">✕</button>
-    <div id="search-results"></div>
+    <input id="search-input" class="search-input" type="text" placeholder="코인명/심볼 검색..." />
+    <button id="search-clear" title="지우기">X</button>
+  </div>
+  <div id="search-results"></div>
+  <!-- 🔍 검색창 끝 -->
+
+  <div class="card">
+    <h3>📊 김치 프리미엄</h3>
+    <p id="kimp">-</p>
   </div>
 
-  <div class="grid">
-    <!-- 김치 프리미엄 -->
-    <div class="metric-card">
-      <h3>김치 프리미엄</h3>
-      <div id="kimchi-premium">- %</div>
-      <ul>
-        <li>업비트 KRW: <span id="upbit-krw">-</span></li>
-        <li>글로벌 USD: <span id="global-usd">-</span></li>
-        <li>USD/KRW: <span id="usd-krw">-</span></li>
-      </ul>
-      <div class="src">소스: <span id="kimchi-src">-</span></div>
-    </div>
-
-    <!-- 온체인 -->
-    <div class="metric-card">
-      <h3>온체인 TVL(ETH)</h3>
-      <div>TVL: <span id="onchain-tvl">-</span> USD</div>
-      <div class="src">소스: <span id="onchain-src">-</span></div>
-    </div>
-
-    <!-- 시그널 -->
-    <div class="metric-card">
-      <h3>시그널</h3>
-      <ul>
-        <li>현재가: <span id="sig-price">-</span></li>
-        <li>매수: <span id="sig-buy">-</span></li>
-        <li>매도: <span id="sig-sell">-</span></li>
-        <li>손절: <span id="sig-stop">-</span></li>
-      </ul>
-      <div>위험도: <span id="sig-risk">-</span> / 5</div>
-    </div>
-
-    <!-- 쩔어 한마디 -->
-    <div class="metric-card">
-      <h3>쩔어 한마디</h3>
-      <div id="commentary-text">-</div>
-      <div class="ts">업데이트: <span id="updated-at">-</span></div>
-    </div>
+  <div class="card">
+    <h3>💗 온체인 TVL(ETH)</h3>
+    <p id="onchain">-</p>
   </div>
 
- <!-- SCRIPTS: START -->
-<script src="/js/config.js"></script>
-<script src="/js/api.js"></script>
-<script src="/js/state.js"></script>
-<script src="/js/indicators.js"></script>
-<script src="/js/risk.js"></script>
-<script src="/js/render.js"></script>
-<script src="/js/commentary.js"></script>
-<script src="/js/search.js"></script>
-<script src="/js/main.js"></script>
-<!-- SCRIPTS: END -->
+  <div class="card">
+    <h3>🎯 시그널</h3>
+    <p>현재가: <span id="price">-</span></p>
+    <p>매수: <span id="buy">-</span></p>
+    <p>매도: <span id="sell">-</span></p>
+    <p>손절: <span id="cut">-</span></p>
+    <p>위험도: <span id="risk">-</span> / 5</p>
+  </div>
+
+  <div class="card">
+    <h3>🧠 쩔어 한마디</h3>
+    <p id="comment">-</p>
+    <p id="updated">업데이트: -</p>
+  </div>
+
+  <footer>업데이트 시각 기준 자동 갱신 | 사토시의지갑 2025</footer>
+
+  <!-- SCRIPTS: START -->
+  <script src="/js/config.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/state.js"></script>
+  <script src="/js/indicators.js"></script>
+  <script src="/js/risk.js"></script>
+  <script src="/js/render.js"></script>
+  <script src="/js/commentary.js"></script>
+  <script src="/js/search.js"></script>
+  <script src="/js/main.js"></script>
+  <!-- SCRIPTS: END -->
 </body>
 </html>
