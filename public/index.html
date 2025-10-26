@@ -65,6 +65,38 @@
       font-size: 0.9em;
       color: #aaa;
     }
+  /* === [검색 자동완성 시작] =================================== */
+.search-wrap { position: relative; }
+.autocomplete {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #0f1420;
+  border: 1px solid #2a3446;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+  z-index: 50;
+  text-align: left;
+}
+.autocomplete .item {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.autocomplete .item:hover {
+  background: #1a2233;
+}
+.autocomplete .sym  { color:#9cc1ff; font-weight:600; }
+.autocomplete .name { color:#d0d6e4; }
+.autocomplete .mkt  { color:#9aa4b2; font-size:.85em; }
+/* === [검색 자동완성 끝] ===================================== */
+  
   </style>
 </head>
 
