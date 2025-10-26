@@ -1,29 +1,31 @@
+// ==== search.js (시작)
 (function(){
-  const $q = document.getElementById("q");
-  const $clear = document.getElementById("q-clear");
+  const input = document.getElementById('q');
+  const clear = document.getElementById('clear');
+  const MAP = window.APP_CFG.MAP;
 
-  function pickSymbol(txt){
-    txt = (txt||"").trim().toUpperCase();
-    if(!txt) return null;
-    // 심볼로 딱 맞추기
-    const hit = APP_CONFIG.SYMBOLS.find(v => v.sym === txt);
-    if(hit) return hit.sym;
-    // 한글명/영문명에서 찾기
-    const byName = APP_CONFIG.SYMBOLS.find(v => v.name.includes(txt) || v.sym.includes(txt));
-    return byName?.sym ?? null;
+  function guessSymbolFromKorean(q){
+    q = (q||'').trim();
+    if(!q) return null;
+    if(/비트|btc/i.test(q)) return 'BTC';
+    if(/이더|eth/i.test(q)) return 'ETH';
+    if(/솔라|sol/i.test(q)) return 'SOL';
+    if(/리플|xrp/i.test(q)) return 'XRP';
+    return null;
   }
 
-  $q.addEventListener("keydown", (e)=>{
-    if(e.key === "Enter"){
-      const sym = pickSymbol($q.value) || APP_CONFIG.DEFAULT_SYMBOL;
-      STATE.symbol = sym;
-      window.refreshAll();  // main.js 에서 등록
-    }
-  });
+  function apply(q){
+    let sym = (q||'').toUpperCase();
+    if(!window.APP_CFG.MAP[sym]) sym = guessSymbolFromKorean(q) || 'BTC';
+    window.STATE.symbol = sym;
+    window.runOnce();  // main.js의 데이터 갱신
+  }
 
-  $clear.addEventListener("click", ()=>{
-    $q.value = "";
-    STATE.symbol = APP_CONFIG.DEFAULT_SYMBOL;
-    window.refreshAll();
+  input?.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ apply(input.value); }
+  });
+  clear?.addEventListener('click', ()=>{
+    input.value = ''; input.focus();
   });
 })();
+// ==== search.js (끝)
