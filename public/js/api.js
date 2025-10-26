@@ -1,23 +1,58 @@
-/* ==== START: public/js/api.js ==== */
-(function () {
-  const BASE = window.APP_CONFIG.PROXY_BASE;
+// ✅ zzeol_wallet 통합 API (업비트 + CoinGecko + 온체인 + 김프) 완성판
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev";
 
-  async function getJSON(url) {
-    const res = await fetch(url, { headers: { "cache-control": "no-cache" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+async function fetchPrice(symbol) {
+  try {
+    const res = await fetch(`${API_BASE}/api/premium?symbol=${symbol}`);
+    const data = await res.json();
+    if (!data || data.error) throw new Error(data?.error || "데이터 없음");
+    return data;
+  } catch (err) {
+    console.error(`[fetchPrice] ${symbol} 실패:`, err.message);
+    return { ok: false, error: err.message };
   }
+}
 
-  async function getPremium(symbol) {
-    symbol = symbol || window.APP_CONFIG.DEFAULT_SYMBOL;
-    return getJSON(`${BASE}/api/premium?symbol=${encodeURIComponent(symbol)}`);
+// 업비트 실시간 시세 + 김치 프리미엄 계산
+async function getKimp(symbol = "BTC") {
+  try {
+    const upbitRes = await fetch(`https://api.upbit.com/v1/ticker?markets=KRW-${symbol}`);
+    const upbitData = await upbitRes.json();
+    const krwPrice = upbitData[0]?.trade_price || 0;
+
+    const cgData = await fetchPrice(symbol);
+    const usdPrice = cgData?.usd || 0;
+
+    const exchangeRate = krwPrice / usdPrice;
+    const kimp = ((exchangeRate / 1400 - 1) * 100).toFixed(2);
+
+    return {
+      symbol,
+      krwPrice,
+      usdPrice,
+      kimp,
+      exchangeRate,
+      time: new Date().toLocaleTimeString("ko-KR"),
+    };
+  } catch (err) {
+    console.error("[getKimp] 실패:", err.message);
+    return { error: err.message };
   }
+}
 
-  async function getOnchain(symbol) {
-    symbol = symbol || window.APP_CONFIG.DEFAULT_CHAIN_SYMBOL;
-    return getJSON(`${BASE}/api/onchain?symbol=${encodeURIComponent(symbol)}`);
+// 온체인 데이터 (추후 확장 가능)
+async function getOnchain(symbol = "BTC") {
+  try {
+    const res = await fetch(`${API_BASE}/api/onchain?symbol=${symbol}`);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return { ok: false, error: "온체인 불러오기 실패" };
   }
+}
 
-  window.API = { getPremium, getOnchain };
+// 테스트 실행
+(async () => {
+  const btc = await getKimp("BTC");
+  console.log("✅ BTC 종합 데이터:", btc);
 })();
- /* ==== END: public/js/api.js ==== */
