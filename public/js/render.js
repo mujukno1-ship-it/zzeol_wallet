@@ -1,28 +1,50 @@
-window.renderAll = function(){
-  // 김프 카드
-  const p = STATE.premium;
-  document.getElementById("kimp").textContent =
-    (p && p.premiumPct!=null) ? util.fmtPct(p.premiumPct) : "-";
-  document.getElementById("upbit-krw").textContent = p ? util.fmtKRW(p.upbitPrice) : "-";
-  document.getElementById("global-usd").textContent = p ? util.fmtUSD(p.globalUsd) : "-";
-  document.getElementById("usd-krw").textContent = p ? util.fmtKRW(p.usdkrw) : "-";
-  document.getElementById("src-kimp").textContent =
-    p ? `${p?.src?.global ?? "?"} / ${p?.src?.fx ?? "?"} / ${p?.src?.krw ?? "?"}` : "-";
+// ==== render.js (시작)
+const RENDER = (() => {
+  function text(id, v){ const el=document.getElementById(id); if(el) el.textContent = v; }
 
-  // 온체인 카드
-  const o = STATE.onchain;
-  document.getElementById("tvl").textContent = o?.tvl ? util.fmtUSD(o.tvl) : "-";
-  document.getElementById("src-onchain").textContent = o?.src ?? "-";
+  function paintPremium(p){
+    if(!p || !p.ok){ text('kimchi-premium', '-'); return; }
+    const prem = p.premiumPct==null ? null : Number(p.premiumPct).toFixed(2);
+    const cls  = (p.premiumPct>0)?'bad':'good';
+    document.getElementById('kimchi-premium').innerHTML =
+      prem==null?'-':`<span class="${cls}">${prem}%</span>`;
+    text('upbit-krw', IND.formatKRW(p.upbitPrice));
+    text('global-usd', IND.formatUSD(p.globalUsd));
+    text('usdkrw', Number(p.usdkrw||0).toLocaleString('ko-KR'));
+    text('sources', `global: ${p.src?.global||'-'} / fx: ${p.src?.fx||'-'} / krw: ${p.src?.krw||'Upbit'}`);
+  }
 
-  // 시그널
-  const s = STATE.signal;
-  document.getElementById("p-now").textContent  = s?.now  ? util.fmtKRW(s.now)  : "-";
-  document.getElementById("p-buy").textContent  = s?.buy  ? util.fmtKRW(s.buy)  : "-";
-  document.getElementById("p-sell").textContent = s?.sell ? util.fmtKRW(s.sell) : "-";
-  document.getElementById("p-stop").textContent = s?.stop ? util.fmtKRW(s.stop) : "-";
-  document.getElementById("risk").textContent   = STATE.risk ?? "-";
+  function paintOnchain(o, symbol){
+    text('sym-onchain', symbol);
+    if(!o || !o.ok){ text('onchain-tvl','-'); return; }
+    text('onchain-tvl', Number(o.tvl||0).toLocaleString('en-US',{maximumFractionDigits:0})+' USD');
+  }
 
-  // 한마디 & 업데이트
-  document.getElementById("talk").textContent = STATE.talk ?? "-";
-  document.getElementById("updated").textContent = STATE.updatedAt ? util.ts(STATE.updatedAt) : "-";
-};
+  function paintSignal(p){
+    if(!p || !p.ok){ text('sig-price','-'); text('sig-buy','-'); text('sig-sell','-'); text('sig-stop','-'); text('sig-risk','-'); return; }
+    const sig = IND.signalFromUpbitKRW(p.upbitPrice);
+    text('sig-price', sig.priceKRW);
+    text('sig-buy',   sig.buyKRW);
+    text('sig-sell',  sig.sellKRW);
+    text('sig-stop',  sig.stopKRW);
+    text('sig-risk',  sig.risk);
+  }
+
+  function paintCommentary(p, o){
+    const lines = [];
+    if(p?.premiumPct!=null){
+      const prem = p.premiumPct.toFixed(2);
+      lines.push(`김프 ${prem}%`);
+    }
+    if(o?.tvl!=null){
+      const t = Number(o.tvl).toLocaleString('en-US');
+      lines.push(`TVL ${t} USD`);
+    }
+    const msg = lines.length? `시장 눈치 보기. 손절 라인 먼저! 🛡` : '-';
+    text('commentary', msg);
+    text('updated', new Date().toLocaleString());
+  }
+
+  return { paintPremium, paintOnchain, paintSignal, paintCommentary };
+})();
+// ==== render.js (끝)
