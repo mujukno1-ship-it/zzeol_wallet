@@ -4,4 +4,5 @@ window.APP_CONFIG = {
   DEFAULT_SYMBOL: "BTC",
   DEFAULT_CHAIN_SYMBOL: "ETH",
 };
+export const DEFAULT_SYMBOL_KIMP = "BTC";
 /* ==== END: public/js/config.js ==== */
