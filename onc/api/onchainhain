@@ -1,0 +1,89 @@
+// ✅ 온체인 TVL (강화판: 500/빈응답/형식 달라도 자동 처리 + 폴백 + 캐시)
+if (url.pathname.startsWith("/api/onchain")) {
+  const symbol = (url.searchParams.get("symbol") || "ETH").toUpperCase();
+
+  // 심볼 → 체인 이름 매핑
+  const chainMap = {
+    ETH: "Ethereum",
+    BTC: "Bitcoin",
+    SOL: "Solana",
+    MATIC: "Polygon",
+    AVAX: "Avalanche",
+    BSC: "BSC",
+    ARB: "Arbitrum",
+    OP: "Optimism",
+    TRX: "Tron",
+  };
+  const chain = chainMap[symbol] || "Ethereum";
+
+  // 60초 캐시(워커 메모리)
+  const cacheKey = `tvl:${chain}`;
+  const cache = globalThis.__tvlCache ?? (globalThis.__tvlCache = new Map());
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < 60 * 1000) {
+    return json({ ok: true, symbol, chain, tvl: cached.tvl, src: cached.src, cached: true, updatedAt: new Date(cached.ts).toISOString() });
+  }
+
+  // 폴백 체인
+  async function tryFetchers() {
+    // 1) legacy: /tvl/{chain}  => 숫자만 내려옴 (text)
+    try {
+      const r1 = await fetch(`https://api.llama.fi/tvl/${encodeURIComponent(chain)}`, { headers: { Accept: "application/json" } });
+      if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
+      const t = await r1.text();
+      const n = parseFloat(t);
+      if (!Number.isFinite(n)) throw new Error("Not a number");
+      return { tvl: n, src: "DefiLlama:/tvl" };
+    } catch (e) { /* 다음 폴백 */ }
+
+    // 2) summary: /summary/chain/{chain}?dataType=totalTVL  => JSON
+    try {
+      const r2 = await fetch(`https://api.llama.fi/summary/chain/${encodeURIComponent(chain)}?dataType=totalTVL`, { headers: { Accept: "application/json" } });
+      if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
+      const txt = await r2.text();
+      const o = JSON.parse(txt);
+      const n = o?.totalLiquidityUSD;
+      if (!Number.isFinite(n)) throw new Error("No totalLiquidityUSD");
+      return { tvl: n, src: "DefiLlama:/summary" };
+    } catch (e) { /* 다음 폴백 */ }
+
+    // 3) 리스트: /v2/chains  => [{name, tvl}, ...] 에서 매칭
+    try {
+      const r3 = await fetch("https://api.llama.fi/v2/chains", { headers: { Accept: "application/json" } });
+      if (!r3.ok) throw new Error(`HTTP ${r3.status}`);
+      const arr = await r3.json();
+      const item = arr.find(x => (x.name || "").toLowerCase() === chain.toLowerCase());
+      const n = item?.tvl;
+      if (!Number.isFinite(n)) throw new Error("No tvl on /v2/chains");
+      return { tvl: n, src: "DefiLlama:/v2/chains" };
+    } catch (e) { /* 실패 */ }
+
+    throw new Error("All TVL fallbacks failed");
+  }
+
+  try {
+    // 재시도(최대 3회, 지수 백오프)
+    let lastErr = "";
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await tryFetchers();
+        // 캐시 저장
+        cache.set(cacheKey, { tvl: res.tvl, src: res.src, ts: Date.now() });
+        return json({
+          ok: true,
+          symbol,
+          chain,
+          tvl: res.tvl,
+          src: res.src,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (e) {
+        lastErr = e.message || String(e);
+        await new Promise(r => setTimeout(r, 350 * (i + 1)));
+      }
+    }
+    return json({ ok: false, error: `DeFiLlama fetch failed: ${lastErr}` }, 502);
+  } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+  }
+}
