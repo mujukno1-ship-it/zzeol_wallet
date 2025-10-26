@@ -16,7 +16,7 @@ async function fetchPrice(symbol) {
 // 업비트 실시간 시세 + 김치 프리미엄 계산
 async function getKimp(symbol = "BTC") {
   try {
-    const upbitRes = await fetch(`https://api.upbit.com/v1/ticker?markets=KRW-${symbol}`);
+    const upbitRes = await fetch(`${API_BASE}/api/upbit?symbol=${symbol}`); 
     const upbitData = await upbitRes.json();
     const krwPrice = upbitData[0]?.trade_price || 0;
 
