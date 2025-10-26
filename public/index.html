@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔥 사토시의지갑 실시간 김프 & 온체인 🔥</title>
+  <style>
+    body{background:#0a0f1a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:960px;margin:40px auto;padding:0 16px}
+    .card{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:20px;margin:12px 0}
+    h1{display:flex;gap:.5rem;align-items:center}
+  </style>
+</head>
+<body>
+  <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
+
+  <div class="card" id="kimp">김프 불러오는 중…</div>
+  <div class="card" id="onchain">온체인 지표 불러오는 중…</div>
+  <p id="updated" style="opacity:.7"></p>
+
+  <script>
+    async function load() {
+      try {
+        const k = await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/premium?symbol=BTC").then(r=>r.json());
+        const o = await fetch("https://satoshi-proxy.mujukno1.workers.dev/api/onchain?symbol=ETH").then(r=>r.json());
+
+        document.getElementById("kimp").innerHTML =
+          `📊 김치 프리미엄: <b>${(k.premiumPct ?? 0).toFixed(2)}%</b><br>
+           업비트 KRW: ${k.upbitPrice?.toLocaleString()} ₩<br>
+           USD/KRW: ${k.usdkrw ?? '-'}<br>
+           소스: ${k.src?.global ?? '-'} / ${k.src?.fx ?? '-'} / ${k.src?.krw ?? '-'}`;
+
+        document.getElementById("onchain").innerHTML =
+          `🧠 온체인 TVL(ETH): <b>${(o.tvl ?? 0).toLocaleString()} USD</b><br>
+           소스: ${o.src ?? '-'}`;
+
+        document.getElementById("updated").textContent =
+          "업데이트: " + new Date().toLocaleString();
+      } catch (e) {
+        document.getElementById("kimp").textContent = "김프 로딩 오류";
+        document.getElementById("onchain").textContent = "온체인 로딩 오류";
+      }
+    }
+    load();
+  </script>
+</body>
+</html>
