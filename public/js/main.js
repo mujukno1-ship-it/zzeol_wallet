@@ -1,70 +1,93 @@
-// public/js/main.js
-import { REFRESH_MS } from "./config.js";
-import { fetchPremium, fetchOnchain } from "./api.js";
-import { state, pushHistory } from "./state.js";
-import { calcSignals } from "./indicators.js";
-import { computeRisk } from "./risk.js";
-import { makeComment } from "./commentary.js";
-import { renderPremium, renderOnchain, renderSignals } from "./render.js";
+import { CONFIG } from "./config.js";
+import { getPremium } from "./services/premium.js";
+import { getOnchain } from "./services/onchain.js";
 
-async function tick(){
-  try{
-    const [p, o] = await Promise.all([fetchPremium(), fetchOnchain()]);
+const el = {
+  kimp: document.getElementById("kimp"),
+  onchain: document.getElementById("onchain"),
+  signal: document.getElementById("signal"),
+  comment: document.getElementById("comment"),
+  updated: document.getElementById("updated"),
+  searchInput: document.querySelector(".search-input"),
+  searchClear: document.getElementById("search-clear"),
+};
 
-    // 화면1: 프리미엄 & 시세
-    const kimpPct = p.premiumPct ?? deriveKimp(p);
-    renderPremium({
-      kimpPct, upbitPrice: p.upbitPrice, usdkrw: p.usdkrw, globalUsd: p.globalUsd,
-      src: p.src, updatedAt: p.updatedAt
-    });
-    renderOnchain({ tvl: o.tvl, src: o.src });
+function fmtNum(v, suffix = "") {
+  if (v == null) return "-";
+  if (typeof v === "number") return v.toLocaleString() + (suffix || "");
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toLocaleString() + (suffix || "") : "-";
+}
 
-    // 상태 기록
-    pushHistory(state.history.premiumPct, Number(kimpPct), state.maxPoints);
-    pushHistory(state.history.price, Number(p.upbitPrice), state.maxPoints);
+async function load(symbolPremium = CONFIG.PREMIUM_SYMBOL, symbolOnchain = CONFIG.ONCHAIN_SYMBOL) {
+  try {
+    const [kimp, chain] = await Promise.all([
+      getPremium(symbolPremium),
+      getOnchain(symbolOnchain),
+    ]);
 
-    // 시그널 계산
-    const sig = calcSignals({
-      nowPrice: p.upbitPrice,
-      premiumPctHist: state.history.premiumPct,
-      tvlUsd: o.tvl,
-    });
-    const risk = computeRisk({ premiumPctHist: state.history.premiumPct, tvlUsd: o.tvl });
-    const comment = makeComment({ bias: sig.bias, risk, kimpAvg: sig.kimpAvg, kimpSlope: sig.kimpSlope });
+    // 김프 카드
+    if (kimp?.ok) {
+      el.kimp.innerHTML =
+        `📈 김치 프리미엄: <b>${kimp.premiumPct?.toFixed(2) ?? "-" }%</b><br>` +
+        `업비트 KRW: ${fmtNum(kimp.upbitPrice, " ₩")}<br>` +
+        `글로벌 USD: ${kimp.globalUsd ?? "-"}<br>` +
+        `USD/KRW: ${kimp.usdkrw ?? "-"}<br>` +
+        `소스: ${kimp.src?.global ?? "-"} / ${kimp.src?.krw ?? "-"}`;
+    } else {
+      el.kimp.innerHTML = "데이터 불러오기 실패(김프)";
+    }
 
-    renderSignals({
-      nowPrice: p.upbitPrice,
-      buyPrice: sig.buyPrice,
-      sellPrice: sig.sellPrice,
-      stopPrice: sig.stopPrice,
-      risk,
-      comment
-    });
+    // 온체인 카드
+    if (chain?.ok) {
+      el.onchain.innerHTML =
+        `💗 온체인 TVL(${chain.symbol}): <b>${fmtNum(chain.tvl, " USD")}</b><br>` +
+        `소스: ${chain.src ?? "-"}`;
+    } else {
+      el.onchain.innerHTML = "데이터 불러오기 실패(온체인)";
+    }
 
-  }catch(e){
+    // 시그널/코멘트(간단 고정)
+    el.signal.innerHTML =
+      `현재가: -<br>매수: -<br>매도: -<br>손절: -<br>위험도: - / 5`;
+    el.comment.innerHTML = "시장 눈치 보기. 손절 라인 먼저! 🛡️";
+
+    // 업데이트 시간
+    el.updated.innerHTML = `업데이트: ${new Date().toLocaleString()}`;
+
+  } catch (e) {
     console.error(e);
-    // 최소 표시
-    renderSignals({ nowPrice: null, buyPrice:null, sellPrice:null, stopPrice:null, risk:"-", comment:"데이터 로딩 오류" });
+    el.kimp.innerHTML = "네트워크 오류";
+    el.onchain.innerHTML = "네트워크 오류";
   }
 }
 
-function deriveKimp(p){
-  // premiumPct가 null일 때 대비: (업비트KRW / (글로벌USD * USDKRW) - 1) * 100
-  const { upbitPrice, globalUsd, usdkrw } = p;
-  if(!upbitPrice || !globalUsd || !usdkrw) return null;
-  const globalKrw = Number(globalUsd) * Number(usdkrw);
-  return ((Number(upbitPrice)/globalKrw) - 1) * 100;
-}
+// 검색 입력 → 엔터/초기화 처리
+function initSearch() {
+  if (!el.searchInput) return;
 
-tick();
-setInterval(tick, REFRESH_MS);
-// === 검색 기능 연결 ===
-if (window.Search) {
-  window.Search.init({
-    maxResults: 12,
-    onPick: (item) => {
-      console.log("선택된 코인:", item.symbol);
-      // 필요 시 여기에: 선택한 코인으로 데이터 갱신 로직 연결
+  el.searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const q = el.searchInput.value.trim();
+      // 간단 매핑 예시
+      const map = {
+        "비트코인": { p: "BTC", c: "ETH" },
+        "이더리움": { p: "ETH", c: "ETH" },
+        "btc": { p: "BTC", c: "ETH" },
+        "eth": { p: "ETH", c: "ETH" },
+      };
+      const pick = map[q.toLowerCase()] || { p: CONFIG.PREMIUM_SYMBOL, c: CONFIG.ONCHAIN_SYMBOL };
+      load(pick.p, pick.c);
     }
   });
+
+  if (el.searchClear) {
+    el.searchClear.addEventListener("click", () => {
+      el.searchInput.value = "";
+      load(); // 기본 심볼 재조회
+    });
+  }
 }
+
+initSearch();
+load();
