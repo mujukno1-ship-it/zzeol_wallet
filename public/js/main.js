@@ -1,3 +1,5 @@
+const API_BASE_URL = "https://satoshi-proxy.mujukno1.workers.dev";
+
 import { AppState } from "./state.js";
 import { apiPremium, apiOnchain } from "./api.js";
 import { renderPremium, renderOnchain, renderCommentary, renderTopError } from "./render.js";
