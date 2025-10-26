@@ -1,8 +1,10 @@
-// ==== state.js (시작)
-window.STATE = {
-  symbol: window.APP_CFG.DEFAULT_SYMBOL,
-  premium: null,
-  onchain: null,
-  lastUpdated: null,
+// public/js/state.js
+export const AppState = {
+  symbol: 'BTC',
+  onchainSymbol: 'ETH',
+  premium: null,   // {upbitPrice, globalUsd, usdkrw, premiumPct}
+  onchain: null,   // {tvl}
+  signal: null,    // {buy, sell, stop, risk, price}
+  commentary: '-',
+  updatedAt: '-',
 };
-// ==== state.js (끝)
