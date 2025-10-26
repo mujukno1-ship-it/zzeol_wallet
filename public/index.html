@@ -1,0 +1,67 @@
+<!doctype html>
+const j = await (await fetch(`${API_BASE}/api/signal?symbol=${encodeURIComponent(sym)}`,{cache:"no-store"})).json();
+if(!j?.ok) throw new Error("signal");
+$("sig-sym").textContent = j.symbol;
+$("p").textContent = nf0(j.price);
+$("b").textContent = j.buy? nf0(j.buy) : "-";
+$("s").textContent = j.sell? nf0(j.sell): "-";
+$("st").textContent = j.stop? nf0(j.stop): "-";
+$("r").textContent = (j.risk<=2? "🟢 " : j.risk==3? "🟡 " : "🔴 ") + (j.risk??"-");
+$("c").textContent = j.comment || "-";
+$("ts").textContent = new Date(j.ts||Date.now()).toLocaleString("ko-KR");
+}catch(e){
+$("c").textContent = "점검중…";
+}
+}
+
+
+async function refreshAll(){
+await health();
+await Promise.all([
+loadKimp(state.sym),
+loadOnchain(state.oc),
+loadSignal(state.sym),
+]);
+}
+
+
+// 이벤트
+document.querySelectorAll(".chip").forEach(el=>{
+el.addEventListener("click", ()=>{
+const sym = el.getAttribute("data-sym");
+state.sym = sym;
+if (sym==="ETH") state.oc="ETH";
+if (sym==="BTC") state.oc="ETH";
+if (sym==="SPARK") state.oc="ETH"; // TVL 기본 ETH
+$("kimp-sym").textContent = state.sym;
+$("sig-sym").textContent = state.sym;
+$("oc-sym").textContent = state.oc;
+refreshAll();
+});
+});
+
+
+$("apply").addEventListener("click", ()=>{
+const mapped = mapToSymbol($("q").value);
+state.sym = mapped;
+$("kimp-sym").textContent = state.sym;
+$("sig-sym").textContent = state.sym;
+refreshAll();
+});
+
+
+// 기본: SPARK 고정 노출 선호 시 아래 한 줄만 켬
+// state.sym = "SPARK";
+
+
+// 부팅
+(async ()=>{
+$("kimp-sym").textContent = state.sym;
+$("sig-sym").textContent = state.sym;
+$("oc-sym").textContent = state.oc;
+await refreshAll();
+setInterval(refreshAll, 10_000);
+})();
+</script>
+</body>
+</html>
