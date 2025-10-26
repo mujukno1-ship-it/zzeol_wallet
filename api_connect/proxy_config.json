@@ -1,8 +1,0 @@
-{
-  "proxy_base": "https://satoshi-proxy.mujukno1.workers.dev",
-  "endpoints": {
-    "health": "/api/health",
-    "premium": "/api/premium?symbol=",
-    "onchain": "/api/onchain?symbol="
-  }
-}
