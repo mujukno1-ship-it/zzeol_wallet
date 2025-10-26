@@ -1,11 +1,11 @@
 // public/js/main.js
-import { REFRESH_MS } from "./modules/config.js";
-import { fetchPremium, fetchOnchain } from "./modules/api.js";
-import { state, pushHistory } from "./modules/state.js";
-import { calcSignals } from "./modules/indicators.js";
-import { computeRisk } from "./modules/risk.js";
-import { makeComment } from "./modules/commentary.js";
-import { renderPremium, renderOnchain, renderSignals } from "./modules/render.js";
+import { REFRESH_MS } from "./config.js";
+import { fetchPremium, fetchOnchain } from "./api.js";
+import { state, pushHistory } from "./state.js";
+import { calcSignals } from "./indicators.js";
+import { computeRisk } from "./risk.js";
+import { makeComment } from "./commentary.js";
+import { renderPremium, renderOnchain, renderSignals } from "./render.js";
 
 async function tick(){
   try{
