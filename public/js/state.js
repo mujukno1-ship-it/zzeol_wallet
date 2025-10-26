@@ -1,18 +1,16 @@
-// public/js/modules/state.js
-export const state = {
-  history: {
-    premiumPct: [],   // 최근 프리미엄 %
-    price: [],        // 최근 업비트 가격
-  },
-  maxPoints: 60,      // 10초 x 60 = 10분 히스토리
+window.STATE = {
+  symbol: APP_CONFIG.DEFAULT_SYMBOL,
+  onchainSymbol: APP_CONFIG.DEFAULT_CHAIN,
+  premium: null,   // { upbitPrice, globalUsd, usdkrw, globalKrw, premiumPct, src, updatedAt }
+  onchain: null,   // { tvl, src, updatedAt }
+  signal: null,    // { now, buy, sell, stop }
+  risk: null,      // 1~5
+  updatedAt: null,
 };
 
-export function pushHistory(arr, val, max){
-  if(val == null) return;
-  arr.push(val);
-  if(arr.length > max) arr.shift();
-}
-
-export function snapshot(){
-  return JSON.parse(JSON.stringify(state));
-}
+window.util = {
+  fmtKRW(n){ if(n==null) return "-"; return Number(n).toLocaleString("ko-KR")+" ₩"; },
+  fmtUSD(n){ if(n==null) return "-"; return Number(n).toLocaleString("en-US"); },
+  fmtPct(n){ if(n==null) return "-"; return (Number(n).toFixed(2))+"%"; },
+  ts(d){ return new Date(d).toLocaleString(); },
+};
