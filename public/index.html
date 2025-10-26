@@ -2,73 +2,131 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>사토시의지갑 - 실시간 업비트 연동</title>
-    <!-- 🔍 검색창 영역 시작 -->
-  <div class="search-wrap" style="margin: 12px 0; text-align:center;">
-    <input id="search-input" type="text" placeholder="코인명/심볼 검색…" 
-           style="padding:8px;width:250px;border-radius:8px;border:1px solid #888;background:#111;color:#fff;">
-    <button id="search-clear" title="지우기" 
-            style="margin-left:5px;padding:8px 12px;border:none;border-radius:8px;background:#444;color:#fff;cursor:pointer;">✕</button>
-    <div id="search-results" 
-         style="margin-top:10px;background:#222;padding:10px;border-radius:8px;max-width:400px;margin-left:auto;margin-right:auto;">
-    </div>
-  </div>
-  <!-- 🔍 검색창 영역 끝 -->
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💰 사토시의지갑 - 실시간 업비트 연동</title>
   <style>
-    body{background:#0a0f1a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:1080px;margin:40px auto;padding:0 16px}
-    h1{display:flex;gap:.6rem;align-items:center}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    .card{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:18px}
-    .muted{opacity:.75}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1f2937}
-    .big{font-size:1.35rem;font-weight:700}
-    .ok{color:#86efac} .warn{color:#fbbf24} .bad{color:#f87171}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .vgap{display:flex;flex-direction:column;gap:8px}
+    body {
+      font-family: "Pretendard", sans-serif;
+      background-color: #0b0f19;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    .search-wrap {
+      margin-bottom: 30px;
+    }
+    .search-wrap input {
+      padding: 10px;
+      width: 260px;
+      border-radius: 8px;
+      border: 1px solid #888;
+      background: #111;
+      color: #fff;
+    }
+    .search-wrap button {
+      margin-left: 6px;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      background: #444;
+      color: #fff;
+      cursor: pointer;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      justify-content: center;
+    }
+    .metric-card {
+      background-color: #161b26;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      text-align: left;
+    }
+    .metric-card h3 {
+      margin-top: 0;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    li {
+      margin-bottom: 6px;
+    }
+    .src, .ts {
+      margin-top: 8px;
+      font-size: 0.9em;
+      color: #aaa;
+    }
   </style>
 </head>
+
 <body>
   <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
 
-  <div class="row">
-    <div class="card vgap">
-      <div><span class="pill">📊 김치 프리미엄</span></div>
-      <div id="kimpPct" class="big">-</div>
-      <div class="grid2">
-        <div>업비트 KRW: <b id="upbitPrice">-</b></div>
-        <div>USD/KRW: <span id="usdkrw">-</span></div>
-        <div>글로벌 USD: <span id="globalUsd">-</span></div>
-        <div>소스: <span id="src">-</span></div>
-      </div>
+  <!-- 🔍 검색창 -->
+  <div class="search-wrap">
+    <input id="search-input" type="text" placeholder="코인명 또는 심볼 검색..." />
+    <button id="search-clear">✕</button>
+    <div id="search-results"></div>
+  </div>
+
+  <div class="grid">
+    <!-- 김치 프리미엄 -->
+    <div class="metric-card">
+      <h3>김치 프리미엄</h3>
+      <div id="kimchi-premium">- %</div>
+      <ul>
+        <li>업비트 KRW: <span id="upbit-krw">-</span></li>
+        <li>글로벌 USD: <span id="global-usd">-</span></li>
+        <li>USD/KRW: <span id="usd-krw">-</span></li>
+      </ul>
+      <div class="src">소스: <span id="kimchi-src">-</span></div>
     </div>
 
-    <div class="card vgap">
-      <div><span class="pill">🧠 온체인 TVL(ETH)</span></div>
-      <div id="tvl" class="big">-</div>
-      <div>소스: <span id="tvlSrc">-</span></div>
+    <!-- 온체인 -->
+    <div class="metric-card">
+      <h3>온체인 TVL(ETH)</h3>
+      <div>TVL: <span id="onchain-tvl">-</span> USD</div>
+      <div class="src">소스: <span id="onchain-src">-</span></div>
+    </div>
+
+    <!-- 시그널 -->
+    <div class="metric-card">
+      <h3>시그널</h3>
+      <ul>
+        <li>현재가: <span id="sig-price">-</span></li>
+        <li>매수: <span id="sig-buy">-</span></li>
+        <li>매도: <span id="sig-sell">-</span></li>
+        <li>손절: <span id="sig-stop">-</span></li>
+      </ul>
+      <div>위험도: <span id="sig-risk">-</span> / 5</div>
+    </div>
+
+    <!-- 쩔어 한마디 -->
+    <div class="metric-card">
+      <h3>쩔어 한마디</h3>
+      <div id="commentary-text">-</div>
+      <div class="ts">업데이트: <span id="updated-at">-</span></div>
     </div>
   </div>
 
-  <div class="row" style="margin-top:14px">
-    <div class="card vgap">
-      <div><span class="pill">🎯 시그널</span></div>
-      <div>현재가: <b id="nowPrice">-</b></div>
-      <div>매수: <b id="buyPrice">-</b></div>
-      <div>매도: <b id="sellPrice">-</b></div>
-      <div>손절: <b id="stopPrice" class="bad">-</b></div>
-      <div>위험도: <b id="riskScore">-</b> / 5</div>
-    </div>
-
-    <div class="card vgap">
-      <div><span class="pill">🗣️ 쩔어 한마디</span></div>
-      <div id="comment" class="big">-</div>
-      <div class="muted">업데이트: <span id="updated">-</span></div>
-    </div>
-  </div>
-
-   <script src="/public/js/main.js"></script>
-  <script src="/public/js/search.js"></script> 
+  <!-- ✅ 스크립트 연결 순서 매우 중요 -->
+  <script src="/public/js/config.js"></script>
+  <script src="/public/js/api.js"></script>
+  <script src="/public/js/state.js"></script>
+  <script src="/public/js/indicators.js"></script>
+  <script src="/public/js/risk.js"></script>
+  <script src="/public/js/render.js"></script>
+  <script src="/public/js/commentary.js"></script>
+  <script src="/public/js/search.js"></script>
+  <script src="/public/js/main.js"></script>
 </body>
 </html>
