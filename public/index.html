@@ -1,90 +1,196 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>💰 사토시의지갑 - 실시간 업비트 연동 🔥</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>사토시의지갑 - 실시간 업비트 연동</title>
   <style>
-    :root{
-      --bg:#0e1621; --card:#141f2b; --text:#e7eef5; --muted:#9fb3c8; --accent:#4cc3ff; --bad:#ff6b6b; --good:#4cd964;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
-    h1{font-weight:800;letter-spacing:.3px;margin:26px 16px 10px}
-    .searchbar{display:flex;gap:8px;align-items:center;margin:0 16px 10px}
-    .searchbar input{flex:1;background:#0b141e;border:1px solid #223243;color:var(--text);border-radius:10px;padding:10px 12px;outline:0}
-    .searchbar button{background:#203140;border:0;color:#c8d6e5;padding:10px 12px;border-radius:10px;cursor:pointer}
-    .grid{display:grid;gap:14px;margin:10px 16px 40px}
-    @media(min-width:880px){.grid{grid-template-columns:1fr 1fr}}
-    .card{background:var(--card);border:1px solid #1f2c39;border-radius:14px;padding:14px 16px}
-    .card h3{margin:0 0 10px;font-weight:800}
-    .row{display:flex;justify-content:space-between;gap:10px;margin:4px 0}
-    .metric{font-weight:700}
-    .small{color:var(--muted);font-size:12px}
-    .good{color:var(--good)} .bad{color:var(--bad)} .accent{color:var(--accent)}
-    .hint{color:#95a9bd;font-size:12px;margin-top:8px}
-    .pill{display:inline-block;background:#1e3143;border:1px solid #2d4257;border-radius:999px;padding:2px 8px;font-size:12px;margin-left:6px}
-    footer{color:var(--muted);font-size:12px;margin:18px 16px 30px}
-    a{color:var(--accent);text-decoration:none}
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, AppleSDGothicNeo, "Apple SD Gothic Neo", "Noto Sans KR", Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background:#0f141a; color:#e8eef5;}
+    .wrap{max-width:1200px;margin:40px auto;padding:0 16px;}
+    h1{font-size:24px;margin:0 0 20px;}
+    .search{margin:0 0 16px;}
+    input,button{font:inherit}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:#121922;border:1px solid #1c2633;border-radius:12px;padding:16px;}
+    .card h3{margin:0 0 12px;font-size:18px;}
+    .row{display:flex;justify-content:space-between;margin:4px 0;color:#cbd6e2}
+    .metric{font-weight:700;color:#fff}
+    .small{color:#91a3b5;font-size:12px}
+    .hint{margin-top:8px;color:#7f8ea3;font-size:12px}
+    a{color:#7fb3ff;text-decoration:none}
+    footer{margin-top:16px;color:#7f8ea3;font-size:12px}
+    .ok{color:#48d597}
+    .err{color:#ff7b7b}
   </style>
 </head>
 <body>
-  <h1>💰 사토시의지갑 - 실시간 업비트 연동</h1>
+  <div class="wrap">
+    <h1>🪙 사토시의지갑 - 실시간 업비트 연동</h1>
 
-  <!-- 검색 -->
-  <div class="searchbar">
-    <input id="search-input" type="text" placeholder="코인명/심볼 검색… (예: 비트코인, 이더리움, BTC, ETH)" />
-    <button id="search-clear" title="지우기">✕</button>
+    <div class="search">
+      <input id="symbol-input" placeholder="코인/심볼 검색… (예: 비트코인, 이더리움, BTC, ETH)" style="width:280px;height:36px;border-radius:8px;border:1px solid #243244;background:#0c1116;color:#e8eef5;padding:0 10px;" />
+      <button id="apply" style="height:36px;border-radius:8px;border:1px solid #243244;background:#16202b;color:#e8eef5;padding:0 12px;margin-left:8px;">적용</button>
+      <span class="small" id="proxy-health">프록시 상태: <span id="proxy-health-badge">점검중…</span></span>
+    </div>
+
+    <div class="grid">
+      <!-- 김치 프리미엄 -->
+      <div class="card">
+        <h3>🍫 김치 프리미엄 <span class="small" id="sym-kimp">BTC</span></h3>
+        <div class="row"><span>업비트 KRW:</span><span class="metric" id="upbit-krw">-</span></div>
+        <div class="row"><span>글로벌 USD:</span><span class="metric" id="global-usd">-</span></div>
+        <div class="row"><span>USD/KRW:</span><span class="metric" id="usd-krw">-</span></div>
+        <div class="row"><span>프리미엄(%):</span><span class="metric" id="kimp-pct">-</span></div>
+        <div class="small">소스: <span id="kimp-src">-</span></div>
+      </div>
+
+      <!-- 온체인 TVL -->
+      <div class="card">
+        <h3>🧠 온체인 TVL(<span id="sym-onchain">ETH</span>)</h3>
+        <div class="row"><span>TVL:</span><span class="metric" id="onchain-tvl">-</span></div>
+        <div class="small">소스: <span id="onchain-src">-</span></div>
+      </div>
+
+      <!-- 시그널 (자리 유지, 값은 대시로 표시) -->
+      <div class="card">
+        <h3>🎯 시그널</h3>
+        <div class="row"><span>현재가:</span><span id="sig-price">-</span></div>
+        <div class="row"><span>매수:</span><span id="sig-buy">-</span></div>
+        <div class="row"><span>매도:</span><span id="sig-sell">-</span></div>
+        <div class="row"><span>손절:</span><span id="sig-stop">-</span></div>
+        <div class="row"><span>위험도:</span><span id="sig-risk">-</span></div>
+        <div class="hint">※ 단순 계산형 참고지표(테스트). 실제 매매 책임은 본인에게 있습니다.</div>
+      </div>
+
+      <!-- 쩔어 한마디 (자리 유지) -->
+      <div class="card">
+        <h3>💬 쩔어 한마디 <span class="small pill">베타</span></h3>
+        <div class="small">업데이트: <span id="commentary">-</span></div>
+        <div class="small" style="margin-top:8px">업데이트: <span id="updated">-</span></div>
+      </div>
+    </div>
+
+    <footer>
+      <a href="https://coingecko.com" target="_blank" rel="noreferrer">CoinGecko</a> /
+      <a href="https://open.er-api.com/" target="_blank" rel="noreferrer">open.er-api.com</a> /
+      <a href="https://upbit.com" target="_blank" rel="noreferrer">Upbit</a>
+      · 프로젝트
+      <a href="https://zzeolwallet.vercel.app" target="_blank" rel="noreferrer">zzeolwallet.vercel.app</a>
+    </footer>
   </div>
-  <div id="search-results" class="small" style="margin:0 16px 10px;"></div>
 
-  <div class="grid">
-    <!-- 김치 프리미엄 -->
-    <div class="card">
-      <h3>📊 김치 프리미엄 <span id="sym-kimp" class="pill">BTC</span></h3>
-      <div class="row"><span>프리미엄:</span><span class="metric" id="kimp-pct">-</span></div>
-      <div class="row"><span>업비트 KRW:</span><span class="metric" id="upbit-krw">-</span></div>
-      <div class="row"><span>글로벌 USD:</span><span class="metric" id="global-usd">-</span></div>
-      <div class="row"><span>USD/KRW:</span><span class="metric" id="usdkrw">-</span></div>
-      <div class="row small"><span>소스:</span><span>CoinGecko / open.er-api.com / Upbit</span></div>
-    </div>
+  <!-- 올인원 스크립트: 외부 모듈 import/기존 js 파일 필요 없음 -->
+  <script type="module">
+    // ====== 설정 ======
+    const CONFIG = {
+      PROXY_BASE: 'https://satoshi-proxy.mujukno1.workers.dev',
+      DEFAULT_SYMBOL_KIMP: 'BTC',
+      DEFAULT_SYMBOL_ONCHAIN: 'ETH',
+      FETCH_TIMEOUT_MS: 10_000
+    };
 
-    <!-- 온체인 TVL -->
-    <div class="card">
-      <h3>🧠 온체인 TVL(<span id="sym-onchain">ETH</span>)</h3>
-      <div class="row"><span>TVL:</span><span class="metric" id="onchain-tvl">-</span></div>
-      <div class="row small"><span>소스:</span><span>DefiLlama</span></div>
-    </div>
+    // ====== 유틸 ======
+    const $ = (id) => document.getElementById(id);
+    const nf0 = (n) => Number(n).toLocaleString('ko-KR');
+    const nf2 = (n) => Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+    const pct2 = (n) => (Number(n).toFixed(2) + '%');
 
-    <!-- 시그널 -->
-    <div class="card">
-      <h3>🎯 시그널</h3>
-      <div class="row"><span>현재가:</span><span class="metric" id="sig-price">-</span></div>
-      <div class="row"><span>매수:</span><span id="sig-buy">-</span></div>
-      <div class="row"><span>매도:</span><span id="sig-sell">-</span></div>
-      <div class="row"><span>손절:</span><span id="sig-stop">-</span></div>
-      <div class="row"><span>위험도:</span><span id="sig-risk">-</span></div>
-      <div class="hint">※ 단순 계산형 참고지표(테스트). 실제 매매 책임은 본인에게 있습니다.</div>
-    </div>
+    const withTimeout = (p, ms, msg='요청 시간초과') => {
+      const t = new Promise((_, rej)=>setTimeout(()=>rej(new Error(msg)), ms));
+      return Promise.race([p, t]);
+    };
 
-    <!-- 쩔어 한마디 -->
-    <div class="card">
-      <h3>🧠 쩔어 한마디<span id="ai-pill" class="pill">베타</span></h3>
-      <div id="commentary" class="metric">-</div>
-      <div class="small" style="margin-top:8px">업데이트: <span id="updated">-</span></div>
-    </div>
-  </div>
+    const getJson = async (url) => {
+      const res = await withTimeout(fetch(url, { cache:'no-store' }), CONFIG.FETCH_TIMEOUT_MS);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    };
 
-  <footer>
-    프록시 상태: <span id="proxy-health" class="small">점검중…</span> ·
-    <a href="https://zzeolwallet.vercel.app" target="_blank">프로젝트</a>
-  </footer>
+    // ====== 프록시 헬스 ======
+    const pingHealth = async () => {
+      try {
+        const j = await getJson(CONFIG.PROXY_BASE + '/api/health');
+        $('proxy-health-badge').textContent = j?.ok ? '정상' : '점검중…';
+        $('proxy-health-badge').className = j?.ok ? 'ok' : 'err';
+      } catch {
+        $('proxy-health-badge').textContent = '오프라인';
+        $('proxy-health-badge').className = 'err';
+      }
+    };
 
-<!-- JS: 모듈 로드 -->
-<script type="module" src="/js/config.js"></script>
-<script type="module" src="/js/api.js"></script>
-<script type="module" src="/js/state.js"></script>
-<script type="module" src="/js/render.js"></script>
-<script type="module" src="/js/main.js"></script>
+    // ====== 김프 ======
+    const fetchKimp = async (symbol) => {
+      const j = await getJson(`${CONFIG.PROXY_BASE}/api/premium?symbol=${encodeURIComponent(symbol)}`);
+      if (j?.ok !== true) throw new Error(j?.error || 'kimp error');
+
+      // 표시는 소수점 0~2자리 적절히
+      $('upbit-krw').textContent = nf0(j.upbitPrice);
+      $('global-usd').textContent = nf2(j.globalUsd);
+      $('usd-krw').textContent  = nf2(j.usdkrw);
+      $('kimp-pct').textContent = pct2(j.premiumPct);
+      $('kimp-src').textContent = `${j?.src?.global || 'CoinGecko'} / ${j?.src?.fx || 'open.er-api.com'} / ${j?.src?.krw || 'Upbit'}`;
+      $('updated').textContent = new Date(j.updatedAt || Date.now()).toLocaleString('ko-KR');
+    };
+
+    // ====== 온체인 TVL ======
+    const fetchOnchain = async (symbol) => {
+      const j = await getJson(`${CONFIG.PROXY_BASE}/api/onchain?symbol=${encodeURIComponent(symbol)}`);
+      if (j?.ok !== true) throw new Error(j?.error || 'onchain error');
+
+      $('onchain-tvl').textContent = nf0(j.tvlusd);
+      $('onchain-src').textContent = j?.src || 'DefiLlama';
+    };
+
+    // ====== UI 바인딩 ======
+    const state = {
+      kimpSymbol: CONFIG.DEFAULT_SYMBOL_KIMP,
+      onchainSymbol: CONFIG.DEFAULT_SYMBOL_ONCHAIN,
+    };
+
+    const applySymbolsFromInput = () => {
+      const raw = ($('symbol-input').value || '').trim();
+      if (!raw) return; // 아무것도 안치면 유지
+      const t = raw.toUpperCase();
+      // 간단치환
+      if (t.includes('ETH')) state.onchainSymbol = 'ETH';
+      if (t.includes('BTC')) state.kimpSymbol = 'BTC';
+      // 일반심볼(3~5자)만 입력하면 BTC/ETH는 유지
+      $('sym-kimp').textContent = state.kimpSymbol;
+      $('sym-onchain').textContent = state.onchainSymbol;
+      refreshAll().catch(console.error);
+    };
+
+    const refreshAll = async () => {
+      $('sym-kimp').textContent = state.kimpSymbol;
+      $('sym-onchain').textContent = state.onchainSymbol;
+      try { await fetchKimp(state.kimpSymbol); } catch(e){ console.error(e); setKimpFallback(); }
+      try { await fetchOnchain(state.onchainSymbol); } catch(e){ console.error(e); setOnchainFallback(); }
+    };
+
+    const setKimpFallback = () => {
+      $('upbit-krw').textContent = '-';
+      $('global-usd').textContent = '-';
+      $('usd-krw').textContent = '-';
+      $('kimp-pct').textContent = '-';
+      $('kimp-src').textContent = '-';
+    };
+
+    const setOnchainFallback = () => {
+      $('onchain-tvl').textContent = '-';
+      $('onchain-src').textContent = '-';
+    };
+
+    // ====== 부팅 ======
+    (async () => {
+      await pingHealth();
+      $('sym-kimp').textContent = state.kimpSymbol;
+      $('sym-onchain').textContent = state.onchainSymbol;
+      $('apply').addEventListener('click', applySymbolsFromInput);
+      await refreshAll();
+      // 주기 리프레시(선택): 60초
+      setInterval(refreshAll, 60_000);
+    })();
+  </script>
 </body>
 </html>
