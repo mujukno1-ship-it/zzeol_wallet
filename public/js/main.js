@@ -1,45 +1,60 @@
-// 메인 페이지 로직: 연동 모듈 사용
-import { getPremium } from '/api_connect/kimchi_premium.js';
-import { getOnchain } from '/api_connect/onchain_connect.js';
+// public/js/main.js
+import { REFRESH_MS } from "./modules/config.js";
+import { fetchPremium, fetchOnchain } from "./modules/api.js";
+import { state, pushHistory } from "./modules/state.js";
+import { calcSignals } from "./modules/indicators.js";
+import { computeRisk } from "./modules/risk.js";
+import { makeComment } from "./modules/commentary.js";
+import { renderPremium, renderOnchain, renderSignals } from "./modules/render.js";
 
-const $ = (id) => document.getElementById(id);
-const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
-const fmt = {
-  pct: (x) => (x==null||isNaN(x)) ? '--%' : `${Number(x).toFixed(2)}%`,
-  krw: (x) => (x==null||isNaN(x)) ? '-' : Number(x).toLocaleString('ko-KR'),
-  num: (x) => (x==null||isNaN(x)) ? '-' : Number(x).toLocaleString('en-US'),
-};
+async function tick(){
+  try{
+    const [p, o] = await Promise.all([fetchPremium(), fetchOnchain()]);
 
-async function loadKimchi() {
-  try {
-    const d = await getPremium('BTC');               // 김프/업비트/환율/글로벌KRW
-    set('kimchi-premium', fmt.pct(d.premiumPct));
-    set('upbit-krw', fmt.krw(d.upbitPrice));
-    set('global-krw', fmt.krw(d.globalKrw));
-    set('usd-krw', fmt.num(d.usdkrw));
-    set('status', '');
-  } catch (e) {
-    set('kimchi-premium', '--%');
-    set('status', '오류');
-    console.error('김프 로드 오류:', e);
+    // 화면1: 프리미엄 & 시세
+    const kimpPct = p.premiumPct ?? deriveKimp(p);
+    renderPremium({
+      kimpPct, upbitPrice: p.upbitPrice, usdkrw: p.usdkrw, globalUsd: p.globalUsd,
+      src: p.src, updatedAt: p.updatedAt
+    });
+    renderOnchain({ tvl: o.tvl, src: o.src });
+
+    // 상태 기록
+    pushHistory(state.history.premiumPct, Number(kimpPct), state.maxPoints);
+    pushHistory(state.history.price, Number(p.upbitPrice), state.maxPoints);
+
+    // 시그널 계산
+    const sig = calcSignals({
+      nowPrice: p.upbitPrice,
+      premiumPctHist: state.history.premiumPct,
+      tvlUsd: o.tvl,
+    });
+    const risk = computeRisk({ premiumPctHist: state.history.premiumPct, tvlUsd: o.tvl });
+    const comment = makeComment({ bias: sig.bias, risk, kimpAvg: sig.kimpAvg, kimpSlope: sig.kimpSlope });
+
+    renderSignals({
+      nowPrice: p.upbitPrice,
+      buyPrice: sig.buyPrice,
+      sellPrice: sig.sellPrice,
+      stopPrice: sig.stopPrice,
+      risk,
+      comment
+    });
+
+  }catch(e){
+    console.error(e);
+    // 최소 표시
+    renderSignals({ nowPrice: null, buyPrice:null, sellPrice:null, stopPrice:null, risk:"-", comment:"데이터 로딩 오류" });
   }
 }
 
-async function loadOnchain() {
-  try {
-    const d = await getOnchain('ETH');               // TVL
-    set('onchain-tvl', fmt.num(d.tvl));
-    set('onchain-active', d.activeAddress ? fmt.num(d.activeAddress) : '-');
-  } catch (e) {
-    set('onchain-tvl', '-');
-    set('onchain-active', '-');
-    console.error('온체인 로드 오류:', e);
-  }
+function deriveKimp(p){
+  // premiumPct가 null일 때 대비: (업비트KRW / (글로벌USD * USDKRW) - 1) * 100
+  const { upbitPrice, globalUsd, usdkrw } = p;
+  if(!upbitPrice || !globalUsd || !usdkrw) return null;
+  const globalKrw = Number(globalUsd) * Number(usdkrw);
+  return ((Number(upbitPrice)/globalKrw) - 1) * 100;
 }
 
-function start() {
-  loadKimchi();  loadOnchain();
-  setInterval(loadKimchi, 15000);
-  setInterval(loadOnchain, 30000);
-}
-document.addEventListener('DOMContentLoaded', start);
+tick();
+setInterval(tick, REFRESH_MS);
