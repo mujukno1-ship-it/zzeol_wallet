@@ -1,100 +1,242 @@
-// ===== 설정 =====
-const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api"; // 필요 시 변경
-let currentRisk = 1;
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>사토시의지갑 — ULTRA 시그널</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #0b0f14;
+      --card: #0f172a;
+      --border: #1f2937;
+      --muted: #9ca3af;
+      --text: #e5e7eb;
+      --primary: #2563eb;
+      --primary-600: #1d4ed8;
+      --danger: #f87171;
+    }
+    html, body { background: var(--bg); color: var(--text); margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+    .container { max-width: 980px; margin: 0 auto; padding: 20px; }
+    .card { padding: 16px; margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn { padding: 10px 14px; border-radius: 8px; border: 1px solid #4b5563; background: var(--primary); color: #fff; cursor: pointer; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-ghost { padding: 8px 12px; border-radius: 8px; border: 1px solid #374151; background: #111827; color: var(--text); cursor: pointer; }
+    .btn-ghost.active { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+    .input { flex: 1; min-width: 220px; padding: 10px 12px; border-radius: 8px; border: 1px solid #374151; background: #111827; color: var(--text); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap: 8px; }
+    .cell { padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); }
+    .kicker { font-size: 12px; opacity: .75; }
+    .big { font-size: 16px; font-weight: 700; }
+    .muted { color: var(--muted); }
+    .danger { color: var(--danger); }
+    .badge { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #374151; background: #111827; }
+    .badgebull { background:#052e16; border-color:#14532d; }
+    .badgebear { background:#3f1d1d; border-color:#7f1d1d; }
+    .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    a { color: #93c5fd; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="row" style="justify-content: space-between; margin-bottom: 8px;">
+      <h1 style="margin:0; font-size: 20px;">사토시의지갑 · ULTRA 신호판</h1>
+      <nav class="row">
+        <a href="https://satoshi-proxy.mujukno1.workers.dev/api/health" target="_blank">/health</a>
+        <span class="muted">·</span>
+        <a href="https://satoshi-proxy.mujukno1.workers.dev/api/markets" target="_blank">/markets</a>
+      </nav>
+    </header>
 
-function setRiskButtons(risk){
-  document.querySelectorAll(".risk-btn").forEach(btn=>{
-    const active = Number(btn.dataset.risk) === risk;
-    btn.style.background = active ? "#1d4ed8" : "#111827";
-    btn.style.color = active ? "#fff" : "#e5e7eb";
-    btn.style.borderColor = active ? "#1d4ed8" : "#374151";
-  });
-}
+    <!-- ULTRA 시그널 위젯 -->
+    <section class="card">
+      <h2 style="margin:0 0 12px; font-size: 18px;">ULTRA 시그널 (ATR + OBI + Spike + Mode + Accuracy)</h2>
 
-// 숫자 포맷(호가틱 감안해 소수 8자리까지만)
-const fmt = (v) => (v===null||v===undefined) ? "—" : (Math.abs(v) >= 1 ? v.toLocaleString() : v.toFixed(8));
+      <div class="row">
+        <input id="ultra-market" class="input" placeholder="예: KRW-SHIB / KRW-BTC" />
+        <button id="ultra-run" class="btn">시그널 불러오기</button>
+      </div>
 
-// 상태 표시
-function setStatus(msg, ok=true){
-  const el = document.getElementById("ultra-status");
-  if (!el) return;
-  el.textContent = msg;
-  el.style.color = ok ? "#9ca3af" : "#f87171";
-}
+      <div class="row" style="margin-top:10px;">
+        <span class="muted">리스크:</span>
+        <button class="btn-ghost risk-btn" data-risk="1">보수형(1)</button>
+        <button class="btn-ghost risk-btn" data-risk="2">보통형(2)</button>
+        <button class="btn-ghost risk-btn" data-risk="3">공격형(3)</button>
 
-// 렌더
-function renderUltra(data){
-  const card = document.getElementById("ultra-card");
-  if (!card) return;
+        <span class="muted" style="margin-left:16px;">임계값(th):</span>
+        <input id="ultra-th" class="input" type="number" step="0.01" min="0.5" max="0.95" value="0.80" style="width: 110px;" />
+      </div>
 
-  const row = data.rows?.[0] || {};
-  card.style.display = "block";
+      <div id="ultra-status" class="muted" style="margin-top:10px; font-size: 13px;">준비됨.</div>
 
-  const modeEl = document.getElementById("ultra-mode-badge");
-  const accEl  = document.getElementById("ultra-acc-badge");
-  const ntEl   = document.getElementById("ultra-nt-badge");
-  const riskEl = document.getElementById("ultra-risk");
+      <div id="ultra-card" style="margin-top:12px; display:none;">
+        <div class="row" style="margin-bottom:8px;">
+          <span id="ultra-mode-badge" class="badge">MODE</span>
+          <span id="ultra-acc-badge" class="badge">ACC</span>
+          <span id="ultra-nt-badge" class="badge" style="display:none;">NO-TRADE</span>
+        </div>
 
-  const mode = row.mode || "NEUTRAL";
-  modeEl.textContent = `MODE: ${mode}`;
-  if (mode === "BULL"){ modeEl.style.background="#052e16"; modeEl.style.borderColor="#14532d"; }
-  else if (mode === "BEAR"){ modeEl.style.background="#3f1d1d"; modeEl.style.borderColor="#7f1d1d"; }
-  else { modeEl.style.background="#111827"; modeEl.style.borderColor="#374151"; }
+        <div id="ultra-last" class="muted" style="margin-bottom:6px;">—</div>
 
-  const accPct = Math.round((row.accuracy || 0)*100);
-  accEl.textContent = `ACC: ${accPct}% (th ${Math.round((row.threshold||0)*100)}%)`;
+        <div class="grid">
+          <div class="cell"><div class="kicker">매수1</div><div id="ultra-buy1" class="big">—</div></div>
+          <div class="cell"><div class="kicker">매수2</div><div id="ultra-buy2" class="big">—</div></div>
+          <div class="cell"><div class="kicker">익절1</div><div id="ultra-sell1" class="big">—</div></div>
+          <div class="cell"><div class="kicker">익절2</div><div id="ultra-sell2" class="big">—</div></div>
+          <div class="cell"><div class="kicker">손절</div><div id="ultra-stop" class="big danger">—</div></div>
+        </div>
 
-  if (row.no_trade){ ntEl.style.display="inline-block"; ntEl.textContent="NO-TRADE"; }
-  else { ntEl.style.display="none"; }
+        <div class="muted" style="margin-top:10px; font-size: 12px;">
+          tick: <span id="ultra-tick">—</span> · risk: <span id="ultra-risk">—</span>
+        </div>
+      </div>
+    </section>
 
-  document.getElementById("ultra-last").textContent = `last: ${fmt(row.last)} KRW`;
-  document.getElementById("ultra-buy1").textContent = fmt(row.buy1);
-  document.getElementById("ultra-buy2").textContent = fmt(row.buy2);
-  document.getElementById("ultra-sell1").textContent = fmt(row.sell1);
-  document.getElementById("ultra-sell2").textContent = fmt(row.sell2);
-  document.getElementById("ultra-stop").textContent = fmt(row.stop);
-  document.getElementById("ultra-tick").textContent = fmt(row.tick);
-  riskEl.textContent = row.risk ?? currentRisk;
-}
+    <!-- 시장 힌트: 김프 / 온체인 -->
+    <section class="tiles">
+      <div class="card">
+        <div class="kicker" style="margin-bottom:6px;">김치 프리미엄</div>
+        <div id="box-premium" class="big">—</div>
+        <div id="box-premium-sub" class="kicker" style="margin-top:4px;">KRW/USDT·환율: —</div>
+      </div>
+      <div class="card">
+        <div class="kicker" style="margin-bottom:6px;">온체인 TVL (Ethereum)</div>
+        <div id="box-tvl" class="big">—</div>
+        <div id="box-tvl-sub" class="kicker" style="margin-top:4px;">DefiLlama 기반</div>
+      </div>
+    </section>
 
-async function loadSignalUltra(){
-  const market = (document.getElementById("ultra-market").value || "").trim();
-  const th = Number(document.getElementById("ultra-th").value || 0.80);
-  if (!market){ setStatus("마켓을 입력해주세요. 예: KRW-SHIB", false); return; }
+    <footer class="muted" style="margin-top: 24px; font-size: 12px;">
+      API: <code>https://satoshi-proxy.mujukno1.workers.dev/api</code> · 문제가 있으면 스크린샷 남겨줘!
+    </footer>
+  </div>
 
-  setStatus("불러오는 중…");
-  try{
-    const url = `${API_BASE}/signal_ultra?market=${encodeURIComponent(market)}&risk=${currentRisk}&threshold=${th.toFixed(2)}`;
-    const res = await fetch(url);
-    const json = await res.json();
+  <script>
+    // ===== 설정 =====
+    const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api"; // 필요시 교체
+    let currentRisk = 1;
 
-    if (!res.ok || !json.ok){ throw new Error(json?.error || `HTTP ${res.status}`); }
+    // 유틸
+    const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    const fmt = (v) => (v===null||v===undefined||Number.isNaN(Number(v)))
+      ? "—" : (Math.abs(Number(v)) >= 1 ? Number(v).toLocaleString() : Number(v).toFixed(8));
+    function setStatus(msg, ok=true){
+      const el = document.getElementById("ultra-status");
+      if(!el) return;
+      el.textContent = msg;
+      el.style.color = ok ? "var(--muted)" : "var(--danger)";
+    }
+    function setRiskButtons(risk){
+      document.querySelectorAll(".risk-btn").forEach(btn=>{
+        const active = Number(btn.dataset.risk) === risk;
+        btn.classList.toggle("active", active);
+      });
+    }
 
-    renderUltra(json);
-    setStatus("완료.");
-  }catch(err){
-    setStatus(`오류: ${err.message || err}`, false);
-  }
-}
+    // 렌더
+    function renderUltra(json){
+      const row = json?.rows?.[0];
+      if(!row){ setStatus("데이터가 비어있습니다.", false); return; }
 
-// 이벤트 바인딩
-(function initUltraUI(){
-  const runBtn = document.getElementById("ultra-run");
-  const marketInput = document.getElementById("ultra-market");
+      const card = document.getElementById("ultra-card");
+      card.style.display = "block";
 
-  if (runBtn) runBtn.addEventListener("click", loadSignalUltra);
-  if (marketInput){
-    marketInput.addEventListener("keydown", (e)=>{
-      if (e.key === "Enter") loadSignalUltra();
-    });
-  }
-  document.querySelectorAll(".risk-btn").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      currentRisk = Number(btn.dataset.risk) || 1;
+      const modeEl = document.getElementById("ultra-mode-badge");
+      modeEl.textContent = `MODE: ${row.mode || "NEUTRAL"}`;
+      modeEl.classList.remove("badgebull","badgebear");
+      if (row.mode === "BULL") modeEl.classList.add("badgebull");
+      if (row.mode === "BEAR") modeEl.classList.add("badgebear");
+
+      const accEl = document.getElementById("ultra-acc-badge");
+      const accPct = Math.round((row.accuracy || 0)*100);
+      const thPct  = Math.round((row.threshold || 0)*100);
+      accEl.textContent = `ACC: ${accPct}% (th ${thPct}%)`;
+
+      const ntEl = document.getElementById("ultra-nt-badge");
+      ntEl.style.display = row.no_trade ? "inline-block" : "none";
+
+      document.getElementById("ultra-last").textContent  = `last: ${fmt(row.last)} KRW`;
+      document.getElementById("ultra-buy1").textContent  = fmt(row.buy1);
+      document.getElementById("ultra-buy2").textContent  = fmt(row.buy2);
+      document.getElementById("ultra-sell1").textContent = fmt(row.sell1);
+      document.getElementById("ultra-sell2").textContent = fmt(row.sell2);
+      document.getElementById("ultra-stop").textContent  = fmt(row.stop);
+      document.getElementById("ultra-tick").textContent  = fmt(row.tick);
+      document.getElementById("ultra-risk").textContent  = row.risk ?? currentRisk;
+    }
+
+    // 호출
+    async function loadSignalUltra(){
+      const market = (document.getElementById("ultra-market").value || "").trim();
+      let th = Number(document.getElementById("ultra-th").value || 0.80);
+      th = clamp(th, 0.5, 0.95); // 임계값 안전한 범위 고정
+      document.getElementById("ultra-th").value = th.toFixed(2);
+
+      if(!market){ setStatus("마켓을 입력해주세요. 예: KRW-SHIB", false); return; }
+      setStatus("불러오는 중…");
+      const url = `${API_BASE}/signal_ultra?market=${encodeURIComponent(market)}&risk=${currentRisk}&threshold=${th.toFixed(2)}`;
+      try{
+        const res = await fetch(url, { cache: "no-store" });
+        const json = await res.json().catch(()=> ({}));
+        if(!res.ok || !json.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+        renderUltra(json);
+        setStatus(json.rows?.[0]?.no_trade ? "완료 (NO-TRADE: 신뢰도 미달)" : "완료.");
+      }catch(err){
+        setStatus(`오류: ${err.message || err}`, false);
+      }
+    }
+
+    // 김프/온체인
+    async function loadPremiumBox(){
+      try{
+        const res = await fetch(`${API_BASE}/premium`, { cache: "no-store" });
+        const j = await res.json();
+        if(!res.ok || !j.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+        const r = j.rows || {};
+        const p = (Number(r.premium) || 0).toFixed(2);
+        document.getElementById("box-premium").textContent = `${p}%`;
+        document.getElementById("box-premium-sub").textContent = `KRW-BTC: ${fmt(r.krw_btc)} | USDT-BTC: ${fmt(r.usdt_btc)} × USDKRW: ${fmt(r.usdkrw)}`;
+      }catch(e){
+        document.getElementById("box-premium").textContent = "—";
+        document.getElementById("box-premium-sub").textContent = "데이터 오류";
+      }
+    }
+    async function loadOnchainBox(){
+      try{
+        const res = await fetch(`${API_BASE}/onchain`, { cache: "no-store" });
+        const j = await res.json();
+        if(!res.ok || !j.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+        const tvl = Number(j.rows?.tvl_usd) || 0;
+        document.getElementById("box-tvl").textContent = `$ ${tvl.toLocaleString()}`;
+      }catch(e){
+        document.getElementById("box-tvl").textContent = "—";
+      }
+    }
+
+    // 이벤트 바인딩/초기화
+    (function init(){
+      // 버튼
+      document.getElementById("ultra-run")?.addEventListener("click", loadSignalUltra);
+      // Enter 로드
+      document.getElementById("ultra-market")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ e.preventDefault(); loadSignalUltra(); }});
+      // 리스크 토글
+      document.querySelectorAll(".risk-btn").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          currentRisk = Number(btn.dataset.risk) || 1;
+          setRiskButtons(currentRisk);
+          loadSignalUltra();
+        });
+      });
       setRiskButtons(currentRisk);
-      loadSignalUltra();
-    });
-  });
 
-  setRiskButtons(currentRisk);
-})();
+      // 첫 로드시 시장 힌트
+      loadPremiumBox(); loadOnchainBox();
+      // 주기 업데이트
+      setInterval(loadPremiumBox, 15000);
+      setInterval(loadOnchainBox, 60000);
+    })();
+  </script>
+</body>
+</html>
