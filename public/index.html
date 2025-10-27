@@ -1,408 +1,437 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>쩔어진갑 ∞ 전설판 (실시간 매수·매도 타점)</title>
-  <style>
-    :root{
-      --bg:#0c0e12; --card:#131722; --muted:#9aa4b2; --text:#e7edf3; --accent:#63b3ff;
-      --green:#13c29a; --red:#ff6b6b; --amber:#ffb020; --chip:#222a36;
-    }
-    *{box-sizing:border-box}
-    html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Pretendard,system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
-    .wrap{max-width:1200px;margin:36px auto;padding:0 16px}
-    header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
-    .title{font-weight:800;font-size:20px}
-    .badge{background:#1a2331;color:#9ed0ff;border:1px solid #263248;border-radius:999px;padding:6px 10px}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    @media (max-width:940px){.row{grid-template-columns:1fr}}
-    .card{background:var(--card);border:1px solid #202636;border-radius:14px;padding:16px}
-    .card h3{margin:0 0 10px;font-size:15px}
-    .muted{color:var(--muted)}
-    .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:center}
-    .table{width:100%;border-collapse:collapse}
-    .table th,.table td{padding:12px 10px;border-bottom:1px solid #1f2736;text-align:right;white-space:nowrap}
-    .table th:first-child,.table td:first-child{text-align:left}
-    .pill{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid #263248;border-radius:999px;padding:4px 10px}
-    .risk{display:inline-flex;min-width:24px;height:24px;align-items:center;justify-content:center;border-radius:6px;font-weight:700}
-    .r5{background:#2a1417;color:#ff9aa0;border:1px solid #4a1d26}
-    .r4{background:#2a1b11;color:#ffc79a;border:1px solid #4a2b1a}
-    .r3{background:#27210f;color:#ffd88a;border:1px solid #42331a}
-    .r2{background:#16231c;color:#a5f1d8;border:1px solid #1f3a2c}
-    .r1{background:#112025;color:#9bd9ff;border:1px solid #18313a}
-    .ok{color:var(--green)} .bad{color:var(--red)} .warn{color:var(--amber)}
-    .foot{color:#758195;text-align:center;margin:18px 0}
-    input,button{font:inherit}
-    input[type=search]{flex:1;min-width:260px;background:#0f141e;border:1px solid #1d2433;border-radius:10px;color:var(--text);padding:12px 14px;outline:none}
-    input[type=search]::placeholder{color:#6f7b8f}
-    .btn{background:#162033;border:1px solid #22324e;color:#bfe0ff;border-radius:10px;padding:10px 14px;cursor:pointer}
-    .btn:hover{filter:brightness(1.08)}
-    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
-    .blink{animation:blink .8s ease}
-    @keyframes blink{0%{background:rgba(255,255,255,.06)}100%{background:transparent}}
-    .small{font-size:12px}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>쩔어진갑 ∞ 전설판 (실시간 매수·매도 타점)</title>
+<style>
+  :root{
+    --bg:#0d1016;--panel:#151923;--text:#e8eefc;--muted:#9aa7bd;--green:#19d18f;--red:#ff5d73;
+    --amber:#ffb020;--blue:#56a8ff;--chip:#23293a;--chip-border:#2c3446;
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 ui-sans-serif,system-ui,AppleSDGothicNeo,Segoe UI,Roboto,Helvetica,Arial}
+  a{color:var(--blue);text-decoration:none}  .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+  .row{display:grid;gap:16px}
+  .grid-2{grid-template-columns:1fr 1fr}
+  .card{background:var(--panel);border:1px solid #1b2130;border-radius:14px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+  h1{font-size:18px;margin:0 0 12px;display:flex;gap:10px;align-items:center}
+  .muted{color:var(--muted)}
+  .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:8px}
+  .k{background:var(--chip);border:1px solid var(--chip-border);border-radius:12px;padding:12px}
+  .k .t{font-size:12px;color:var(--muted)}
+  .k .v{font-size:18px;margin-top:4px}
+  .flex{display:flex;gap:8px;align-items:center}
+  .pill{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#1e2636;border:1px solid #2a3346;color:#b9c6dc;font-size:12px}
+  .ok{background:#0f2d27;border-color:#17443a;color:#9ce6c7}
+  .warn{background:#2d260f;border-color:#4a4022;color:#ffe4a3}
+  .bad{background:#2d1416;border-color:#4a2227;color:#ffb9c2}
+  .searchbar{display:flex;gap:8px}
+  .searchbar input{flex:1;background:#0f1420;border:1px solid #252d3f;border-radius:12px;padding:12px 14px;color:var(--text);outline:none}
+  .btn{background:#1a2335;border:1px solid #2a3550;color:#cfe1ff;padding:10px 14px;border-radius:10px;cursor:pointer}
+  .btn:hover{filter:brightness(1.1)}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th,td{padding:10px;border-bottom:1px solid #20283a;text-align:right;font-variant-numeric:tabular-nums}
+  th:first-child,td:first-child{text-align:left}
+  th{color:#9fb0cc;font-weight:600}
+  .up{color:var(--green)} .dn{color:var(--red)}
+  .risk{display:inline-block;min-width:22px;text-align:center;border-radius:6px;padding:2px 6px;font-weight:700}
+  .r1{background:#10361f;color:#9cf0b8}.r2{background:#103036;color:#9ce1f0}.r3{background:#362f10;color:#ffe3a1}.r4{background:#3a2010;color:#ffc0a1}.r5{background:#3a1010;color:#ffb3ba}
+  .section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .small{font-size:12px;color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chipbtn{padding:6px 10px;border-radius:999px;background:#1a2030;border:1px solid #293247;color:#aecdff;cursor:pointer}
+  .chipbtn.active{background:#19314f;border-color:#23507e}
+  .hint{font-size:12px;color:#93a3bd;margin-top:8px}
+</style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="title">쩔어진갑 ∞ 전설판</div>
-    <span class="badge">정밀판 95%</span>
-    <span class="muted">업비트 호가단위·김프·온체인·시그널 연동</span>
-  </header>
 
-  <!-- 검색 -->
-  <section class="card" style="margin-bottom:16px">
-    <h3>검색</h3>
-    <div style="display:flex;gap:8px">
-      <input id="q" type="search" placeholder="코인명 또는 심볼 (예: 비트코인, 이더리움, BTC, ETH)" />
-      <button class="btn" id="btnSearch">검색</button>
-      <button class="btn" id="btnClear">초기화</button>
-    </div>
-    <div id="searchResult" style="margin-top:12px"></div>
-  </section>
-
-  <!-- 상단 2열 -->
-  <section class="row">
+  <div class="row">
     <div class="card">
-      <h3>김치 프리미엄 <span id="pf-sym" class="muted"></span></h3>
-      <div class="grid small" style="grid-template-columns:repeat(4,1fr)">
-        <div>업비트 KRW</div><div class="ok" id="pf-krw">-</div>
-        <div>글로벌 USD</div><div id="pf-usd">-</div>
-        <div>USD/KRW</div><div id="pf-usdkrw">-</div>
-        <div>프리미엄(%)</div><div id="pf-pct">-</div>
+      <div class="section-title">
+        <h1>🔎 검색</h1>
+        <div class="small">API 연결: <span id="apiStatus" class="pill">체크중…</span></div>
       </div>
-      <div class="muted small" id="pf-src" style="margin-top:8px">소스: CoinGecko · open-er-api / Upbit</div>
+      <div class="searchbar">
+        <input id="q" placeholder="예: BTC, ETH, 이더리움, 비트코인캐시, 시바이누…" />
+        <button class="btn" id="btnSearch">검색</button>
+        <button class="btn" id="btnReset">초기화</button>
+      </div>
+      <div id="searchArea" class="card" style="margin-top:12px;display:none">
+        <div class="section-title"><h1>검색 결과</h1><div class="small" id="searchTime"></div></div>
+        <div id="searchTableWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row grid-2" style="margin-top:16px">
+    <div class="card" id="kimchiCard">
+      <h1>💎 김치 프리미엄</h1>
+      <div class="kpi">
+        <div class="k"><div class="t">업비트 KRW</div><div class="v" id="k_upbit">-</div></div>
+        <div class="k"><div class="t">글로벌 USD</div><div class="v" id="k_global">-</div></div>
+        <div class="k"><div class="t">USD/KRW</div><div class="v" id="k_fx">-</div></div>
+        <div class="k"><div class="t">프리미엄(%)</div><div class="v" id="k_premium">-</div></div>
+      </div>
+      <div class="hint">소스: CoinGecko · open.er-api · Upbit</div>
+    </div>
+
+    <div class="card" id="tvlCard">
+      <div class="section-title">
+        <h1>🧠 온체인 TVL (ETH)</h1>
+        <button class="btn" id="btnSwitchTvl">자동 롤링</button>
+      </div>
+      <div class="kpi">
+        <div class="k"><div class="t">TVL</div><div class="v" id="tvl_val">-</div></div>
+        <div class="k"><div class="t">소스</div><div class="v" id="tvl_src">-</div></div>
+        <div class="k"><div class="t">업데이트</div><div class="v" id="tvl_ts">-</div></div>
+        <div class="k"><div class="t">상태</div><div class="v" id="tvl_state">-</div></div>
+      </div>
+      <div class="hint">DefiLlama 장애 시 /v2/chains로 자동 전환</div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="card">
+      <div class="section-title">
+        <h1>⚡ SPARK (급등 감지 · 상단 고정 TOP 10)</h1>
+        <div class="small">최근 60초 대비 상승률 기준</div>
+      </div>
+      <div id="sparkTableWrap"></div>
+    </div>
+  </div>
+
+  <div class="row grid-2" style="margin-top:16px">
+    <div class="card">
+      <div class="section-title">
+        <h1>⭐ 관심코인 (최대 10개)</h1>
+        <div class="chips" id="favChips"></div>
+      </div>
+      <div id="favTableWrap"></div>
+      <div class="hint">관심코인은 브라우저에 저장됩니다. (깜빡임 방지 적용)</div>
     </div>
 
     <div class="card">
-      <h3>온체인 TVL (ETH) <span class="pill small">자동 폴백</span></h3>
-      <div class="grid small" style="grid-template-columns:120px 1fr">
-        <div class="muted">TVL</div><div id="tvl-val">-</div>
-        <div class="muted">소스</div><div id="tvl-src">-</div>
-      </div>
-      <div id="tvl-hint" class="muted small" style="margin-top:8px"></div>
+      <div class="section-title"><h1>🗣️ 쩔어 한마디</h1><div class="small" id="oneLineTs">-</div></div>
+      <div id="oneLineBox" class="k" style="font-size:16px">-</div>
     </div>
-  </section>
+  </div>
 
-  <!-- 실시간 시그널 보드 -->
-  <section class="card" style="margin-top:16px">
-    <h3>시그널 보드</h3>
-    <table class="table" id="sig">
-      <thead>
-        <tr>
-          <th>코인명</th>
-          <th>현재가</th>
-          <th>매수</th>
-          <th>매도</th>
-          <th>손절</th>
-          <th>위험도</th>
-          <th>쩔어결론</th>
-        </tr>
-      </thead>
-      <tbody id="sigBody"></tbody>
-    </table>
-    <div class="muted small" style="margin-top:6px">※ 단순 계량형 참고지표(테스트). 실제 매매 책임은 본인에게 있습니다.</div>
-  </section>
-
-  <!-- 관심코인 -->
-  <section class="card" style="margin-top:16px">
-    <h3>영구 고정 · <b>SPARK</b> (관심코인 고정표시)</h3>
-    <div id="watchlist" class="chips"></div>
-    <div class="muted small" style="margin-top:8px">SPARK: 관심코인 고정 · 시그널/알림 연동 예정</div>
-  </section>
-
-  <!-- 쩔어 한마디 -->
-  <section class="card" style="margin-top:16px">
-    <h3>🗨️ 쩔어 한마디 <span class="pill small">베타</span></h3>
-    <div id="comment" class="small">-</div>
-    <div class="muted small" id="comment-updated" style="margin-top:6px"></div>
-  </section>
-
-  <div class="foot">© 2025 쩔어진갑 ∞ | 업비트·온체인·김프 실시간 연동</div>
+  <div class="small" style="text-align:center;margin:24px 0 12px;">© 2025 쩔어진갑 ∞ | 업비트·온체인·김프 실시간 연동</div>
 </div>
 
-<script type="module">
-/** =========================
- *  0) 환경설정
- *  ========================= */
-const PROXY_URL = 'https://satoshi-proxy.mujukno1.workers.dev'; // ← 너의 워커 URL로 변경!
-const DEFAULT_INTEREST = ['BTC','ETH','BCH','XRP','SOL','DOGE','SHIB']; // 관심코인 최대 10개
-const POLL_SEC = 2;   // 업비트 폴링 주기 (초)
+<script>
+/* === 1) 환경 === */
+const API_BASE = 'https://YOUR-WORKER-SUBDOMAIN.workers.dev'; // ← ← ← 너의 Cloudflare Worker 주소로 교체
+const POLL_SEC  = 10;       // 주기(초)
+const SPARK_WINDOW_SEC = 60; // 최근 n초 대비 급등 감지 창
+const SPARK_LIMIT = 10;
+const FAV_LIMIT = 10;
 
-/** =========================
- *  1) 유틸 / 호가단위 / 포맷
- *  ========================= */
-const fmt = {
-  num(n){ if(n===null||n===undefined||isNaN(n)) return '-'; return n.toLocaleString('ko-KR'); },
-  krw(n){ if(!isFinite(n)) return '-'; return n.toLocaleString('ko-KR')+'원'; },
-  usd(n){ if(!isFinite(n)) return '-'; return n.toLocaleString('en-US',{maximumFractionDigits:2})+' USD'; },
-  pct(n){ if(!isFinite(n)) return '-'; const s=n>=0?'+':''; return s+n.toFixed(2)+' %'; },
-  ts(){ return new Date().toLocaleString('ko-KR'); }
-};
-// 업비트 KRW 호가단위
-function upbitTick(price){
-  if(price<0) return 0;
-  if(price<1) return 0.01;
-  if(price<10) return 0.1;
-  if(price<100) return 1;
-  if(price<1000) return 1;
-  if(price<10000) return 5;
-  if(price<100000) return 10;
-  if(price<500000) return 50;
-  if(price<1000000) return 100;
-  return 1000;
+/* 심볼 사전(간단 매핑) — 필요시 확장 */
+const COIN_UNIVERSE = [
+  {symbol:'BTC', name:'비트코인'},
+  {symbol:'ETH', name:'이더리움'},
+  {symbol:'ETC', name:'이더리움 클래식'},
+  {symbol:'BCH', name:'비트코인캐시'},
+  {symbol:'XRP', name:'리플'},
+  {symbol:'SOL', name:'솔라나'},
+  {symbol:'DOGE',name:'도지코인'},
+  {symbol:'SHIB',name:'시바이누'},
+  {symbol:'ADA', name:'카르다노'},
+  {symbol:'LINK',name:'체인링크'},
+  {symbol:'AVAX',name:'아발란체'},
+  {symbol:'MATIC',name:'폴리곤'},
+  {symbol:'ATOM',name:'코스모스'},
+  {symbol:'SUI', name:'수이'},
+  {symbol:'ARB', name:'아비트럼'}
+];
+
+/* 로컬 상태 */
+const priceCache = new Map(); // {symbol:{krw, ts}}
+const sparkHist  = new Map(); // symbol -> array of {ts, krw}
+let lastOneLine = '';
+
+/* === 2) 유틸 === */
+const fmt = n => (n===undefined||n===null||isNaN(n))?'-':n.toLocaleString('ko-KR');
+const fmtKRW = n => (n===undefined||n===null||isNaN(n))?'-':`${Math.round(n).toLocaleString('ko-KR')}원`;
+const nowStr = () => new Date().toLocaleString('ko-KR');
+
+function upbitTickSize(krw){
+  // 업비트 KRW 호가단위 간이 규칙
+  if (krw >= 2_000_000) return 1000;
+  if (krw >=   200_000) return 500;
+  if (krw >=    10_000) return 10;
+  if (krw >=     1_000) return 1;
+  if (krw >=       100) return 0.1;
+  if (krw >=        10) return 0.01;
+  return 0.001;
 }
-function roundToTick(price){
-  const t=upbitTick(price);
-  return Math.round(price/t)*t;
-}
-
-/** =========================
- *  2) 상태
- *  ========================= */
-const state = {
-  markets: [],            // KRW-마켓 목록
-  symbolMap: new Map(),   // "BTC" -> "KRW-BTC"
-  interest: new Set(DEFAULT_INTEREST),
-  prices: new Map(),      // "BTC" -> krw price
-  snapshot: {},           // 렌더링 스냅샷
-  lastComment: '-'
-};
-
-/** =========================
- *  3) 초기 로드: 마켓 리스트
- *  ========================= */
-async function loadMarkets(){
-  const res = await fetch('https://api.upbit.com/v1/market/all?isDetails=false');
-  const data = await res.json();
-  const krw = data.filter(m=>m.market.startsWith('KRW-'));
-  state.markets = krw;
-  krw.forEach(m=>{
-    const sym = m.market.replace('KRW-','');
-    state.symbolMap.set(sym.toUpperCase(), m.market);
-  });
+function roundTick(krw){
+  const t=upbitTickSize(krw);
+  return Math.round(krw/t)*t;
 }
 
-/** =========================
- *  4) 업비트 시세 폴링
- *  ========================= */
-async function pollPrices(symbols){
-  const mkts = symbols.map(s=>state.symbolMap.get(s)).filter(Boolean);
-  if(mkts.length===0) return;
-  const url = 'https://api.upbit.com/v1/ticker?markets='+mkts.join(',');
-  const res = await fetch(url,{cache:'no-store'});
-  const data = await res.json();
-  data.forEach(t=>{
-    const sym = t.market.replace('KRW-','');
-    state.prices.set(sym, t.trade_price);
-  });
-}
+/* 리스크/결론 계산(간단 버전) */
+function calcSignal(krw, usd, premiumPct){
+  // 변동성(틱 기반)과 김프 기반으로 위험도 1~5 산출
+  const tick = upbitTickSize(krw);
+  const vol  = Math.min(5, Math.max(1, Math.floor((tick/Math.max(1,krw))*10000)));
+  const prem = Math.abs(premiumPct||0);
+  const premRisk = prem>6?5: prem>3?4: prem>1.5?3: prem>0.5?2:1;
+  const risk = Math.min(5, Math.max(1, Math.round((vol+premRisk)/2)));
 
-/** =========================
- *  5) 김프 / 온체인 / 시그널 / 코멘트
- *  ========================= */
-async function fetchPremium(symbol){
-  const url = `${PROXY_URL}/api/premium?symbol=${encodeURIComponent(symbol)}`;
-  const res = await fetch(url,{cache:'no-store'});
-  return res.json(); // { ok, symbol, upbitPrice, globalUsd, usdkrw, premiumPct, src, updatedAt }
-}
-async function fetchOnchainETH(){
-  const url = `${PROXY_URL}/api/onchain?symbol=ETH`;
-  try{
-    const res = await fetch(url,{cache:'no-store'});
-    const j = await res.json();
-    if(!j.ok) throw new Error(j.error||'fail');
-    return j; // { ok:true, symbol:'ETH', tvl, src, updatedAt }
-  }catch(e){
-    return { ok:false, error:e.message };
-  }
-}
-
-function calcSignal(symbol, price, premiumPct){
-  // 95% 정밀판: 프리미엄/변동성 기반 타점
-  // 기본 폭: 0.8% ~ 1.2% (프리미엄 가중)
-  const prem = isFinite(premiumPct)?premiumPct:0;
-  const span = 0.01 + Math.min(Math.abs(prem)/200, 0.015); // 1% 기준 가중
-  const buy  = roundToTick(price * (1 - span*0.6));
-  const sell = roundToTick(price * (1 + span));
-  const stop = roundToTick(price * (1 - span*1.2));
-  let risk = 3;
-  if(prem>3) risk=5; else if(prem>1.5) risk=4; else if(prem>0.5) risk=3; else if(prem>-0.5) risk=2; else risk=1;
+  // 타점(그리드 기반)
+  const buy  = roundTick(krw * (risk>=4 ? 0.994 : 0.996));
+  const sell = roundTick(krw * (risk>=4 ? 1.006 : 1.004));
+  const stop = roundTick(krw * (risk>=4 ? 0.985 : 0.990));
 
   let verdict = '중립, 관망 구간';
-  if(risk>=5) verdict='매도 주의, 세력 구간';
-  else if(risk===4) verdict='단기 과열, 매도 유리';
-  else if(risk===3) verdict='중립, 관망 구간';
-  else if(risk===2) verdict='안정적, 분할 매수 가능';
-  else verdict='저위험, 분할매수 구간';
-
-  return { buy, sell, stop, risk, verdict };
+  if (risk<=2) verdict = '안정적, 매수 가능';
+  if (risk>=4) verdict = '매도 주의, 세력 구간';
+  return {buy,sell,stop,risk,verdict};
 }
 
-function renderRiskBadge(level){
-  const cls='risk r'+Math.max(1,Math.min(5,level));
-  return `<span class="${cls}">${level}</span>`;
-}
-
-/** =========================
- *  6) 렌더링
- *  ========================= */
-function renderPremiumView(p){
-  const set=(id,html)=>document.getElementById(id).innerHTML=html;
-  document.getElementById('pf-sym').textContent = p?.symbol ? `(${p.symbol})` : '';
-  set('pf-krw', fmt.krw(p?.upbitPrice));
-  set('pf-usd', fmt.usd(p?.globalUsd));
-  set('pf-usdkrw', fmt.num(p?.usdkrw));
-  set('pf-pct', isFinite(p?.premiumPct) ? (p.premiumPct>=0?`<b class="ok">${fmt.pct(p.premiumPct)}</b>`:`<b class="bad">${fmt.pct(p.premiumPct)}</b>`) : '-');
-  document.getElementById('pf-src').textContent = '소스: '+(p?.src||'-');
-}
-
-function renderOnchain(v){
-  document.getElementById('tvl-val').textContent = v?.tvl ? (v.tvl.toLocaleString('en-US')+' USD') : '-';
-  document.getElementById('tvl-src').textContent = v?.src || '-';
-  document.getElementById('tvl-hint').textContent = v?.ok ? `업데이트: ${new Date(v.updatedAt||Date.now()).toLocaleString('ko-KR')}` : (v?.error?'오류: '+v.error:'-');
-}
-
-function renderTable(symbols, premiumMap){
-  const tbody = document.getElementById('sigBody');
-  const rows = [];
-  symbols.forEach(sym=>{
-    const price = state.prices.get(sym);
-    const prem = premiumMap.get(sym)?.premiumPct;
-    const sig = (isFinite(price)) ? calcSignal(sym, price, prem) : null;
-    const tr = `
-      <tr class="blink">
-        <td>${sym}</td>
-        <td>${fmt.krw(price)}</td>
-        <td>${fmt.krw(sig?.buy)}</td>
-        <td>${fmt.krw(sig?.sell)}</td>
-        <td class="bad">${fmt.krw(sig?.stop)}</td>
-        <td>${renderRiskBadge(sig?.risk||3)}</td>
-        <td class="muted">${sig?.verdict||'-'}</td>
-      </tr>`;
-    rows.push(tr);
-  });
-  tbody.innerHTML = rows.join('');
-}
-
-function setComment(text){
-  state.lastComment = text;
-  document.getElementById('comment').textContent = text;
-  document.getElementById('comment-updated').textContent = '업데이트: '+fmt.ts();
-}
-
-/** =========================
- *  7) 관심코인 / 검색
- *  ========================= */
-function renderWatchlist(){
-  const el = document.getElementById('watchlist');
-  const chips = [...state.interest].slice(0,10).map(sym=>`<span class="pill">${sym}<button data-rm="${sym}" class="small btn" style="margin-left:8px;border-radius:8px;padding:2px 8px">제거</button></span>`);
-  el.innerHTML = chips.join('');
-  el.querySelectorAll('button[data-rm]').forEach(b=>{
-    b.onclick = ()=>{ state.interest.delete(b.dataset.rm); renderWatchlist(); };
-  });
-}
-
-async function searchAndShow(q){
-  // symbol 매핑
-  q = (q||'').trim();
-  if(!q) return;
-  let sym = q.toUpperCase().replace(/[^A-Z0-9]/g,'');
-  // 한국어/영문명 매핑 보조
-  const nameMap = {
-    '비트','비트코인':'BTC',
-    '이더','이더리움':'ETH',
-    '도지':'DOGE', '솔라나':'SOL', '리플':'XRP', '시바':'SHIB',
-    '클래식':'ETC','라이트코인':'LTC','비캐':'BCH','폴리곤':'MATIC'
-  };
-  if(state.symbolMap.has(sym)===false){
-    // 이름에 매칭
-    for(const [k,v] of Object.entries(nameMap)){
-      if(q.includes(k)){ sym=v; break; }
-    }
+/* 테이블 렌더 (깜빡임 방지: 행 재사용) */
+function ensureTable(containerId){
+  const el = document.getElementById(containerId);
+  if (!el.dataset.ready){
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>코인</th><th>현재가</th><th>매수</th><th>매도</th><th>손절</th><th>위험도</th><th>쩔어결론</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>`;
+    el.dataset.ready='1';
   }
-  if(!state.symbolMap.get(sym)) {
-    document.getElementById('searchResult').innerHTML = `<div class="muted">검색 실패: 지원하지 않는 코인입니다.</div>`;
+  return el.querySelector('tbody');
+}
+function upsertRow(tbody, rowId, cells){
+  let tr = tbody.querySelector(`tr[data-id="${rowId}"]`);
+  if (!tr){
+    tr = document.createElement('tr');
+    tr.dataset.id = rowId;
+    for (let i=0;i<cells.length;i++){
+      tr.appendChild(document.createElement('td'));
+    }
+    tbody.appendChild(tr);
+  }
+  const tds = tr.querySelectorAll('td');
+  cells.forEach((v,i)=>{ tds[i].innerHTML = v; });
+}
+
+/* === 3) API 호출 === */
+async function callPremium(symbol){
+  const url = `${API_BASE}/api/premium?symbol=${encodeURIComponent(symbol)}`;
+  const res = await fetch(url, {cache:'no-store'});
+  return res.json();
+}
+async function callOnchain(symbol='ETH'){
+  const url = `${API_BASE}/api/onchain?symbol=${encodeURIComponent(symbol)}`;
+  const res = await fetch(url, {cache:'no-store'});
+  return res.json();
+}
+async function callHealth(){
+  try{
+    const r = await fetch(`${API_BASE}/api/health`,{cache:'no-store'}).then(r=>r.json());
+    return r.ok;
+  }catch{ return false; }
+}
+
+/* === 4) 상단 카드 === */
+async function refreshKimchi(baseSymbol='BTC'){
+  try{
+    const j = await callPremium(baseSymbol);
+    if (!j.ok) throw new Error(j.error||'premium error');
+    document.getElementById('k_upbit').textContent   = fmtKRW(j.upbitPrice);
+    document.getElementById('k_global').textContent  = j.global?.coingecko ? '$'+fmt(j.global.coingecko) : '-';
+    document.getElementById('k_fx').textContent      = fmt(j.usdkrw);
+    const pct = (j.premiumPct||0).toFixed(2);
+    document.getElementById('k_premium').innerHTML   = (pct>=0?`<span class="up">+${pct}%</span>`:`<span class="dn">${pct}%</span>`);
+  }catch(e){
+    document.getElementById('k_upbit').textContent='-';
+    document.getElementById('k_global').textContent='-';
+    document.getElementById('k_fx').textContent='-';
+    document.getElementById('k_premium').textContent='-';
+  }
+}
+
+let tvlAuto = true;
+async function refreshTVL(symbol='ETH'){
+  const vEl = id('tvl_val'), sEl=id('tvl_src'), tEl=id('tvl_ts'), st=id('tvl_state');
+  try{
+    const j = await callOnchain(symbol);
+    if (!j.ok) throw new Error(j.error||'onchain error');
+    vEl.textContent = '$'+fmt(j.tvl||0);
+    sEl.textContent = j.src||'-';
+    tEl.textContent = j.updatedAt ? new Date(j.updatedAt).toLocaleString('ko-KR'): nowStr();
+    st.innerHTML    = `<span class="pill ok">정상</span>`;
+  }catch(e){
+    vEl.textContent='-'; sEl.textContent='오류'; tEl.textContent=nowStr();
+    st.innerHTML = `<span class="pill bad">오류</span>`;
+  }
+}
+function id(x){return document.getElementById(x);}
+
+/* === 5) 관심코인 === */
+function loadFav(){ try{ return JSON.parse(localStorage.getItem('favCoins')||'[]'); }catch{return []}}
+function saveFav(arr){ localStorage.setItem('favCoins', JSON.stringify(arr.slice(0,FAV_LIMIT))); drawFavChips(); }
+function addFav(sym){ const f=loadFav(); if (!f.includes(sym)){ f.unshift(sym); saveFav(f); } }
+function removeFav(sym){ saveFav(loadFav().filter(s=>s!==sym)); }
+function drawFavChips(){
+  const box = id('favChips'); box.innerHTML='';
+  const f = loadFav();
+  if (f.length===0){ box.innerHTML='<span class="small">아직 관심코인이 없습니다. 검색 결과에서 추가하세요.</span>'; return; }
+  f.forEach(s=>{
+    const b = document.createElement('button'); b.className='chipbtn active'; b.textContent=s;
+    b.onclick=()=>{ removeFav(s); };
+    box.appendChild(b);
+  });
+}
+
+/* 관심코인 표 갱신 */
+async function refreshFav(){
+  const tbody = ensureTable('favTableWrap');
+  const fav = loadFav();
+  for (const s of fav){
+    const row = await calcRow(s);
+    upsertRow(tbody, 'fav-'+s, row);
+  }
+}
+
+/* === 6) SPARK (급등 감지) === */
+function updateSparkHistory(symbol, krw){
+  const arr = sparkHist.get(symbol) || [];
+  const now = Date.now();
+  const cutoff = now - SPARK_WINDOW_SEC*1000;
+  const arr2 = arr.filter(x=>x.ts>=cutoff);
+  arr2.push({ts:now, krw});
+  sparkHist.set(symbol, arr2);
+  const first = arr2[0]?.krw ?? krw;
+  const pct = (krw-first)/first*100;
+  return pct;
+}
+async function refreshSpark(){
+  const tbody = ensureTable('sparkTableWrap');
+  const picks = COIN_UNIVERSE.slice(0,30); // 간단히 상위 30 종목 스캔
+  const rows = [];
+  for (const c of picks){
+    try{
+      const j = await callPremium(c.symbol);
+      if (!j.ok) continue;
+      const krw = j.upbitPrice||0;
+      const pct1m = updateSparkHistory(c.symbol, krw);
+      if (pct1m>=0.8){ // 급등 기준 (조정 가능)
+        const cells = await calcRowWith(j, c.symbol, krw, j.global?.coingecko, j.premiumPct);
+        rows.push({symbol:c.symbol, pct:pct1m, cells});
+      }
+    }catch{}
+  }
+  rows.sort((a,b)=>b.pct-a.pct);
+  const top = rows.slice(0,SPARK_LIMIT);
+  top.forEach(r=> upsertRow(tbody, 'spark-'+r.symbol, r.cells));
+}
+
+/* === 7) 검색 === */
+function findSymbols(q){
+  const s = q.trim().toUpperCase();
+  if (!s) return [];
+  return COIN_UNIVERSE.filter(c=> c.symbol.includes(s) || c.name.includes(q));
+}
+async function onSearch(){
+  const q = id('q').value;
+  const res = findSymbols(q);
+  const area = id('searchArea'); area.style.display='block';
+  id('searchTime').textContent = nowStr();
+  const tbody = ensureTable('searchTableWrap');
+  if (res.length===0){
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9fb0cc">검색 결과가 없습니다.</td></tr>`;
     return;
   }
-  // 관심코인 자동 추가(최대 10)
-  if(state.interest.size<10) { state.interest.add(sym); renderWatchlist(); }
-
-  // 실시간 값 채우기 + 김프 계산
-  await pollPrices([sym]);
-  const price = state.prices.get(sym);
-  let prem;
-  try{ prem = await fetchPremium(sym); }catch{ prem=null; }
-
-  const sig = isFinite(price) ? calcSignal(sym, price, prem?.premiumPct) : null;
-  const html = `
-    <div class="card" style="margin-top:12px">
-      <div class="grid" style="grid-template-columns:repeat(6,1fr)">
-        <div class="muted">심볼</div><div>${sym}</div>
-        <div class="muted">현재가</div><div>${fmt.krw(price)}</div>
-        <div class="muted">프리미엄</div><div>${prem?fmt.pct(prem.premiumPct):'-'}</div>
-        <div class="muted">매수</div><div class="ok">${fmt.krw(sig?.buy)}</div>
-        <div class="muted">매도</div><div class="warn">${fmt.krw(sig?.sell)}</div>
-        <div class="muted">손절</div><div class="bad">${fmt.krw(sig?.stop)}</div>
-      </div>
-    </div>`;
-  document.getElementById('searchResult').innerHTML = html;
-
-  // 코멘트 갱신
-  if(sig){
-    setComment(`[${sym}] 현재가 ${fmt.krw(price)} · 프리미엄 ${prem?fmt.pct(prem.premiumPct):'-'} · 결론: ${sig.verdict}`);
+  for (const c of res.slice(0,20)){
+    const row = await calcRow(c.symbol, true);
+    upsertRow(tbody, 'search-'+c.symbol, row);
   }
 }
 
-/** =========================
- *  8) 메인 루프
- *  ========================= */
-async function main(){
-  await loadMarkets();
-  renderWatchlist();
-
-  // 초기 프리미엄(BTC) & 온체인(ETH)
+/* === 8) 행 계산 & 렌더 공통 === */
+async function calcRow(symbol, showAddBtn=false){
   try{
-    const [p,t] = await Promise.all([fetchPremium('BTC'), fetchOnchainETH()]);
-    renderPremiumView(p.ok?p:null);
-    renderOnchain(t);
-  }catch(e){/* noop */}
-
-  // 관심코인 루프
-  async function tick(){
-    const symbols = [...state.interest].slice(0,10);
-    await pollPrices(symbols);
-
-    // 각 심볼 프리미엄은 비싼 호출이므로 상단 3개만 즉시, 나머지는 간헐 호출
-    const premMap = new Map();
-    const head = symbols.slice(0,3);
-    await Promise.all(head.map(async s=>{
-      try{ premMap.set(s, await fetchPremium(s)); }catch{}
-    }));
-
-    // 렌더
-    renderTable(symbols, premMap);
+    const j = await callPremium(symbol);
+    if (!j.ok) throw new Error(j.error||'premium');
+    const krw = j.upbitPrice||0;
+    return await calcRowWith(j, symbol, krw, j.global?.coingecko, j.premiumPct, showAddBtn);
+  }catch(e){
+    const err = `<span class="pill bad">오류</span>`;
+    const add = showAddBtn? `<button class="chipbtn" onclick="addFav('${symbol}')">관심+</button>`:'';
+    return [symbol+add, '-', '-', '-', '-', `<span class="risk r5">5</span>`, err];
   }
-  tick();
-  setInterval(tick, POLL_SEC*1000);
-
-  // 검색 바인딩
-  document.getElementById('btnSearch').onclick = ()=>{
-    const v = document.getElementById('q').value;
-    searchAndShow(v);
-  };
-  document.getElementById('q').addEventListener('keydown',e=>{
-    if(e.key==='Enter') document.getElementById('btnSearch').click();
-  });
-  document.getElementById('btnClear').onclick = ()=>{
-    document.getElementById('q').value='';
-    document.getElementById('searchResult').innerHTML='';
-  };
+}
+async function calcRowWith(j, symbol, krw, usd, premiumPct, showAddBtn=false){
+  priceCache.set(symbol,{krw,ts:Date.now()});
+  const s = calcSignal(krw, usd, premiumPct);
+  const add = showAddBtn? `<button class="chipbtn" onclick="addFav('${symbol}')">관심+</button>`:'';
+  const riskTag = `<span class="risk r${s.risk}">${s.risk}</span>`;
+  return [
+    `${symbol} ${add}`,
+    fmtKRW(krw),
+    fmtKRW(s.buy),
+    fmtKRW(s.sell),
+    fmtKRW(s.stop),
+    riskTag,
+    s.verdict
+  ];
 }
 
-main();
+/* === 9) 한마디 === */
+function refreshOneLine(){
+  // 간단한 규칙 기반 메시지
+  const btc = priceCache.get('BTC')?.krw;
+  if (!btc){ id('oneLineBox').textContent='데이터 수집중…'; id('oneLineTs').textContent=nowStr(); return; }
+  let msg = '중립 대기';
+  if (btc>170_000_000) msg = '상단 저항 구간, 분할 매도 유리';
+  else if (btc<160_000_000) msg = '저점 탐색, 분할 매수 관점';
+  lastOneLine = msg;
+  id('oneLineBox').textContent = msg;
+  id('oneLineTs').textContent = nowStr();
+}
+
+/* === 10) 주기 갱신 === */
+async function tick(){
+  // API 헬스
+  const ok = await callHealth();
+  id('apiStatus').className = 'pill ' + (ok?'ok':'bad');
+  id('apiStatus').textContent = ok?'연결 정상':'오류';
+
+  // 상단 카드
+  await refreshKimchi('BTC');
+  await refreshTVL('ETH');
+
+  // 관심코인
+  await refreshFav();
+
+  // SPARK
+  await refreshSpark();
+
+  // 한마디
+  refreshOneLine();
+}
+
+/* === 11) 이벤트 === */
+id('btnSearch').onclick = onSearch;
+id('btnReset').onclick  = ()=>{ id('q').value=''; id('searchArea').style.display='none'; };
+id('btnSwitchTvl').onclick = ()=>{ tvlAuto=!tvlAuto; id('btnSwitchTvl').textContent = tvlAuto?'자동 롤링':'수동'; };
+
+/* 초기 관심 샘플 */
+if (loadFav().length===0){ saveFav(['BTC','ETH','XRP']); } else { drawFavChips(); }
+
+/* 부팅 */
+tick();
+setInterval(tick, POLL_SEC*1000);
 </script>
 </body>
 </html>
