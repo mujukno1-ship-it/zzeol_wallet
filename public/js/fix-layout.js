@@ -1,7 +1,7 @@
 /* ============================================================
    레이아웃 고정 (No-Motion):
    [검색 결과] → [SPARK TOP10 — 급등 사전 예열 감지] → [ULTRA 시그널]
-   + 검색결과 패널은 입력 전/후 동일 크기 유지
+   +  패널은 입력 전/후 동일 크기 유지
    ============================================================ */
 (function () {
   // ---------- 유틸 ----------
@@ -17,7 +17,7 @@
   }
   function applyNoMotion(el){ if(!el) return; el.style.transition='none'; el.style.position='relative'; el.style.opacity='1'; }
 
-  // ---------- CSS 주입: 검색결과 동일 크기 + 내부 스크롤 + 2열 ----------
+  // ---------- CSS 주입:  동일 크기 + 내부 스크롤 + 2열 ----------
   (function injectCSS(){
     const css = `
     /* 검색 영역 폭(검색박스와 동일폭) */
@@ -27,7 +27,7 @@
       width:100%; max-width:880px; margin:12px auto; box-sizing:border-box;
     }
 
-    /* 검색결과 패널: 입력 전/후 동일 크기 (접지 않음) */
+    /*  패널: 입력 전/후 동일 크기 (접지 않음) */
     #search-panel, [data-section="search"]{
       --gap:8px; --pad:8px; --fz:13.5px; --chip:11px;
       max-height: ;         /* 필요시 120~300px로 조절 */
@@ -100,7 +100,7 @@
     if(!ultraPanel.dataset._gap){ ultraPanel.style.marginTop='12px'; ultraPanel.dataset._gap='1'; }
   }
 
-  // ---------- 검색결과 제목 문구 정리(옵션): 헷갈림 방지 ----------
+  // ----------  제목 문구 정리(옵션): 헷갈림 방지 ----------
   function refineSearchTitle(){
     const panel = findPanel(['#search-panel','[data-section="search"]'], '검색 결과');
     if(!panel) return;
@@ -122,4 +122,21 @@
   }else{
     run();
   }
+})();
+/* ===== 검색결과 최대 5개만 표시 ===== */
+(function limitSearchResults(){
+  const css = `
+  /* 검색 리스트는 그대로 두되, 6번째 이후는 숨김 */
+  #search-panel .results > *:nth-child(n+6),
+  [data-section="search"] .results > *:nth-child(n+6),
+  #search-panel .list > *:nth-child(n+6),
+  [data-section="search"] .list > *:nth-child(n+6),
+  #srch-list > *:nth-child(n+6) {
+    display: none !important;
+  }`;
+
+  const style = document.createElement('style');
+  style.setAttribute('data-limit-5','');
+  style.textContent = css;
+  document.head.appendChild(style);
 })();
