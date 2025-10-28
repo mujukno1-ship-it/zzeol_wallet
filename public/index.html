@@ -3,160 +3,298 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v11 — No-Motion 한방버전</title>
+<title>사토시의지갑 v11.0 — No-Motion</title>
 <style>
   :root{
-    --bg:#0d1117;--panel:#151b23;--muted:#7d8590;--text:#e6edf3;
-    --accent:#2f81f7;--ok:#22c55e;--warn:#f59e0b;--danger:#ef4444;
-    --border:#1f2937;
+    --bg:#0b0f14; --panel:#0f141b; --muted:#9aa4af; --text:#e8eef5; --accent:#68b0ff;
+    --ok:#43d18b; --warn:#ffb74d; --risk:#ff6b6b; --line:#1a2230;
   }
   *{box-sizing:border-box}
-  html,body{height:100%;background:var(--bg);color:var(--text);margin:0;font-family:ui-sans-serif,system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,Apple Color Emoji,Noto Color Emoji}
-  /* No-Motion */
-  *,*:before,*:after{transition:none!important;animation:none!important}
-  .container{max-width:1100px;margin:24px auto;padding:0 16px}
-  h1{font-size:18px;margin:0 0 12px 0;font-weight:700}
-  .sub{color:var(--muted);font-size:12px}
-  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  /* 검색 박스 + 결과(최대 5개) */
-  .search-wrap{position:relative;margin:10px 0 22px}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,Apple Color Emoji,Noto Color Emoji,Helvetica,Arial;
+    /* No-Motion */
+    scroll-behavior:auto; overscroll-behavior:none;
+  }
+  /* No animation / transition */
+  *{transition:none !important;animation:none !important}
+
+  .wrap{max-width:1080px;margin:32px auto;padding:0 16px}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .title{font-weight:700;margin:0 0 12px 0}
+  .sub{color:var(--muted);font-size:12px;margin-top:6px}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:#142033;border:1px solid #1d2a3f;color:#9ec7ff;font-size:12px}
+
+  /* 검색 */
+  .search-bar{display:flex;gap:8px}
   .search-input{
-    width:100%;max-width:780px;height:44px;border-radius:10px;padding:0 14px;
-    background:#0f141b;border:1px solid var(--border);color:var(--text);font-size:16px;outline:none;
+    flex:1;height:44px;border-radius:12px;border:1px solid var(--line);background:#0c1219;color:var(--text);
+    padding:0 14px;font-size:15px;outline:none;
   }
-  .results{
-    position:absolute;left:0;top:48px; width:100%; max-width:780px;
-    background:var(--panel); border:1px solid var(--border); border-radius:10px;
-    overflow:hidden; z-index:10; box-shadow:none;
+  .chip{height:32px;border-radius:999px;border:1px solid var(--line);background:#0c1219;color:var(--muted);padding:0 10px;font-size:12px}
+  .search-results{
+    margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#0c1219;max-height:260px;overflow:auto;
+    width:100%;
   }
-  .result-item{
-    padding:9px 12px; cursor:pointer; border-top:1px solid #131922; font-size:14px;
-  }
-  .result-item:hover{background:#0f141b}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border);color:var(--muted)}
-  /* 카드 */
-  .card{
-    background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin:16px 0;
-  }
-  .card h2{margin:0 0 10px 0;font-size:16px}
-  /* SPARK 리스트 */
-  .spark-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .spark-item{padding:10px;border:1px solid #1a2330;border-radius:10px;background:#0f141b;cursor:pointer}
-  .spark-item:hover{background:#101722}
-  .score{font-weight:700;margin-left:6px}
-  .bar{height:6px;background:#0e1620;border-radius:6px;margin-top:8px;overflow:hidden}
-  .bar > span{display:block;height:100%;background:linear-gradient(90deg,#ff7a7a,#ffb36b)}
+  .sr-empty{color:var(--muted);padding:14px}
+  .sr-item{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-top:1px solid #0f1a26;cursor:pointer}
+  .sr-item:first-child{border-top:0}
+  .sr-item:hover{background:#0f1620}
+  .tag{color:#8ea2b3;font-size:12px}
+
+  /* SPARK */
+  .spark-item{display:grid;grid-template-columns:1fr 82px;gap:14px;padding:10px 0;border-top:1px solid #0f1a26}
+  .spark-item:first-child{border-top:0}
+  .spark-name{display:flex;gap:10px;align-items:center}
+  .bar{position:relative;height:8px;border-radius:8px;background:#101926;border:1px solid #122033;overflow:hidden}
+  .fill{position:absolute;inset:0;width:0%}
+  .fill.orange{background:#ff9d4d} .fill.red{background:#ff6b6b} .fill.yellow{background:#ffd166}
+  .price{color:#cfe6ff;text-align:right}
+
+  /* ULTRA */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kv{border:1px solid var(--line);border-radius:10px;padding:10px;background:#0c1219}
+  .k{color:#8ea2b3;font-size:12px;margin-bottom:4px}
+  .v{font-size:16px;font-weight:700}
+  .risk-1{color:#7ddf9a}.risk-2{color:#a6f0c5}.risk-3{color:#ffd166}.risk-4{color:#ff9d4d}.risk-5{color:#ff6b6b}
+  .comment{min-height:78px;border:1px solid var(--line);border-radius:10px;padding:12px;background:#0c1219}
+
+  .mt6{margin-top:6px}.mt10{margin-top:10px}.mt16{margin-top:16px}.mt20{margin-top:20px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- 검색 + 컨트롤 -->
+    <div class="card">
+      <div class="title">코인 검색 (KRW 전용) — 한글명/심볼 입력</div>
+      <div class="search-bar">
+        <input id="search" class="search-input" placeholder="예: 이더리움 / ETH / KRW-ETH" />
+        <button id="btn-krw" class="chip">KRW 기준</button>
+        <button id="btn-upbit" class="chip">업비트 호가틱</button>
+        <button id="btn-nomotion" class="chip">No-Motion</button>
+      </div>
+      <div id="sr" class="search-results" hidden></div>
+      <div class="sub">연동: 업비트 마켓/스파크/ULTRA · 모든 가격은 KRW, 코인명은 한글로 표시 · 검색 결과는 최대 5개</div>
+    </div>
+
+    <!-- ULTRA 시그널 — 검색 바로 아래 -->
+    <div class="card">
+      <div class="title">ULTRA 시그널 — 선택한 코인</div>
+      <div id="ultraTarget" class="sub">코인을 선택하면 매수/익절/손절, 위험도, 쩔어한마디가 표시됩니다.</div>
+
+      <div class="grid2 mt10">
+        <div class="kv"><div class="k">현재가</div><div id="v-price" class="v">-</div></div>
+        <div class="kv"><div class="k">위험도(1~5)</div><div id="v-risk" class="v">-</div></div>
+        <div class="kv"><div class="k">매수(BUY1)</div><div id="v-buy1" class="v">-</div></div>
+        <div class="kv"><div class="k">매수(BUY2)</div><div id="v-buy2" class="v">-</div></div>
+        <div class="kv"><div class="k">익절(TP1)</div><div id="v-tp1" class="v">-</div></div>
+        <div class="kv"><div class="k">익절(TP2)</div><div id="v-tp2" class="v">-</div></div>
+        <div class="kv"><div class="k">손절(SL)</div><div id="v-sl" class="v">-</div></div>
+        <div class="kv"><div class="k">세력지수</div><div id="v-force" class="v">-</div></div>
+      </div>
+
+      <div class="comment mt16">
+        <div class="k">쩔어한마디</div>
+        <div id="v-comment" class="v" style="font-size:14px;line-height:1.55">-</div>
+      </div>
+    </div>
+
+    <!-- SPARK TOP10 -->
+    <div class="card">
+      <div class="title">🔥 SPARK TOP10 — 급등 사전 예열 감지</div>
+      <div class="sub">필터: RVOL·TBR·OBI·ATR·ForceIndex 종합 (예열 ≥ 조건 충족)</div>
+      <div id="spark"></div>
+    </div>
+  </div>
+
 <script>
-// ---------- 시그널 표시 ----------
-elSpark.addEventListener("click",(e)=>{
-  const item = e.target.closest(".spark-item");
-  if(!item) return;
-  openSignal(item.dataset.market);
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api"; // 사토시 프록시
+let MARKETS = []; // {market:"KRW-ETH", korean_name:"이더리움", english_name:"Ethereum"}
+
+async function safeFetch(url, opt={}){
+  const res = await fetch(url, {mode:"cors", cache:"no-store", ...opt});
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  return res.json();
+}
+
+/* ---------- 업비트 마켓 불러오기 (초기 1회) ---------- */
+async function loadMarkets(){
+  try{
+    const data = await safeFetch(`${API_BASE}/upbit/markets`);
+    // KRW 전용만 보관
+    MARKETS = data.filter(x => x.market?.startsWith("KRW-"));
+  }catch(e){
+    console.error("loadMarkets", e);
+  }
+}
+
+/* ---------- 검색 ---------- */
+const $search = document.getElementById('search');
+const $sr = document.getElementById('sr');
+
+$search.addEventListener('input', () => {
+  const q = $search.value.trim().toLowerCase();
+  if(!q){ $sr.hidden = true; $sr.innerHTML = ""; return; }
+
+  const m = MARKETS.filter(x=>{
+    const s1 = (x.korean_name||"").toLowerCase();
+    const s2 = (x.english_name||"").toLowerCase();
+    const s3 = (x.market||"").toLowerCase();
+    return s1.includes(q) || s2.includes(q) || s3.includes(q);
+  }).slice(0,5);
+
+  if(m.length===0){ $sr.hidden=false; $sr.innerHTML = `<div class="sr-empty">검색 결과가 없습니다.</div>`; return; }
+
+  $sr.hidden = false;
+  $sr.innerHTML = m.map(x=>`
+    <div class="sr-item" data-market="${x.market}">
+      <div><b>${x.korean_name}</b> <span class="tag">(${x.market})</span></div>
+      <button class="chip">선택</button>
+    </div>
+  `).join('');
 });
 
-async function openSignal(market){
-  elHeader.textContent = `${market} 분석중…`;
-  elSignal.classList.add("hidden");
-  elTPWrap.classList.add("hidden");
-  elCmt.classList.add("hidden");
+$sr.addEventListener('click', (e)=>{
+  const host = e.target.closest('.sr-item');
+  if(!host) return;
+  const market = host.getAttribute('data-market');
+  selectMarket(market);
+});
+
+/* ---------- SPARK ---------- */
+async function loadSpark(){
   try{
-    const s = await fetchJSON(`${API}/ultra/signal?market=${encodeURIComponent(market)}`);
-    CUR = s;
-    // ① ‘쩔어 판단’으로 상승/하락 % 추정
-    const est = estimateMove(s);
-    CUR.__est = est; // {upPct,downPct,mode,atrPct}
-    renderSignal(s, est);
+    const data = await safeFetch(`${API_BASE}/spark/top10`);
+    // 항상 10개만, 이름/가격/예열강도 게이지
+    const list = (Array.isArray(data)?data:[]).slice(0,10);
+
+    const html = list.map(row=>{
+      const name = row.korean_name || row.market || "-";
+      const price = row.price != null ? Number(row.price).toLocaleString('ko-KR')+"원" : "-";
+      // 예열 강도 근사치: force_index / atr_rank / rvol 등 합성 점수 존재 가정
+      const score = Math.max(0, Math.min(100, Math.round(
+        (Number(row.force_index||0)) * 1.0
+      )));
+      const w = Math.max(6, Math.min(100, score)); // 최소 6%로 보이게
+      const color = score>=85 ? "red" : (score>=70 ? "orange" : "yellow");
+      return `
+        <div class="spark-item" data-market="${row.market}">
+          <div class="spark-name">
+            <span class="badge">예열 ${score}%</span>
+            <div>
+              <div><b>${row.korean_name||row.market}</b> <span class="tag">${row.market||""}</span></div>
+              <div class="bar mt6"><span class="fill ${color}" style="width:${w}%"></span></div>
+            </div>
+          </div>
+          <div class="price">${price}</div>
+        </div>
+      `;
+    }).join('');
+
+    const $wrap = document.getElementById('spark');
+    $wrap.innerHTML = html || `<div class="sub">SPARK 데이터 없음</div>`;
+    $wrap.onclick = (e)=>{
+      const host = e.target.closest('.spark-item');
+      if(!host) return;
+      const m = host.getAttribute('data-market');
+      selectMarket(m);
+    };
   }catch(e){
-    console.error(e);
-    elHeader.textContent = "시그널 불러오기 실패";
+    console.error("loadSpark", e);
+    document.getElementById('spark').innerHTML = `<div class="sub">연동 실패</div>`;
   }
 }
 
-function renderKV(title,val,cls=""){
-  return `<div class="kv ${cls}"><b>${title}</b><div>${val ?? "-"}</div></div>`;
+/* ---------- ULTRA 시그널 ---------- */
+async function selectMarket(market){
+  try{
+    document.getElementById('ultraTarget').textContent = `${market} 분석 불러오는 중…`;
+    const data = await safeFetch(`${API_BASE}/ultra/signal?market=${encodeURIComponent(market)}`);
+
+    // 예상 상승/하락률(%)을 기반으로 BUY/TP/SL 계산 (사토시 메모리 규칙)
+    const P = Number(data.price||0);          // 현재가
+    const upP = Number(data.up_pct||data.upProb||0);   // +X.X%
+    const dnP = Number(data.down_pct||data.downProb||0); // -Y.Y%
+    const buy1 = roundTick(P * (1 - Math.min(0.004, dnP/100/2))); // 살짝 당김 (최대 0.4%)
+    const buy2 = roundTick(P * (1 - Math.min(0.010, dnP/100)));   // 더 당김
+    const tp1  = roundTick(P * (1 + Math.max(0.005, upP/100*0.6)));
+    const tp2  = roundTick(P * (1 + Math.max(0.010, upP/100)));
+    const sl   = roundTick(P * (1 - Math.max(0.006, dnP/100)));
+
+    // 위험도(1~5) — 간단 근사: dnP/4 + (RVOL/TBR/Force 보정)
+    const risk = clamp(1,5, Math.round(
+      (Number(data.risk)||0) || (dnP/4) || 3
+    ));
+    const force = Number(data.force_index||data.force||0);
+
+    // 모드 판별(불장/하락/되돌림) — 간단 규칙
+    let mode = "neutral";
+    if((data.rvol||0) >= 2.0 && (data.tbr||0) >= 0.65 && force >= 80) mode="bull";
+    else if((data.tbr||0) <= 0.45 || force <= 35) mode="bear";
+    else mode = "retrace";
+
+    document.getElementById('ultraTarget').textContent = `${(data.korean_name || market)} (${market})`;
+
+    setText('v-price', fmtKRW(P));
+    const $risk = document.getElementById('v-risk');
+    $risk.className = 'v risk-'+risk; $risk.textContent = risk;
+
+    setText('v-buy1', fmtKRW(buy1));
+    setText('v-buy2', fmtKRW(buy2));
+    setText('v-tp1',  fmtKRW(tp1));
+    setText('v-tp2',  fmtKRW(tp2));
+    setText('v-sl',   fmtKRW(sl));
+    setText('v-force', force.toFixed(0));
+
+    document.getElementById('v-comment').textContent = makeComment({
+      base:P, upProb:upP, downProb:dnP, rvol:Number(data.rvol||0), tbr:Number(data.tbr||0),
+      force:Number(force||0), aboveVWAP: !!data.above_vwap, mode
+    });
+  }catch(e){
+    console.error("selectMarket", e);
+    document.getElementById('ultraTarget').textContent = `연동 실패 — ${market}`;
+  }
 }
 
-function renderSignal(s, est){
-  elHeader.textContent = `${s.korean_name} (${s.market})`;
-
-  const base = s.price ?? 0;
-  // ② ‘쩔어 판단’ %로 BUY/TP/SL 산출 (업비트 호가틱)
-  //    - TP: base * (1 + up%)
-  //    - SL: base * (1 - down%)
-  //    - BUY1: base에서 하락여지의 40%만 당겨서 대기 (너무 깊게 안 줌)
-  const tpPct   = est.upPct;
-  const slPct   = est.downPct;
-  const buyPull = Math.min(slPct*0.4, Math.max(0.6, (est.atrPct||2.0)*0.3)); // %
-  const tp1  = roundTick(base*(1+tpPct/100), "up");
-  const sl   = roundTick(base*(1-slPct/100), "down");
-  const buy1 = roundTick(base*(1-buyPull/100), "down");
-
-  const risk = s.risk ?? (est.mode==="bear"?4: est.mode==="bull"?2:3);
-
-  elSignal.innerHTML = `
-    ${renderKV("현재가",       `${fmt(base)}원`)}
-    ${renderKV("위험도",       risk)}
-    ${renderKV("예상상승(쩔어)", `+${tpPct.toFixed(1)}%`)}
-    ${renderKV("예상하락(쩔어)", `-${slPct.toFixed(1)}%`)}
-    ${renderKV("매수(BUY1)",   `${fmt(buy1)}원`)}
-    ${renderKV("매수(BUY2)",   s.buy2?`${fmt(s.buy2)}원`:"-")}
-    ${renderKV("익절(TP1)",    `${fmt(tp1)}원`)}
-    ${renderKV("익절(TP2)",    s.tp2?`${fmt(s.tp2)}원`:"-")}
-    ${renderKV("손절(SL)",     `${fmt(sl)}원`, "danger")}
-    ${renderKV("세력지수",     s.force_index ?? "-")}
-  `;
-  elSignal.classList.remove("hidden");
-  elTPWrap.classList.remove("hidden");
-
-  const cmt = makeComment({
-    base,
-    upProb:s.upProb, downProb:s.downProb,
-    rvol:s.rvol, tbr:s.tbr, force:s.force_index,
-    aboveVWAP:s.above_vwap, mode:est.mode
-  });
-  elCmt.textContent = cmt;
-  elCmt.classList.remove("hidden");
-
-  // 칩 동작 (‘쩔어 판단’ 기본값에서 추가로 보정하고 싶을 때)
-  $$(".tp").forEach(b=>b.onclick=()=>applyTP(+b.dataset.p, base));
-  $$(".sl").forEach(b=>b.onclick=()=>applySL(+b.dataset.p, base));
-  $("#tpApply").onclick=()=>{const v=+$("#tpIn").value; if(v>0) applyTP(v, base);};
-  $("#slApply").onclick=()=>{const v=+$("#slIn").value; if(v>0) applySL(v, base);};
+/* ---------- 쩔어한마디 ---------- */
+function makeComment({base,upProb,downProb,rvol,tbr,force,aboveVWAP,mode}){
+  // 모드 우선 메시지
+  if(mode==='bull'){
+    return `불장 신호🔥 — RVOL ${rvol.toFixed(2)}, 체결강도 ${tbr.toFixed(2)}, 세력지수 ${force}.
+익절은 늦추고(TP2 우선) 분할매수 유지. 과열구간 주의.`;
+  }
+  if(mode==='bear'){
+    return `하락장 경계⚠️ — 체결 약세(TBR ${tbr.toFixed(2)}), 세력지수 ${force}.
+추가 진입 금지, 손절 강화(SL 우선), 시간 제한 청산 권장.`;
+  }
+  // 되돌림/중립
+  const bias = aboveVWAP ? "VWAP 상단" : "VWAP 하단";
+  return `되돌림 관찰↔️ — ${bias}, RVOL ${rvol.toFixed(2)}. 
+예상 상승 +${upProb.toFixed(1)}%, 하락 −${downProb.toFixed(1)}% 기준으로 분할매수/분할익절 운영.`;
 }
 
-// ③ ‘쩔어 판단’ — 예상 상승/하락% 계산기
-function estimateMove(s){
-  // 입력 신호들(없으면 합리적 기본치)
-  const price = s.price ?? 0;
-  const rvol  = s.rvol ?? 1.0;        // 1.0=보통
-  const tbr   = s.tbr ?? 0.5;         // 0~1 (0.5 중립)
-  const force = s.force_index ?? 50;  // 0~100 (50 중립)
-  const obi   = s.obi ?? 0;           // -1~+1
-  const kimpU = (s.kimp_up===true) ? 1 : 0; // 0/1
-  const atrPct = s.atr_pct ?? Math.min(3.0, Math.max(1.2, (s.atr_rank??50)/50*1.6)); // % 대체값
-
-  // 방향 점수(−1~+1 근사)
-  const dir = 0
-    + 0.35*((tbr-0.5)/0.5)          // 체결 매수 우위
-    + 0.30*((force-50)/50)          // 세력 지수
-    + 0.20*(obi)                    // 호가 불균형
-    + 0.10*(kimpU?0.4: -0.1);       // 김프 상승 가점(소폭)
-  const dirClamped = Math.max(-1, Math.min(1, dir));
-
-  // 변동성 계수 (RVOL, ATR%)
-  const volBoost = 1 + Math.max(0, (rvol-1)*0.8);   // 1.0 ~ 1.8+
-  const baseAmp  = atrPct * volBoost;               // 기본 진폭 (%)
-
-  // 최종 예상 상승/하락 % (1%~15% 제한)
-  const upPct   = clamp( baseAmp * (1 + Math.max(0,  dirClamped)*0.8), 1, 15 );
-  const downPct = clamp( baseAmp * (1 + Math.max(0, -dirClamped)*0.8), 1, 15 );
-
-  // 시장 모드 추정
-  const mode = (dirClamped> 0.35 && rvol>=1.4) ? "bull"
-             : (dirClamped<-0.35 && rvol>=1.2) ? "bear"
-             : "retr";
-
-  return { upPct, downPct, mode, atrPct };
+/* ---------- 유틸 ---------- */
+function setText(id, v){ document.getElementById(id).textContent = (v ?? '-'); }
+function fmtKRW(n){ if(!isFinite(n)) return '-'; return Number(n).toLocaleString('ko-KR')+'원'; }
+function clamp(a,b,x){ return Math.max(a, Math.min(b, x)); }
+// 업비트 호가틱 반올림(간단 근사: 가격 구간별)
+function roundTick(p){
+  p = Number(p)||0;
+  if(p < 10) return Math.round(p*100)/100;
+  if(p < 100) return Math.round(p*10)/10;
+  if(p < 1000) return Math.round(p);
+  if(p < 10000) return Math.round(p/5)*5;
+  if(p < 100000) return Math.round(p/10)*10;
+  return Math.round(p/50)*50;
 }
-function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+/* ---------- 초기 구동 ---------- */
+(async function init(){
+  await loadMarkets();
+  loadSpark();
+})();
 </script>
+</body>
+</html>
