@@ -73,15 +73,15 @@
     <!-- 검색 결과 -->
     <div class="section">
       <div class="card">
-        <div class="title">검색 결과 (업비트 KRW 전체)</div>
-        <div id="srch-note" class="muted">한글명 또는 마켓명 입력 → 최대 20개 표시</div>
+        <div class="title">검색 결과 — 입력 시 표시 (업비트 KRW 전체)</div>
+        <div id="srch-note" class="muted">검색어를 입력하면 결과가 표시됩니다 (최대 20개). 현재는 미입력 상태입니다.</div>
         <div id="srch-list" class="srch-list"></div>
       </div>
     </div>
 
     <!-- SPARK TOP10 -->
     <div class="section">
-      <div class="card">
+      <div class="card" id="spark-card">
         <div class="title">SPARK TOP10 — 급등 사전 예열 감지</div>
         <div class="muted" id="spark-note">조건: RVOL≥1.8, TBR≥0.60, OBI≥+0.15, Microprice>평균가, 5분변동≥+1.5% (4개 이상 충족 시 예열 확정)</div>
         <div id="spark-list" class="spark-list"></div>
@@ -120,6 +120,7 @@
   // ===== 고정 설정 =====
   const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
   const UPBIT_WS = 'wss://api.upbit.com/websocket/v1';
+  const HIDE_SPARK_WHEN_SEARCH = true; // 검색 중에는 SPARK 패널 접기 (No‑Motion)
   const $ = (id)=>document.getElementById(id);
 
   // ===== 유틸 =====
@@ -151,8 +152,17 @@
   }
   function renderSearch(){
     const box = $('srch-list');
+    const note = $('srch-note');
     const q = ($('search').value||'').trim().toLowerCase();
-    const arr = markets.filter(m=> !q || m.market.toLowerCase().includes(q) || (m.korean_name||'').toLowerCase().includes(q)).slice(0,20);
+    // 검색어가 없으면 결과 비표시, SPARK는 그대로 노출(옵션)
+    if(!q){
+      box.innerHTML='';
+      note.textContent='검색어를 입력하면 결과가 표시됩니다 (최대 20개). 현재는 미입력 상태입니다.';
+      const sc=$('spark-card'); if(sc) sc.style.display='';
+      return;
+    }
+    note.textContent='검색 결과 — 최대 20개 표시';
+    const arr = markets.filter(m=> m.market?.toLowerCase().includes(q) || (m.korean_name||'').toLowerCase().includes(q)).slice(0,20);
     const frag = document.createDocumentFragment();
     arr.forEach(m=>{
       const item = document.createElement('div'); item.className='srch-item';
@@ -165,6 +175,8 @@
       item.appendChild(left); item.appendChild(btn); frag.appendChild(item);
     });
     box.innerHTML=''; box.appendChild(frag);
+    if(HIDE_SPARK_WHEN_SEARCH){ const sc=$('spark-card'); if(sc) sc.style.display = 'none'; }
+    if(arr.length===0){ box.innerHTML='<div class="muted">검색 결과 없음</div>'; }
   }
 
   // ===== SPARK =====
@@ -273,7 +285,8 @@
   }
 
   // ===== 이벤트 =====
-  $('search').addEventListener('input', renderSearch);
+  $('search').addEventListener('input', renderSearch); // 입력 시에만 결과 표시
+
   $('btn-refresh').addEventListener('click', async()=>{ await loadSpark(); if(selectedMarket) await loadUltra(); });
 
   // ===== 초기 구동 =====
