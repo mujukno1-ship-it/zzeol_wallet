@@ -120,3 +120,67 @@
   APPLY();
   input.addEventListener('input', APPLY);
 })();
+/* ===== 검색창 확대 + 결과패널 동일폭 정렬 (No-Motion 유지) ===== */
+(function enlargeSearchBox() {
+  const css = `
+  /* 검색창 영역 크기 확장 */
+  #search-bar, [data-role="search-bar"], .search-container {
+    width: 100%;
+    max-width: 880px;   /* 폭 확장 (기존 600~700px에서 확대) */
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 검색 입력창 자체 크기 확대 */
+  #search-input, [data-role="search-input"], .search-input {
+    width: 100%;
+    height: 48px;       /* 기존보다 높이 ↑ */
+    font-size: 17px;
+    border-radius: 12px;
+    padding: 0 18px;
+    box-sizing: border-box;
+  }
+
+  /* 검색버튼 크기 조정 */
+  #search-button, .search-button {
+    height: 48px;
+    font-size: 16px;
+    border-radius: 12px;
+    padding: 0 20px;
+    margin-left: 6px;
+  }
+
+  /* 검색결과 패널 폭을 검색창과 동일하게 맞춤 */
+  #search-panel, [data-section="search"] {
+    width: 100%;
+    max-width: 880px;   /* 검색창과 동일폭 */
+    margin: 12px auto;
+    border-radius: 14px;
+    box-sizing: border-box;
+  }
+
+  /* 내부 카드/리스트 컴팩트 유지 */
+  #search-panel .result, [data-section="search"] .result {
+    font-size: 13.5px;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  /* 반응형: 모바일일 때 살짝 줄이기 */
+  @media (max-width: 768px) {
+    #search-bar, [data-role="search-bar"], .search-container,
+    #search-panel, [data-section="search"] {
+      max-width: 96%;
+    }
+    #search-input, .search-input {
+      height: 44px;
+      font-size: 15px;
+    }
+  }`;
+  const style = document.createElement('style');
+  style.setAttribute('data-search-resize','');
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
