@@ -131,3 +131,100 @@
   const mo = new MutationObserver(resize);
   mo.observe(panel, {childList:true,subtree:true});
 })();
+/* ====== 검색결과 박스 강제 초소형(120px) + 5개 제한 + 헤더 교정 ====== */
+(function forceCompactSearchBox(){
+  const MAX = 5;
+  const STYLE_ID = 'force-search-compact-style';
+
+  // 1) 스타일 주입 (강제 축소)
+  function injectStyle(){
+    if (document.getElementById(STYLE_ID)) return;
+    const css = `
+    /* 패널(120px), 내부 리스트(88px) 강제 축소 */
+    #search-panel{
+      max-height:120px !important;
+      height:120px !important;
+      overflow:hidden !important;
+      border-radius:12px !important;
+      margin:10px auto !important;
+      width:100% !important;
+      max-width:880px !important;
+    }
+    #search-panel .results, #search-panel .list, #search-panel #srch-list, 
+    #search-panel ul, #search-panel ol, #search-panel [role="list"]{
+      max-height:88px !important;
+      overflow:auto !important;
+      display:grid !important;
+      grid-template-columns:repeat(auto-fill,minmax(210px,1fr)) !important;
+      gap:6px !important;
+      padding:0 6px 6px 6px !important;
+      box-sizing:border-box !important;
+      scrollbar-width:thin;
+    }
+    #search-panel .result, #search-panel .item, #search-panel li{
+      min-height:32px !important;
+      font-size:12px !important;
+      line-height:1.2 !important;
+      padding:6px !important;
+      border-radius:8px !important;
+    }
+    #search-panel .btn, #search-panel .select{ transform:scale(.85); }
+    /* 6번째부터 숨김(실제 표시 5개) */
+    #search-panel .results>*:nth-child(n+6),
+    #search-panel .list>*:nth-child(n+6),
+    #search-panel #srch-list>*:nth-child(n+6),
+    #search-panel ul>*:nth-child(n+6),
+    #search-panel ol>*:nth-child(n+6),
+    #search-panel [role="list"]>*:nth-child(n+6){ display:none !important; }
+    `;
+    const s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // 2) “검색 결과” 텍스트를 기준으로 패널을 찾아 #search-panel 부여
+  function ensureSearchPanelId(){
+    // 이미 있으면 OK
+    let panel = document.querySelector('#search-panel');
+    if (panel) return panel;
+
+    // 제목을 찾아서 가장 가까운 카드/섹션을 패널로 지정
+    const title = [...document.querySelectorAll('h1,h2,h3,h4')]
+      .find(x => /검색\s*결과/i.test(x.textContent||''));
+    if (!title) return null;
+
+    panel = title.closest('.card, .panel, section, .section, .box, .container, div');
+    if (panel) panel.id = 'search-panel';
+    return panel;
+  }
+
+  // 3) 헤더 문구 교정(최대 5개)
+  function fixHeader(panel){
+    const h = [...panel.querySelectorAll('h1,h2,h3,h4')]
+      .find(x => /검색\s*결과/i.test(x.textContent||''));
+    if (h) h.textContent = '검색 결과 — 업비트 KRW 전체 (최대 5개)';
+  }
+
+  // 4) 리스트 실제 5개로 제한 (표시 개수 강제)
+  function clampToFive(panel){
+    const list = panel.querySelector('#srch-list, .results, .list, ul, ol, [role="list"]');
+    if (!list) return;
+    [...list.children].forEach((el, idx) => {
+      el.style.display = (idx < MAX) ? '' : 'none';
+    });
+  }
+
+  // 5) 실행 + 감시(동적 변경에도 유지)
+  function applyAll(){
+    injectStyle();
+    const panel = ensureSearchPanelId();
+    if (!panel) return;
+    fixHeader(panel);
+    clampToFive(panel);
+  }
+
+  applyAll();
+  const root = document.querySelector('#app') || document.body;
+  new MutationObserver(applyAll).observe(root, { childList:true, subtree:true });
+})();
