@@ -76,3 +76,47 @@
     run();
   }
 })();
+/* ===== 검색 결과 문구/접힘 상태 개선 (No-Motion) ===== */
+(function improveSearchPanelUX() {
+  // 1) 요소 찾기 (ID가 없어도 제목 텍스트로 백업 탐지)
+  function findPanel() {
+    const byId = document.querySelector('#search-panel, [data-section="search"]');
+    if (byId) return byId;
+    const h = [...document.querySelectorAll('h1,h2,h3,h4')]
+      .find(x => x.textContent && x.textContent.includes('검색 결과'));
+    return h ? h.closest('.card, .panel, section, div') : null;
+  }
+  function findSearchInput() {
+    return document.querySelector('#search-input, input[type="search"], [data-role="search"] input, input[placeholder*="검색"]');
+  }
+
+  const panel = findPanel();
+  const input = findSearchInput();
+  if (!panel || !input) return;
+
+  // 2) 제목 문구 더 명확하게 변경
+  const titleEl = [...panel.querySelectorAll('h1,h2,h3,h4')]
+    .find(x => x.textContent.includes('검색 결과'));
+  if (titleEl) {
+    titleEl.textContent = '검색 결과 — 입력하면 자동 표시 (업비트 KRW 전체 · 최대 20개)';
+  }
+
+  // 3) 입력 전엔 패널을 얇게 접고(높이 고정), 입력하면 자동 펼침 (No-Motion)
+  const APPLY = () => {
+    const hasText = (input.value || '').trim().length > 0;
+    if (hasText) {
+      panel.style.maxHeight = '';
+      panel.style.overflow  = '';
+      panel.style.minHeight = ''; // 완전 펼침
+    } else {
+      panel.style.transition = 'none';  // 깜빡임 방지
+      panel.style.maxHeight = '72px';   // 얇게 보여주기 (제목만 보임)
+      panel.style.minHeight = '72px';
+      panel.style.overflow  = 'hidden'; // 리스트/내용 감춤
+    }
+  };
+
+  // 최초 1회 & 입력 이벤트에 반응
+  APPLY();
+  input.addEventListener('input', APPLY);
+})();
