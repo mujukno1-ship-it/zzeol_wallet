@@ -140,3 +140,56 @@
   style.textContent = css;
   document.head.appendChild(style);
 })();
+/* ===== 검색결과 초(超)컴팩트 모드 — 더 작게 ===== */
+(function shrinkSearchMore(){
+  const css = `
+  /* 패널 자체 크기 더 축소 */
+  #search-panel, [data-section="search"]{
+    --gap:6px; --pad:6px; --fz:12px; --chip:10px;
+    max-height: 160px !important;   /* ↓ 260 → 160 */
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  /* 리스트 영역만 스크롤 */
+  #search-panel .results, [data-section="search"] .results,
+  #search-panel .list,    [data-section="search"] .list,
+  #srch-list{
+    max-height: 120px !important;   /* ↓ 210 → 120 */
+    overflow: auto;
+    scrollbar-width: thin;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); /* 더 좁게 */
+    gap: var(--gap);
+  }
+  /* 각 아이템 더 작게 */
+  #search-panel .result, [data-section="search"] .result,
+  #search-panel .item,   [data-section="search"] .item,
+  #search-panel li,      [data-section="search"] li,
+  #srch-list > *{
+    padding: var(--pad);
+    font-size: var(--fz);
+    line-height: 1.2;
+    min-height: 36px;               /* ↓ 46 → 36 */
+    border-radius: 8px;
+  }
+  /* 텍스트/버튼 축소 */
+  #search-panel .name{ font-weight:600; font-size:12.5px; }
+  #search-panel .market{ font-size:11px; opacity:.7; }
+  #search-panel .btn, .select{
+    transform: scale(.8);
+    padding: 3px 6px;
+    font-size: var(--chip);
+  }
+  /* 제목·헤더 여백도 축소 */
+  #search-panel .header{ margin-bottom: 4px; }
+  @media (max-width:768px){
+    #search-panel, [data-section="search"]{ max-width:96%; }
+    #search-panel .results, [data-section="search"] .results,
+    #search-panel .list,    [data-section="search"] .list,
+    #srch-list{ grid-template-columns: 1fr; }
+  }`;
+  const s=document.createElement('style');
+  s.setAttribute('data-compact-super','');
+  s.textContent=css;
+  document.head.appendChild(s);
+})();
