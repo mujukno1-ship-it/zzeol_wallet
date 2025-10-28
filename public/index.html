@@ -311,5 +311,105 @@ function makeComment({base,upProb,downProb,rvol,tbr,force,aboveVWAP,mode}){
   setInterval(loadSpark, 30000);
 })();
 </script>
+<script>
+/* ============================== *
+ *  Upbit KRW Tick & Rounding Kit
+ *  — paste above </body>
+ * ============================== */
+
+// 업비트 KRW 호가 단위 테이블
+function getTickSizeKRW(p) {
+  const price = Number(p);
+  if (price >= 2_000_000) return 1000;
+  if (price >= 1_000_000) return 500;
+  if (price >= 500_000)  return 100;
+  if (price >= 100_000)  return 50;
+  if (price >= 10_000)   return 10;
+  if (price >= 1_000)    return 1;
+  if (price >= 100)      return 0.1;
+  if (price >= 10)       return 0.01;
+  if (price >= 1)        return 0.001;   // SHIB 같은 저가 코인
+  return 0.0001;
+}
+
+// 틱단위 기준 반올림(기본: 최근접), 올림/내림 지원
+function roundTick(p, mode = "nearest") {
+  const price = Number(p);
+  const tick = getTickSizeKRW(price);
+  const n = price / tick;
+
+  let q;
+  if (mode === "up")      q = Math.ceil(n);
+  else if (mode === "down") q = Math.floor(n);
+  else                    q = Math.round(n);
+
+  const v = q * tick;
+
+  // 소수점 자릿수는 tick에 맞게 자동 지정
+  const decimals = (tick.toString().split(".")[1] || "").length;
+  return Number(v.toFixed(decimals));
+}
+
+// KRW 포맷 (틱에 맞춰 자릿수 유지)
+function formatKRW(p) {
+  const price = Number(p);
+  const tick = getTickSizeKRW(price);
+  const decimals = (tick.toString().split(".")[1] || "").length;
+  return price.toLocaleString("ko-KR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }) + "원";
+}
+
+/* ------------------------------
+ *  한 번에 값들 전부 보정하는 훅
+ *  사용예:
+ *    const out = applyUpbitTicks({
+ *      current: cur, buy1: b1, buy2: b2, tp1, tp2, sl
+ *    });
+ *    // out.buy1Formatted 처럼 사용해서 UI 갱신
+ * ------------------------------ */
+function applyUpbitTicks(levels) {
+  const out = {};
+  const keys = ["current","buy1","buy2","tp1","tp2","sl"];
+  keys.forEach(k => {
+    if (levels[k] == null || levels[k] === "") return;
+    // 매수/익절은 최근접, 손절은 안전하게 내림 적용(원하면 'down'을 'nearest'로 바꿔도 됨)
+    const mode = (k === "sl") ? "down" : "nearest";
+    const v    = roundTick(levels[k], mode);
+    out[k] = v;
+    out[k + "Formatted"] = formatKRW(v);
+  });
+  return out;
+}
+
+/* ------------------------------
+ *  ✅ 기존 코드에 연결하는 최소 가이드
+ *  - 지금까지 계산된 숫자(buy1, tp1, sl 등)를
+ *    마지막 표시 직전에 applyUpbitTicks에 넣고
+ *    반환값으로 UI를 업데이트하면 끝.
+ *
+ *  예시:
+ *    // 기존 계산 결과 (예: AI 분석 결과)
+ *    const cur = 0.01523;   // 현재가
+ *    const b1  = 0.0108;    // 매수1
+ *    const b2  = 0.01095;   // 매수2
+ *    const t1  = 0.0197;    // 익절1
+ *    const t2  = 0.0212;    // 익절2
+ *    const sL  = 0.00949;   // 손절
+ *
+ *    const fixed = applyUpbitTicks({
+ *      current: cur, buy1: b1, buy2: b2, tp1: t1, tp2: t2, sl: sL
+ *    });
+ *
+ *    // UI 바인딩(예: innerText)
+ *    $('#cur').innerText  = fixed.currentFormatted;
+ *    $('#buy1').innerText = fixed.buy1Formatted;
+ *    $('#buy2').innerText = fixed.buy2Formatted;
+ *    $('#tp1').innerText  = fixed.tp1Formatted;
+ *    $('#tp2').innerText  = fixed.tp2Formatted;
+ *    $('#sl').innerText   = fixed.slFormatted;
+ * ------------------------------ */
+</script>  
 </body>
 </html>
