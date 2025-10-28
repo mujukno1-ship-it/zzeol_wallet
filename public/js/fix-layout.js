@@ -112,3 +112,22 @@
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',run,{once:true});
   else run();
 })();
+/* ===== 검색결과 박스 높이 자동 축소 ===== */
+(function autoResizeSearchBox(){
+  const panel = document.querySelector('#search-panel,[data-section="search"]');
+  if(!panel) return;
+
+  const resize = ()=>{
+    const list = panel.querySelector('#srch-list, .results, .list, ul, ol');
+    if(!list) return;
+    const visible = [...list.children].filter(x=>x.style.display!=='none').length;
+    const newHeight = Math.min(visible * 32 + 60, 180); // 5개 기준 최대 180px
+    panel.style.maxHeight = `${newHeight}px`;
+    panel.style.height = `${newHeight}px`;
+    panel.style.transition = 'height 0.2s ease';
+  };
+
+  resize();
+  const mo = new MutationObserver(resize);
+  mo.observe(panel, {childList:true,subtree:true});
+})();
