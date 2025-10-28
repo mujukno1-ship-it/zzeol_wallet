@@ -411,5 +411,64 @@ function applyUpbitTicks(levels) {
  *    $('#sl').innerText   = fixed.slFormatted;
  * ------------------------------ */
 </script>  
+  <script>
+/* ===== Upbit KRW Tick Enforcer (Display-level) ===== */
+
+// KRW 호가틱
+function getTickSizeKRW(p){
+  const x = Number(p);
+  if (x >= 2_000_000) return 1000;
+  if (x >= 1_000_000) return 500;
+  if (x >= 500_000)  return 100;
+  if (x >= 100_000)  return 50;
+  if (x >= 10_000)   return 10;
+  if (x >= 1_000)    return 1;
+  if (x >= 100)      return 0.1;
+  if (x >= 10)       return 0.01;
+  if (x >= 1)        return 0.001;
+  return 0.0001;
+}
+function roundTick(p, mode="nearest"){
+  const price = Number(p);
+  const tick  = getTickSizeKRW(price);
+  const n = price / tick;
+  let q = mode==="up" ? Math.ceil(n) : mode==="down" ? Math.floor(n) : Math.round(n);
+  const v = q * tick;
+  const d = (tick.toString().split(".")[1] || "").length;
+  return Number(v.toFixed(d));
+}
+function formatKRW(p){
+  const price = Number(p);
+  const tick  = getTickSizeKRW(price);
+  const d = (tick.toString().split(".")[1] || "").length;
+  return price.toLocaleString("ko-KR",{minimumFractionDigits:d,maximumFractionDigits:d}) + "원";
+}
+
+/* 핵심: 화면상의 모든 가격 엘리먼트를 주기적으로 틱 보정
+   - 가격 표시 엘리먼트에 class="upbit-price" 를 달아줘.
+   - 가능한 경우 data-value(원시 숫자)를 함께 넣어주면 정확도↑
+   - 손절은 안전하게 내림, 나머지는 최근접 반올림
+*/
+function enforceUpbitTicks(){
+  document.querySelectorAll(".upbit-price").forEach(el=>{
+    // 원시값 우선: data-value > data-raw > 텍스트 숫자 추출
+    let raw = el.getAttribute("data-value")
+            ?? el.getAttribute("data-raw")
+            ?? (el.textContent||"").replace(/[^\d.\-]/g,"");
+    if(raw==="" || isNaN(raw)) return;
+
+    const isSL = el.classList.contains("is-sl"); // 손절 표시엔 이 클래스 추가
+    const v = roundTick(raw, isSL ? "down" : "nearest");
+    el.setAttribute("data-value", v);
+    el.textContent = formatKRW(v);
+  });
+}
+enforceUpbitTicks();
+setInterval(enforceUpbitTicks, 400); // 갱신 루프(가벼움)
+
+/* 디버그 도우미: 콘솔에서 확인용
+   window.testTick(0.01523) 같은 식으로 체크 */
+window.testTick = (x)=>({in:x, tick:getTickSizeKRW(x), out:roundTick(x), fmt:formatKRW(roundTick(x))});
+</script>
 </body>
 </html>
