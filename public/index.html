@@ -262,5 +262,112 @@
       document.getElementById("spark-refresh")?.addEventListener("click", loadSpark);
     })();
   </script>
+  <!-- ===== 사토시의지갑 API 기본 주소 ===== -->
+<script>
+  window.API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+</script>
+
+<!-- ===== 고급 검색팩(초성/오타/즐겨찾기/SPARK/엔터네비) 한방 ===== -->
+<script>
+/* ==== AdvancedSearchPack (inline) ==== */
+(function AdvancedSearchPack(){
+  const API_BASE = window.API_BASE || "https://satoshi-proxy.mujukno1.workers.dev/api";
+  const $ = (s, r=document)=>r.querySelector(s);
+
+  // 검색 UI가 없으면 자동 생성
+  const host = $("#search-area") || $(".search-area") || $("main") || document.body;
+  let wrap = $("#search-wrap");
+  if (!wrap) { wrap = document.createElement("div"); wrap.id="search-wrap"; host.prepend(wrap); }
+  let input = $("#search-input");
+  if (!input) {
+    input = document.createElement("input");
+    input.id="search-input";
+    input.placeholder="검색: 시바이누 / shib / KRW-SHIB (초성 ㅅㅂㄴ)";
+    Object.assign(input.style,{width:"100%",padding:"10px 12px",borderRadius:"10px",border:"1px solid #333",background:"#0f1220",color:"#fff"});
+    wrap.appendChild(input);
+  }
+  let list = $("#search-results");
+  if (!list) {
+    list = document.createElement("div");
+    list.id="search-results";
+    Object.assign(list.style,{marginTop:"8px",border:"1px solid #2a2f45",borderRadius:"10px",overflow:"auto",maxHeight:"360px"});
+    wrap.appendChild(list);
+  }
+  // 툴바
+  if (!$("#search-toolbar")) {
+    const bar = document.createElement("div");
+    bar.id="search-toolbar";
+    bar.innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+        <button id="btn-spark" style="padding:6px 10px;border-radius:8px;border:1px solid #333;background:#14192b;color:#fff;cursor:pointer">⚡ SPARK TOP10</button>
+        <span style="opacity:.7">▲▼: 이동 / Enter: 선택</span>
+      </div>`;
+    wrap.appendChild(bar);
+  }
+
+  // 데이터 로드
+  let MARKETS = [];
+  const norm = s => (s||"").toString().toLowerCase().replace(/\s+/g,"");
+  const H2C = (str)=>{const CHO=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];let out="";for(const ch of(str||"")){const c=ch.charCodeAt(0);if(c>=0xAC00&&c<=0xD7A3){const i=c-0xAC00;out+=CHO[Math.floor(i/588)];}else out+=ch.toLowerCase();}return out;};
+  function scoreRow(row, q){
+    const Q=norm(q), cho=H2C(q); let s=0;
+    if (row._kor.startsWith(Q)||row._eng.startsWith(Q)||row._sym.startsWith(Q)) s+=10;
+    if (row._kor.includes(Q)||row._eng.includes(Q)||row._sym.includes(Q)) s+=6;
+    if (row._cho.startsWith(cho)) s+=5;
+    return s;
+  }
+  async function loadMarkets(){
+    const r = await fetch(`${API_BASE}/markets`); const j = await r.json();
+    MARKETS = (j.rows||[]).filter(m=>(m.market||"").startsWith("KRW-")).map(m=>({
+      ...m,_sym:(m.market||"").replace("KRW-",""),_kor:norm(m.name_kor),_eng:norm(m.name_eng),_cho:H2C(m.name_kor)
+    }));
+  }
+
+  // 렌더
+  let POINTER=-1;
+  function renderList(q){
+    const rows = (!q?MARKETS:MARKETS.map(r=>({r,s:scoreRow(r,q)})).filter(o=>o.s>0).sort((a,b)=>b.s-a.s).map(o=>o.r)).slice(0,40);
+    list.innerHTML=""; POINTER=-1;
+    const table=document.createElement("table"); table.style.cssText="width:100%;border-collapse:collapse";
+    table.innerHTML=`<thead><tr style="opacity:.7"><th style="text-align:left;padding:8px">코인</th><th>마켓</th><th>영문</th></tr></thead>`;
+    const tb=document.createElement("tbody"); rows.forEach((m,i)=>{const tr=document.createElement("tr"); tr.style.cursor="pointer";
+      tr.dataset.market=m.market; tr.onmouseenter=()=>focusRow(i); tr.onclick=()=>pickByMarket(m.market);
+      tr.innerHTML=`<td style="padding:10px">${m.name_kor}</td><td style="text-align:center">${m.market}</td><td style="opacity:.8;text-align:center">${m.name_eng}</td>`;
+      tb.appendChild(tr);}); table.appendChild(tb); list.appendChild(table);
+  }
+  function focusRow(i){const rows=list.querySelectorAll("tbody tr"); rows.forEach(r=>r.style.background="transparent");
+    POINTER=Math.max(0,Math.min(rows.length-1,i)); const tr=rows[POINTER]; if(tr){tr.style.background="rgba(255,255,255,.05)"; tr.scrollIntoView({block:"nearest"});}}
+  async function pickByMarket(market){
+    const riskEl=document.querySelector('input[name="risk"]:checked')||document.querySelector("#risk")||{value:1};
+    const thrEl=document.querySelector("#threshold")||{value:0.8};
+    const url=`${API_BASE}/signal_ultra?market=${encodeURIComponent(market)}&risk=${Number(riskEl.value||1)}&threshold=${Number(thrEl.value||0.8)}`;
+    const r=await fetch(url); const j=await r.json(); if(!j.ok) return alert(j.error||"ultra error");
+    const row=(j.rows||[])[0]||{}; const out=document.querySelector("#ultra-output")||document.querySelector(".ultra-output");
+    if(out){out.innerHTML=`<div>종목: ${row.name_kor} (${row.market})</div>
+      <div>현재가: ${row.last}</div><div>매수1: ${row.buy1} / 매수2: ${row.buy2}</div>
+      <div>매도1: ${row.sell1} / 매도2: ${row.sell2}</div>
+      <div>손절: ${row.stop} · 모드: ${row.mode} · 정확도: ${(row.accuracy*100).toFixed(1)}%</div>
+      <div style="opacity:.8">쩔어한마디: ${row.quip}</div>`;} else { alert(`[ULTRA] ${row.name_kor} ${row.market}`); }
+  }
+
+  // 이벤트
+  let deb; input.addEventListener("input",()=>{clearTimeout(deb); deb=setTimeout(()=>renderList(input.value),120);});
+  input.addEventListener("focus",()=>renderList(input.value));
+  input.addEventListener("keydown",(e)=>{const rows=list.querySelectorAll("tbody tr"); if(!rows.length) return;
+    if(e.key==="ArrowDown"){e.preventDefault();focusRow(POINTER+1);} if(e.key==="ArrowUp"){e.preventDefault();focusRow(POINTER-1);}
+    if(e.key==="Enter"){e.preventDefault(); const m=rows[POINTER]?.dataset.market || rows[0]?.dataset.market; if(m) pickByMarket(m);}
+  });
+
+  // SPARK TOP10 버튼
+  document.getElementById("btn-spark").onclick = async ()=>{
+    try{ const r=await fetch(`${API_BASE}/spark`); const j=await r.json();
+      alert("SPARK TOP10:\n" + (j.rows||[]).map(x=>x.market).join("\n"));
+    }catch{ alert("SPARK 불러오기 실패"); }
+  };
+
+  loadMarkets().then(()=>renderList(""));
+})();
+</script>
+
 </body>
 </html>
