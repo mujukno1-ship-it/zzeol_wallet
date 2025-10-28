@@ -283,3 +283,81 @@
   </script>
 </body>
 </html>
+
+<!-- ============================================= -->
+<!-- Cloudflare Worker: satoshi-proxy (CORS 한방버전) -->
+<!-- 파일명 예: worker.js  / satoshi-proxy.js -->
+<!-- 아래 코드 전체를 Cloudflare Workers "Edit code" 화면에 붙여넣고 Deploy 하면
+     모든 /api/* 응답에 CORS 헤더가 자동 부착되어 Vercel에서 바로 호출됩니다. -->
+
+```js
+// ===== CORS 공통 =====
+function corsHeaders(req) {
+  const origin = req.headers.get('Origin') || '*';
+  return {
+    'Access-Control-Allow-Origin': origin,  // 필요 시 특정 도메인으로 제한 가능
+    'Vary': 'Origin',
+    'Access-Control-Allow-Methods': 'GET,HEAD,POST,OPTIONS',
+    'Access-Control-Allow-Headers': req.headers.get('Access-Control-Request-Headers') || 'Content-Type',
+    'Access-Control-Max-Age': '86400'
+  };
+}
+function preflight(req) { return new Response(null, { status: 204, headers: corsHeaders(req) }); }
+function withCors(req, resp) {
+  const h = new Headers(resp.headers);
+  const cors = corsHeaders(req);
+  Object.entries(cors).forEach(([k, v]) => h.set(k, v));
+  return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: h });
+}
+
+// ===== 라우터 (기본 프록시 + 헬스체크 + 업비트 마켓) =====
+async function router(request, env, ctx) {
+  const url = new URL(request.url);
+  const { pathname, search } = url;
+
+  // 헬스체크
+  if (pathname === '/api/health') {
+    return new Response(JSON.stringify({ ok: true, name: 'satoshi-proxy', time: Date.now() }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  // 업비트 마켓 목록 (직접 프록시)
+  if (pathname === '/api/upbit/markets') {
+    const r = await fetch('https://api.upbit.com/v1/market/all?isDetails=true', { headers: { 'Accept': 'application/json' } });
+    return new Response(await r.text(), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // ※ 아래 두 엔드포인트는 쩔다님의 기존 로직이 이미 있을 가능성이 큽니다.
+  //    기존 Worker에 구현되어 있다면 그대로 동작합니다.
+  //    없다면 임시 501을 주지만, 최소한 CORS는 붙습니다.
+  if (pathname === '/api/spark/top10' || pathname === '/api/ultra/signal') {
+    // 여기에 쩔다님의 기존 계산/프록시 로직을 넣어도 됩니다.
+    return new Response(JSON.stringify({ ok:false, error:'Not Implemented in template' }), {
+      status: 501,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  // 그 외 경로: 그대로 패스스루 (다른 라우트가 이미 있을 때 호환)
+  // 원본 핸들러가 이미 있다면, 아래 fetch를 지우고 원본 함수를 호출하세요.
+  // ex) return await handleRequest(request, env, ctx)
+  const resp = await fetch(request, { cf: { cacheEverything: false } });
+  return new Response(resp.body, { status: resp.status, headers: resp.headers });
+}
+
+// ===== 모듈(ESM) 방식 export (권장) =====
+export default {
+  async fetch(request, env, ctx) {
+    if (request.method === 'OPTIONS') return preflight(request);
+    try {
+      const resp = await router(request, env, ctx);
+      return withCors(request, resp);
+    } catch (e) {
+      return withCors(request, new Response(JSON.stringify({ ok:false, error:String(e) }), {
+        status: 500, headers: { 'Content-Type':'application/json' }
+      }));
+    }
+  }
+};
+```
