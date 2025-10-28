@@ -1,58 +1,72 @@
 /* ============================================================
-   🔥 ULTRA 시그널 패널을 "검색 결과" 바로 밑으로 고정
-   - 기존 기능 유지
-   - No-Motion (깜빡임/스크롤 이동 없음)
-   - 검색 영역이 다시 그려져도 자동으로 유지
+   🔥 레이아웃 고정: [검색 결과] → [SPARK TOP10] → [ULTRA 시그널]
+   - 기존 기능 유지 / 깜빡임·스크롤 이동 없음 (No-Motion)
+   - 섹션이 리렌더되어도 순서 자동 유지
    ============================================================ */
 (function () {
-  function qText(selList, text) {
-    for (const sel of selList) {
+  function findPanel(candidates, fallbackText) {
+    for (const sel of candidates) {
       const el = document.querySelector(sel);
       if (el) return el;
     }
-    // 텍스트로 찾는 최후 수단
-    const h = [...document.querySelectorAll('h1,h2,h3,h4')].find(
-      (x) => x.textContent && x.textContent.includes(text)
-    );
+    // 최후 수단: 제목 텍스트로 상위 컨테이너 찾기
+    const h = [...document.querySelectorAll('h1,h2,h3,h4')]
+      .find(x => x.textContent && x.textContent.includes(fallbackText));
     return h ? h.closest('.card, .panel, section, div') : null;
   }
 
-  function relocateUltra() {
-    // 검색 패널 찾기 (ID가 없더라도 텍스트로 백업 검색)
-    const searchPanel =
-      qText(['#search-panel', '[data-section="search"]'], '검색 결과');
+  function applyNoMotion(el) {
+    if (!el) return;
+    el.style.transition = 'none';
+    el.style.opacity = '1';
+    el.style.position = 'relative';
+  }
 
-    // ULTRA 패널 찾기
-    const ultraPanel =
-      qText(['#ultra-panel', '[data-section="ultra"]'], 'ULTRA 시그널');
+  function reorder() {
+    const searchPanel = findPanel(
+      ['#search-panel', '[data-section="search"]'],
+      '검색 결과'
+    );
+    const sparkPanel = findPanel(
+      ['#spark-panel', '[data-section="spark"]'],
+      'SPARK TOP10'
+    );
+    const ultraPanel = findPanel(
+      ['#ultra-panel', '[data-section="ultra"]'],
+      'ULTRA 시그널'
+    );
 
-    if (!searchPanel || !ultraPanel) return;
+    if (!searchPanel || !sparkPanel || !ultraPanel) return;
 
-    // 이미 위치가 맞으면 종료
-    if (ultraPanel.previousElementSibling === searchPanel) return;
+    // No-Motion
+    [searchPanel, sparkPanel, ultraPanel].forEach(applyNoMotion);
 
-    // No-Motion: 애니/트랜지션 제거
-    ultraPanel.style.transition = 'none';
-    ultraPanel.style.opacity = '1';
-    ultraPanel.style.position = 'relative';
+    // 목표 순서: 검색 → SPARK → ULTRA
+    // 1) SPARK을 검색 바로 아래로
+    if (sparkPanel.previousElementSibling !== searchPanel) {
+      searchPanel.insertAdjacentElement('afterend', sparkPanel);
+    }
+    // 2) ULTRA를 SPARK 바로 아래로
+    if (ultraPanel.previousElementSibling !== sparkPanel) {
+      sparkPanel.insertAdjacentElement('afterend', ultraPanel);
+    }
 
-    // 검색 결과 바로 뒤로 이동
-    searchPanel.insertAdjacentElement('afterend', ultraPanel);
-
-    // 간격만 살짝
-    if (!ultraPanel.dataset._spacingApplied) {
+    // 간격
+    if (!sparkPanel.dataset._gapApplied) {
+      sparkPanel.style.marginTop = '12px';
+      sparkPanel.dataset._gapApplied = '1';
+    }
+    if (!ultraPanel.dataset._gapApplied) {
       ultraPanel.style.marginTop = '12px';
-      ultraPanel.dataset._spacingApplied = '1';
+      ultraPanel.dataset._gapApplied = '1';
     }
   }
 
-  // 초기 실행 (DOM 준비 후)
   function run() {
-    relocateUltra();
-
-    // 검색 결과가 다시 렌더되어도 항상 유지
-    const root = (document.querySelector('#app') || document.body);
-    const mo = new MutationObserver(() => relocateUltra());
+    reorder();
+    // 상위 컨테이너에서 구조가 바뀌어도 순서 유지
+    const root = document.querySelector('#app') || document.body;
+    const mo = new MutationObserver(() => reorder());
     mo.observe(root, { childList: true, subtree: true });
   }
 
