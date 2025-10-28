@@ -122,3 +122,153 @@ async function predict(symbol){
   const r=await fetch(`${API}/predict?symbol=${symbol}`);
   return await r.json();
 }
+<script>
+// ======== BEGIN PATCH: Satoshi connector adapters ========
+const API = "https://satoshi-proxy.mujukno1.workers.dev/api";
+const $ = (id)=>document.getElementById(id);
+const searchEl = $("search");
+const resultsEl = $("results");
+const sparkEl = $("sparkList");
+const panel = $("signal");
+
+// 업비트 마켓 캐시 (검색/선택용)
+let UPBIT_MARKETS = [];
+
+// 1) 헬스체크(선택) — 연결 확인
+(async ()=>{
+  try {
+    const r = await fetch(`${API}/health`);
+    await r.json(); // ok면 그냥 넘어감
+  } catch(e) {
+    sparkEl.textContent = "연결 실패 (health)";
+  }
+})();
+
+// 2) 업비트 마켓 목록 가져와서 검색 소스로 사용
+async function loadUpbitMarkets() {
+  try {
+    const r = await fetch(`${API}/upbit/markets`);
+    const arr = await r.json();
+    // 기대 형태: [{market:"KRW-ETH", korean_name:"이더리움", ...}, ...]
+    UPBIT_MARKETS = arr.filter(x => x.market?.startsWith("KRW-"));
+  } catch(e) {
+    console.error("loadUpbitMarkets error", e);
+  }
+}
+loadUpbitMarkets();
+
+// 3) 검색: 입력 → 로컬 필터 (최대 5개)
+searchEl.addEventListener("input", () => {
+  const q = searchEl.value.trim();
+  if (!q) { resultsEl.innerHTML = ""; return; }
+  const hit = UPBIT_MARKETS
+    .filter(x => x.korean_name.includes(q) || x.market.replace("KRW-","").includes(q.toUpperCase()))
+    .slice(0, 5);
+
+  resultsEl.innerHTML = hit.map(x => `
+    <div class="item" data-market="${x.market}">
+      ${x.korean_name} (${x.market})
+    </div>
+  `).join("");
+});
+
+// 4) SPARK TOP10: /api/spark/top10 → 화면 표시
+async function loadSparkTop10() {
+  try {
+    const r = await fetch(`${API}/spark/top10`);
+    const list = await r.json(); 
+    // 기대 형태 예시: [{market:"KRW-ETH", korean_name:"이더리움", score:85, price:3980000}, ...]
+    sparkEl.innerHTML = list.map(c=>{
+      const clr = c.score>=90?"#ff4d4d":(c.score>=80?"#ff9900":"#9aa");
+      return `<div class="coin" data-market="${c.market}">
+        ${c.korean_name} <span style="color:${clr}">(${c.score})</span>
+      </div>`;
+    }).join("");
+  } catch(e) {
+    console.error("loadSparkTop10 error", e);
+    sparkEl.textContent = "SPARK 데이터 없음";
+  }
+}
+loadSparkTop10(); setInterval(loadSparkTop10, 30000);
+
+// 5) 아이템/코인 클릭 → /api/ultra/signal?market=KRW-XXX
+document.addEventListener("click", async (ev)=>{
+  const t = ev.target.closest(".item,.coin");
+  if (!t) return;
+  const market = t.dataset.market;
+  panel.style.display="block";
+  panel.textContent="AI 분석중...";
+
+  try {
+    const r = await fetch(`${API}/ultra/signal?market=${encodeURIComponent(market)}`);
+    const s = await r.json();
+    // 기대 형태 예시:
+    // { market:"KRW-ETH", korean_name:"이더리움", price:..., buy1:..., tp1:..., sl:..., upProb:..., downProb:..., risk:..., comment:"..." }
+    renderSignal(s);
+  } catch(e) {
+    console.error("ULTRA error", e);
+    panel.textContent = "시그널 불러오기 실패";
+  }
+});
+
+// ===== 유틸: 업비트 호가틱 반올림 =====
+function tick(price){
+  if(price>=2000000) return 1000;
+  if(price>=1000000) return 500;
+  if(price>=500000)  return 100;
+  if(price>=100000)  return 50;
+  if(price>=10000)   return 10;
+  if(price>=1000)    return 1;
+  if(price>=100)     return 0.1;
+  if(price>=10)      return 0.01;
+  return 0.001;
+}
+function roundByTick(p, dir="nearest"){
+  const t = tick(p);
+  const v = p / t;
+  if (dir==="up")   return Math.ceil(v)*t;
+  if (dir==="down") return Math.floor(v)*t;
+  return Math.round(v)*t;
+}
+
+// ===== 시그널 패널 + TP/SL 칩 =====
+function renderSignal(s){
+  const base = s.price;
+  panel.innerHTML = `
+    <b>${s.korean_name} (${s.market})</b><br>
+    현재가: ${base.toLocaleString()}원<br>
+    매수(BUY1): ${s.buy1?.toLocaleString?.() ?? "-"}원 / 
+    익절(TP1): ${s.tp1?.toLocaleString?.() ?? "-"}원 / 
+    손절(SL): ${s.sl?.toLocaleString?.() ?? "-"}원<br>
+    상승확률: ${s.upProb ?? "-"}% / 하락확률: ${s.downProb ?? "-"}%<br>
+    위험도: ${s.risk ?? "-"}<br>
+    <span class="comment">${s.comment ?? ""}</span>
+    <hr>
+    <div>목표수익률(익절): ${[5,8,10,12,15].map(x=>`<button class='tp-chip' data-p='${x}'>${x}%</button>`).join("")}
+      <input id='tp-in' type='number' step='0.5' placeholder='직접입력(%)'>
+      <button id='tp-apply'>적용</button>
+      <div id='tp-preview'></div>
+    </div>
+    <div style="margin-top:8px;">손절폭(하락률): ${[3,5,8,10].map(x=>`<button class='sl-chip' data-p='${x}'>-${x}%</button>`).join("")}
+      <input id='sl-in' type='number' step='0.5' placeholder='직접입력(%)'>
+      <button id='sl-apply'>적용</button>
+      <div id='sl-preview'></div>
+    </div>
+  `;
+
+  // 칩 동작
+  function setTP(pct){
+    const tp = roundByTick(base*(1+pct/100), "up");
+    panel.querySelector("#tp-preview").textContent = `→ 기대 +${pct}% 익절가: ${tp.toLocaleString()}원`;
+  }
+  function setSL(pct){
+    const sl = roundByTick(base*(1-pct/100), "down");
+    panel.querySelector("#sl-preview").textContent = `→ 기대 -${pct}% 손절가: ${sl.toLocaleString()}원`;
+  }
+  panel.querySelectorAll(".tp-chip").forEach(b=>b.onclick=()=>setTP(+b.dataset.p));
+  panel.querySelectorAll(".sl-chip").forEach(b=>b.onclick=()=>setSL(+b.dataset.p));
+  panel.querySelector("#tp-apply").onclick=()=>{ const v=+panel.querySelector("#tp-in").value; if(v>0) setTP(v); };
+  panel.querySelector("#sl-apply").onclick=()=>{ const v=+panel.querySelector("#sl-in").value; if(v>0) setSL(v); };
+}
+// ======== END PATCH ========
+</script>
