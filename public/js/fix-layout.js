@@ -30,7 +30,7 @@
     /* 검색결과 패널: 입력 전/후 동일 크기 (접지 않음) */
     #search-panel, [data-section="search"]{
       --gap:8px; --pad:8px; --fz:13.5px; --chip:11px;
-      max-height: ;         /* 필요시 220~300px로 조절 */
+      max-height: ;         /* 필요시 120~300px로 조절 */
       overflow: hidden;          /* 바깥 고정 */
       border-radius: 14px;
     }
