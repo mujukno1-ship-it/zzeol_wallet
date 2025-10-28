@@ -1,112 +1,124 @@
-<!-- 🔥 사토시의지갑 v10.0 완전체 (SPARK + ULTRA + PrecisionBoost) -->
+<!-- 🔥 사토시의지갑 v11.0 완전체 (SPARK + ULTRA + AI예측 + PrecisionBoost) -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>사토시의지갑 v10.0</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사토시의지갑 v11.0</title>
 <style>
 body{background:#0b0c10;color:#fff;font-family:'Pretendard',sans-serif;margin:0;overflow-x:hidden;}
-header{position:fixed;top:0;left:0;width:100%;background:#101217;padding:10px 12px;z-index:999;display:flex;flex-direction:column;align-items:center;border-bottom:1px solid #222;}
-#search-box{width:90%;max-width:480px;height:46px;font-size:16px;padding:0 12px;border:none;border-radius:10px;background:#1b1d23;color:#fff;outline:none;}
-#results{width:90%;max-width:480px;background:#1a1c20;margin-top:6px;border-radius:10px;overflow:hidden;max-height:210px;transition:max-height .3s ease;}
-.result-item{padding:10px;border-bottom:1px solid #222;font-size:15px;cursor:pointer;}
-.result-item:hover{background:#2a2c30;}
-.spark-section{margin-top:110px;padding:10px 0;text-align:center;}
-.spark-title{font-size:18px;margin-bottom:4px;}
-.spark-item{display:inline-block;background:#191b20;padding:6px 12px;border-radius:10px;margin:4px;font-size:14px;}
-.spark-heat{font-weight:bold;}
-.signal-panel{width:90%;max-width:480px;background:#101217;margin:12px auto;padding:12px;border-radius:12px;line-height:1.6;border:1px solid #222;}
-.zzeol-comment{font-style:italic;color:#f9d65c;}
+header{position:fixed;top:0;width:100%;background:#101217;padding:10px;z-index:99;border-bottom:1px solid #222;text-align:center;}
+#search{width:90%;max-width:480px;height:44px;border:none;border-radius:10px;background:#1b1d23;color:#fff;font-size:16px;padding:0 12px;outline:none;}
+#results{width:90%;max-width:480px;background:#1a1c20;margin:6px auto;border-radius:10px;overflow:hidden;max-height:200px;transition:none;}
+.item{padding:10px;border-bottom:1px solid #222;cursor:pointer;}
+.item:hover{background:#2a2c30;}
+.spark{margin-top:100px;text-align:center;}
+.spark .title{font-size:18px;margin-bottom:4px;}
+.spark .coin{display:inline-block;background:#191b20;padding:6px 10px;border-radius:10px;margin:3px;font-size:14px;}
+.signal{width:90%;max-width:480px;background:#101217;margin:12px auto;padding:12px;border-radius:12px;line-height:1.6;border:1px solid #222;}
+.comment{color:#f9d65c;font-style:italic;}
+button.tp-chip,button.sl-chip{padding:6px 10px;border-radius:8px;border:1px solid #2a2e36;background:#171a20;color:#ddd;cursor:pointer;margin:2px;}
+#tp-preview,#sl-preview{margin-top:5px;opacity:.9;font-size:14px}
 </style>
 </head>
 <body>
 <header>
-<input id="search-box" placeholder="코인 이름 또는 심볼 입력..." />
+<input id="search" placeholder="코인 이름 또는 심볼 입력..." autocomplete="off">
 <div id="results"></div>
 </header>
 
-<section class="spark-section">
-  <div class="spark-title">🔥 SPARK TOP10 — 급등 사전 예열 감지</div>
-  <div id="spark-list">불러오는 중...</div>
+<section class="spark">
+  <div class="title">🔥 SPARK TOP10 — 급등 사전 예열 감지</div>
+  <div id="sparkList">불러오는 중...</div>
 </section>
 
-<div id="signal-output" class="signal-panel" style="display:none;"></div>
+<div id="signal" class="signal" style="display:none;"></div>
 
 <script>
-/* ===========================
-   ⚙️ 사토시의지갑 v10.0 완전체
-   SPARK + ULTRA + PrecisionBoost + NoMotion
-   =========================== */
-
-// API 기본 설정
-const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
-const searchBox = document.getElementById("search-box");
-const results = document.getElementById("results");
-const sparkList = document.getElementById("spark-list");
-const signalPanel = document.getElementById("signal-output");
-
-// No-Motion 모드
+// =====================
+// ⚙️ 사토시의지갑 v11.0 완전체
+// =====================
+const API="https://satoshi-proxy.mujukno1.workers.dev/api";
+const q=$id=>document.getElementById($id);
+const search=q("search"),results=q("results"),spark=q("sparkList"),panel=q("signal");
 results.style.transition="none";
 
-// 🔍 실시간 코인 검색
-searchBox.addEventListener("input", async (e)=>{
-  const q = e.target.value.trim();
-  if(!q){results.innerHTML="";return;}
+// 🔍 검색
+search.addEventListener("input",async e=>{
+  const v=e.target.value.trim();if(!v){results.innerHTML="";return;}
   try{
-    const r = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
-    const data = await r.json();
-    const coins = (data||[]).slice(0,5);
-    results.innerHTML = coins.map(c=>`
-      <div class="result-item" data-symbol="${c.symbol}">
-        ${c.korean_name} (${c.symbol}) — ${c.price.toLocaleString()}원
-      </div>`).join("");
-  }catch(err){
-    results.innerHTML=`<div class="result-item">검색 오류</div>`;
-  }
+    const r=await fetch(`${API}/search?q=${encodeURIComponent(v)}`);
+    const d=await r.json();results.innerHTML=d.slice(0,5).map(c=>`
+      <div class="item" data-s="${c.symbol}">${c.korean_name} (${c.symbol}) — ${c.price.toLocaleString()}원</div>`).join("");
+  }catch{results.innerHTML=`<div class="item">검색 오류</div>`;}
 });
 
-// ✅ SPARK TOP10 표시
+// SPARK
 async function loadSpark(){
   try{
-    const r = await fetch(`${API_BASE}/spark`);
-    const data = await r.json();
-    sparkList.innerHTML = data.map(c=>{
-      const color = c.score>=90?"#ff4d4d":c.score>=80?"#ff9900":"#888";
-      return `<div class="spark-item" data-symbol="${c.symbol}">
-        ${c.korean_name} <span class="spark-heat" style="color:${color}">(${c.score})</span>
-      </div>`;
+    const r=await fetch(`${API}/spark`);const d=await r.json();
+    spark.innerHTML=d.map(c=>{
+      const clr=c.score>=90?"#ff4d4d":c.score>=80?"#ff9900":"#777";
+      return `<div class="coin" data-s="${c.symbol}">${c.korean_name} <span style="color:${clr}">(${c.score})</span></div>`;
     }).join("");
-  }catch(err){
-    sparkList.innerHTML="연결 실패";
-  }
+  }catch{spark.textContent="연결 실패";}
 }
-loadSpark();
+loadSpark();setInterval(loadSpark,30000);
 
-// 🧠 SPARK → ULTRA 시그널
-document.addEventListener("click",async(e)=>{
-  const item=e.target.closest(".spark-item,.result-item");
-  if(!item)return;
-  const sym=item.dataset.symbol;
-  signalPanel.style.display="block";
-  signalPanel.innerHTML="AI 분석중...";
+// 클릭 → ULTRA 시그널
+document.addEventListener("click",async e=>{
+  const t=e.target.closest(".coin,.item");if(!t)return;
+  const sym=t.dataset.s;panel.style.display="block";panel.textContent="AI 분석중...";
   try{
-    const r = await fetch(`${API_BASE}/ultra?symbol=${sym}`);
-    const s = await r.json();
-    signalPanel.innerHTML=`
-      <b>${s.korean_name} (${s.symbol})</b><br>
-      현재가: ${s.price}원<br>
-      매수: ${s.buy1}원 / 익절: ${s.tp1}원 / 손절: ${s.sl}원<br>
-      위험도: ${s.risk}<br>
-      <span class="zzeol-comment">${s.comment}</span>
-    `;
-  }catch(err){
-    signalPanel.innerHTML="데이터 로드 실패";
-  }
+    const r=await fetch(`${API}/ultra?symbol=${sym}`);const s=await r.json();window._last=s;
+    panel.innerHTML=`<b>${s.korean_name} (${s.symbol})</b><br>
+    현재가: ${s.price}원<br>매수: ${s.buy1}원 / 익절: ${s.tp1}원 / 손절: ${s.sl}원<br>
+    상승확률: ${s.upProb}% / 하락확률: ${s.downProb}%<br>위험도: ${s.risk}<br>
+    <span class="comment">${s.comment}</span>`;
+    renderTP_SL_Chips(s);
+  }catch{panel.textContent="데이터 불러오기 실패";}
 });
 
-// 🔁 30초마다 SPARK 업데이트
-setInterval(loadSpark,30000);
-</script>
-</body>
-</html>
+// ===== TP/SL 자동칩 (예상 상승률·하락률) =====
+function tick(price){
+  if(price>=2000000)return 1000;
+  if(price>=1000000)return 500;
+  if(price>=500000)return 100;
+  if(price>=100000)return 50;
+  if(price>=10000)return 10;
+  if(price>=1000)return 1;
+  if(price>=100)return 0.1;
+  if(price>=10)return 0.01;
+  return 0.001;
+}
+function round(p,t,dir="nearest"){const v=p/t;return dir==="up"?Math.ceil(v)*t:dir==="down"?Math.floor(v)*t:Math.round(v)*t;}
+
+function renderTP_SL_Chips(s){
+  const base=s.price,tickSize=t(base);
+  const pdiv=document.createElement("div");
+  pdiv.innerHTML=`<hr><div>목표수익률(익절): ${[5,8,10,12,15].map(x=>`<button class='tp-chip' data-p='${x}'>${x}%</button>`).join("")}
+  <input id='tp-in' type='number' min='1' max='100' step='0.5' placeholder='직접입력(%)'>
+  <button id='tp-apply'>적용</button><div id='tp-preview'></div></div>
+  <div style="margin-top:8px;">손절폭(하락률): ${[3,5,8,10].map(x=>`<button class='sl-chip' data-p='${x}'>-${x}%</button>`).join("")}
+  <input id='sl-in' type='number' min='1' max='50' step='0.5' placeholder='직접입력(%)'>
+  <button id='sl-apply'>적용</button><div id='sl-preview'></div></div>`;
+  panel.appendChild(pdiv);
+
+  function setTP(pct){const tp=round(base*(1+pct/100),tickSize,"up");
+    panel.innerHTML=panel.innerHTML.replace(/익절:\s*[\d,\.]+원/,"익절: "+tp.toLocaleString()+"원");
+    q("tp-preview").textContent=`→ 기대 +${pct}% 익절가: ${tp.toLocaleString()}원`; }
+  function setSL(pct){const sl=round(base*(1-pct/100),tickSize,"down");
+    panel.innerHTML=panel.innerHTML.replace(/손절:\s*[\d,\.]+원/,"손절: "+sl.toLocaleString()+"원");
+    q("sl-preview").textContent=`→ 기대 -${pct}% 손절가: ${sl.toLocaleString()}원`; }
+
+  document.querySelectorAll(".tp-chip").forEach(b=>b.onclick=()=>setTP(+b.dataset.p));
+  document.querySelectorAll(".sl-chip").forEach(b=>b.onclick=()=>setSL(+b.dataset.p));
+  q("tp-apply").onclick=()=>{const v=+q("tp-in").value;if(v>0)setTP(v)};
+  q("sl-apply").onclick=()=>{const v=+q("sl-in").value;if(v>0)setSL(v)};
+}
+
+// ========== AI 상승·하락폭 예측 통합 ==========
+async function predict(symbol){
+  const r=await fetch(`${API}/predict?symbol=${symbol}`);
+  return await r.json();
+}
