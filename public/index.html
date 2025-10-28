@@ -5,94 +5,177 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>사토시의지갑 ⚡ SPARK 단타 완전체</title>
 <style>
-  body { font-family: 'Pretendard', sans-serif; background:#0d1117; color:#f0f6fc; margin:0; padding:0; }
-  #search-bar { position:fixed; top:0; width:100%; background:#161b22; padding:10px; z-index:1000; display:flex; justify-content:center; }
-  input { width:90%; padding:10px; border:none; border-radius:6px; font-size:16px; background:#21262d; color:#fff; }
-  .section { margin-top:70px; padding:10px; }
-  h2 { margin:15px 0 8px; color:#58a6ff; }
-  .coin-card { background:#161b22; margin-bottom:10px; border-radius:8px; padding:10px; box-shadow:0 0 4px #30363d; }
-  .coin-card strong { color:#58a6ff; }
-  .danger { color:#f85149; }
-  .warn { color:#d29922; }
-  .safe { color:#3fb950; }
-  .neutral { color:#9e9e9e; }
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, Apple SD Gothic Neo, Pretendard, sans-serif; background:#0d1117; color:#f0f6fc; margin:0; }
+  #search-bar { position:fixed; top:0; left:0; right:0; background:#161b22; padding:10px 12px; z-index:1000; }
+  #search { width:100%; padding:12px 14px; border:none; border-radius:8px; background:#21262d; color:#fff; font-size:16px; }
+  .section { margin:78px 12px 16px; }
+  h2 { margin:16px 0 10px; color:#58a6ff; font-size:18px; }
+  .grid { display:grid; gap:10px; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px; }
+  .name { font-weight:700; color:#58a6ff; }
+  .row { margin-top:6px; font-size:14px; }
+  .muted { color:#9da7b3; }
+  .ok { color:#3fb950; } .warn { color:#d29922; } .bad { color:#f85149; } .mid{ color:#e3b341; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:6px; border:1px solid #30363d; }
+  #err { margin:6px 12px; color:#f85149; font-size:13px; display:none; }
 </style>
 </head>
 <body>
   <div id="search-bar">
-    <input type="text" id="search" placeholder="코인명 또는 심볼 검색 (예: 온도, 아카시아, 시바이누)" />
+    <input id="search" placeholder="코인명/심볼 검색 (예: 온도, 아카시아, 시바이누, KRW-ACX)" />
   </div>
 
-  <div class="section" id="spark">
+  <div id="err"></div>
+
+  <div class="section">
     <h2>🌋 SPARK (예열 코인)</h2>
-    <div id="spark-list">불러오는 중...</div>
+    <div id="spark" class="grid"><div class="muted">불러오는 중…</div></div>
   </div>
 
-  <div class="section" id="spark-hot">
+  <div class="section">
     <h2>🔥 SPARK 단타 (급등 코인)</h2>
-    <div id="spark-hot-list">불러오는 중...</div>
+    <div id="sparkHot" class="grid"><div class="muted">불러오는 중…</div></div>
   </div>
 
-  <script>
-  const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+<script>
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api"; // 사토시 프록시
+const errBox = document.getElementById('err');
 
-  const fetchCoins = async () => {
-    const res = await fetch(`${API_BASE}/upbit/tickers`);
-    const data = await res.json();
+const KRWround = (p) => {
+  if (p >= 1000000) return (Math.round(p/100) * 100).toLocaleString();
+  if (p >= 100000)  return (Math.round(p/10) * 10).toLocaleString();
+  if (p >= 10000)   return Math.round(p).toLocaleString();
+  if (p >= 1000)    return Math.round(p).toLocaleString();
+  if (p >= 100)     return Math.round(p).toLocaleString();
+  if (p >= 10)      return (Math.round(p*10)/10).toFixed(1);
+  if (p >= 1)       return (Math.round(p*100)/100).toFixed(2);
+  return (Math.round(p*1000)/1000).toFixed(3);
+};
 
-    // 업비트 호가틱 반올림
-    const roundKRW = (price) => {
-      if (price >= 100) return Math.round(price);
-      if (price >= 10) return (Math.round(price * 10) / 10).toFixed(1);
-      if (price >= 1) return (Math.round(price * 100) / 100).toFixed(2);
-      return (Math.round(price * 1000) / 1000).toFixed(3);
-    };
+async function fetchFromProxy() {
+  const r = await fetch(`${API_BASE}/markets`, { headers:{ accept:'application/json' } });
+  if (!r.ok) throw new Error(`proxy ${r.status}`);
+  const data = await r.json();
+  // 기대 포맷: [{market:"KRW-XXX", korean_name:"...", trade_price:123, prev_closing_price:120}, ...]
+  if (!Array.isArray(data)) throw new Error('proxy-shape');
+  return data.filter(x => x.market?.startsWith('KRW-'));
+}
 
-    // 변동률 기준 분리
-    const sparkCoins = [];
-    const sparkHotCoins = [];
+// 폴백: 업비트 공개 API (CORS 허용)
+async function fetchFromUpbit() {
+  // 1) 모든 마켓 목록(한글명 포함)
+  const mres = await fetch('https://api.upbit.com/v1/market/all?isDetails=true');
+  const markets = await mres.json();
+  const krw = markets.filter(m => m.market.startsWith('KRW-'));
+  // 2) 티커 일괄 조회 (200개 단위로 분할)
+  const chunk = (arr, n) => arr.reduce((a,_,i)=> (i%n? a[a.length-1].push(arr[i]):a.push([arr[i]]), a),[]);
+  const chunks = chunk(krw.map(m=>m.market), 100);
+  let tickers = [];
+  for (const ch of chunks) {
+    const tres = await fetch('https://api.upbit.com/v1/ticker?markets='+ch.join(','));
+    tickers = tickers.concat(await tres.json());
+  }
+  // 조인
+  const mapName = Object.fromEntries(krw.map(m=>[m.market, m.korean_name]));
+  return tickers.map(t => ({
+    market: t.market,
+    korean_name: mapName[t.market] || t.market,
+    trade_price: t.trade_price,
+    prev_closing_price: t.prev_closing_price
+  }));
+}
 
-    data.forEach(c => {
-      const change = ((c.trade_price - c.prev_closing_price) / c.prev_closing_price) * 100;
-      if (change >= 10) sparkHotCoins.push(c);
-      else if (change >= 3) sparkCoins.push(c);
-    });
+async function loadData() {
+  errBox.style.display='none';
+  try {
+    try {
+      return await fetchFromProxy();
+    } catch (e) {
+      // 폴백으로 자동 전환
+      const data = await fetchFromUpbit();
+      errBox.textContent = '프록시 연결 불가 → 업비트 공개 API로 폴백 중 (정상 동작)';
+      errBox.style.display='block';
+      return data;
+    }
+  } catch (e) {
+    errBox.textContent = '데이터 로딩 실패: ' + e.message;
+    errBox.style.display='block';
+    return [];
+  }
+}
 
-    // 공통 UI 생성 함수
-    const createCard = (c, isHot=false) => {
-      const riskLv = Math.random() * 5 | 1;
-      const colors = ["🟢","🟢🟡","🟡","🟠","🔴"];
-      const riskTxt = ["매우 안정","안정","보통","위험","매우 위험"];
-      const msgSet = [
-        "세력 예열 중, 눌림매수 진입 준비.",
-        "세력 돌파 시작, 익절 늦춰 홀딩 권장.",
-        "세력 분출 임박, 익절 분할 권장.",
-        "세력 이탈 감지, 빠른 청산 필요.",
-        "폭등 감지, 추격 진입 자제."
-      ];
-      const price = roundKRW(c.trade_price);
-      const buy = roundKRW(c.trade_price * 0.985);
-      const sell = roundKRW(c.trade_price * 1.015);
-      const stop = roundKRW(c.trade_price * 0.975);
-      const msg = isHot ? msgSet[4] : msgSet[riskLv-1];
+function riskBadge(r){ // 1~5
+  const colors = ['🟢','🟢🟡','🟡','🟠','🔴'];
+  const txt = ['매우 안정','안정','보통','위험','매우 위험'];
+  return `${colors[r-1]} ${r}단계 (${txt[r-1]})`;
+}
 
-      return `
-        <div class="coin-card">
-          <strong>${isHot ? "🔥" : "🌋"} ${c.korean_name} (${c.market})</strong><br/>
-          현재가: ${price}원<br/>
-          매수: ${buy}원 / 매도: ${sell}원 / 손절: ${stop}원<br/>
-          위험도: ${colors[riskLv-1]} ${riskLv}단계 (${riskTxt[riskLv-1]})<br/>
-          💬 쩔어한마디: ${msg}
-        </div>`;
-    };
+function card(item, isHot=false){
+  const price = item.trade_price ?? 0;
+  const prev  = item.prev_closing_price ?? price;
+  const chg = ((price - prev)/prev)*100;
+  // 간이 타점(Precision Boost Mode 자리) — 프록시가 세부지표 줄 때 자동 대체 가능
+  const buy = KRWround(price * (isHot ? 0.988 : 0.985));
+  const sell = KRWround(price * (isHot ? 1.018 : 1.015));
+  const stop = KRWround(price * (isHot ? 0.980 : 0.975));
+  const risk = Math.min(5, Math.max(1,
+      (isHot ? 3 + (chg>15?2:1) : (chg>5?3:2))
+  ));
+  const msg = isHot
+    ? "폭등 감지, 분할익절 권장 · 추격매수 주의."
+    : (risk<=2 ? "세력 예열 중, 눌림 진입 준비."
+               : risk==3 ? "변동성 확대, 분할익절 병행."
+                         : "세력 이탈 신호 가능, 리스크 관리.");
 
-    // 렌더링
-    document.getElementById("spark-list").innerHTML = sparkCoins.map(c=>createCard(c)).join("");
-    document.getElementById("spark-hot-list").innerHTML = sparkHotCoins.map(c=>createCard(c,true)).join("");
-  };
+  return `
+    <div class="card">
+      <div class="name">${isHot?'🔥':'🌋'} ${item.korean_name} <span class="badge">${item.market}</span></div>
+      <div class="row">현재가: <b>${KRWround(price)}원</b> <span class="muted">(${chg>=0?'+':''}${chg.toFixed(2)}%)</span></div>
+      <div class="row">매수: ${buy}원 / 매도: ${sell}원 / 손절: ${stop}원</div>
+      <div class="row">위험도: ${riskBadge(risk)}</div>
+      <div class="row muted">💬 쩔어한마디: ${msg}</div>
+    </div>
+  `;
+}
 
-  fetchCoins();
-  setInterval(fetchCoins, 10000);
-  </script>
+function render(list){
+  // 필터: 입력어
+  const q = (document.getElementById('search').value||'').trim().toLowerCase();
+  const filtered = q ? list.filter(x =>
+      x.korean_name?.toLowerCase().includes(q) ||
+      x.market?.toLowerCase().includes(q)
+  ) : list;
+
+  // 그룹: 급등(단타) / 예열
+  const hot = filtered.filter(x=>{
+    const price = x.trade_price??0, prev=x.prev_closing_price??price;
+    return ((price-prev)/prev)*100 >= 10;
+  });
+  const warm = filtered.filter(x=>{
+    const price = x.trade_price??0, prev=x.prev_closing_price??price;
+    const r = ((price-prev)/prev)*100;
+    return r >= 3 && r < 10;
+  });
+
+  document.getElementById('spark').innerHTML =
+    warm.length ? warm.slice(0,50).map(x=>card(x,false)).join('') :
+    '<div class="muted">예열 코인 없음</div>';
+
+  document.getElementById('sparkHot').innerHTML =
+    hot.length ? hot.slice(0,50).map(x=>card(x,true)).join('') :
+    '<div class="muted">급등 코인 없음</div>';
+}
+
+async function tick(){
+  const data = await loadData();
+  render(data);
+}
+
+document.getElementById('search').addEventListener('input', tick);
+
+tick();
+setInterval(tick, 10000); // 10초 주기 갱신
+</script>
 </body>
 </html>
