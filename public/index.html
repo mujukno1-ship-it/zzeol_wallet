@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>사토시의지갑 — 한방버전(Search + ULTRA) No‑Motion</title>
+  <title>사토시의지갑 — 실시간(Upbit WS) + Search + SPARK + ULTRA</title>
   <style>
     /* ===== No‑Motion: 애니/트랜지션/오토스크롤 비활성 ===== */
     *{scroll-behavior:auto!important}
@@ -66,6 +66,7 @@
       <div class="row" style="margin-top:8px">
         <span id="conn" class="muted">연결 준비중…</span>
         <span id="upd" class="muted"></span>
+        <span id="wsStat" class="muted"></span>
       </div>
     </div>
 
@@ -118,6 +119,7 @@
   <script>
   // ===== 고정 설정 =====
   const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
+  const UPBIT_WS = 'wss://api.upbit.com/websocket/v1';
   const $ = (id)=>document.getElementById(id);
 
   // ===== 유틸 =====
@@ -132,30 +134,25 @@
   let markets = []; // {market, korean_name, english_name}
   let sparkData = [];
   let selectedMarket = null;
+  let ws=null; let wsCodes=new Set(); let wsRetry=0; let wsTimer=null;
 
-  // ===== 검색: 업비트 전체 마켓 로드 (우선 워커 프록시 시도, 실패 시 업비트 직접)
+  // ===== 검색: 업비트 전체 마켓 로드 =====
   async function loadMarkets(){
     try{
-      // 1) 워커 프록시가 있다면 사용 (향후 /upbit/markets 구현 시 자동 사용)
       const url1 = API_BASE.replace(/\/$/,'') + '/upbit/markets';
       const r = await fetch(url1,{cache:'no-store'});
       if(r.ok){ markets = (await r.json()).filter(x=>x.market?.startsWith('KRW-')); return; }
       throw new Error('proxy-miss');
     }catch(_){
-      // 2) 업비트 공식 API 직접 사용 (CORS 허용됨)
       const url2 = 'https://api.upbit.com/v1/market/all?isDetails=true';
       const data = await getJSON(url2);
       markets = data.filter(x=>x.market?.startsWith('KRW-'));
     }
   }
-
   function renderSearch(){
     const box = $('srch-list');
     const q = ($('search').value||'').trim().toLowerCase();
-    const arr = markets.filter(m=>{
-      return !q || m.market.toLowerCase().includes(q) || (m.korean_name||'').toLowerCase().includes(q);
-    }).slice(0,20);
-
+    const arr = markets.filter(m=> !q || m.market.toLowerCase().includes(q) || (m.korean_name||'').toLowerCase().includes(q)).slice(0,20);
     const frag = document.createDocumentFragment();
     arr.forEach(m=>{
       const item = document.createElement('div'); item.className='srch-item';
@@ -181,10 +178,14 @@
       const name = document.createElement('div'); name.textContent = it.korean_name||it.market; name.style.fontWeight='700';
       const badge = document.createElement('span'); badge.className='badge '+scoreClass(Math.round(it.spark_score||0)); badge.textContent='예열 '+Math.round(it.spark_score||0)+'%';
       const gauge = document.createElement('div'); gauge.className='spark-gauge'; const bar=document.createElement('b'); bar.style.width=Math.max(0,Math.min(100,Math.round(it.spark_score||0)))+'%'; gauge.appendChild(bar);
-      const pr = document.createElement('div'); pr.className='mono'; pr.style.minWidth='110px'; pr.style.textAlign='right'; const p = (typeof it.price==='number')? roundTickKRW(it.price): it.price; pr.textContent = p? fmtKRW(p)+'원' : '-';
+      const pr = document.createElement('div'); pr.className='mono'; pr.style.minWidth='110px'; pr.style.textAlign='right'; const p = (typeof it.price==='number')? roundTickKRW(it.price): it.price; pr.textContent = p? fmtKRW(p)+'원' : '-'; pr.id = 'spark-price-'+it.market;
       row.appendChild(name); row.appendChild(badge); row.appendChild(gauge); row.appendChild(pr); frag.appendChild(row);
     });
     list.innerHTML=''; list.appendChild(frag);
+    // WS 구독 세트 갱신
+    const codes = new Set(sparkData.slice(0,10).map(x=>x.market));
+    if(selectedMarket) codes.add(selectedMarket);
+    updateWsCodes(codes);
   }
 
   async function loadSpark(){
@@ -196,7 +197,7 @@
       // 점수 보정 (사토시 메모리 — Upgrade Filter Pack)
       sparkData.forEach(it=>{
         const r=+it.rvol||0, t=+it.tbr||0, o=+it.obi||0, a=+it.atr_rank||0, f=+it.force_index||0; const ch5=+it.chg5m||0;
-        let score = (r*0.3)+(t*0.25)+(o*0.15)+(a*0.15)+(f*0.15); // 0~100 스케일 가정
+        let score = (r*0.3)+(t*0.25)+(o*0.15)+(a*0.15)+(f*0.15);
         if(it.rvol_jump) score*=1.3; if(it.funding_spike) score*=0.8; if(it.onchain_inflow && it.kimp_up) score+=5;
         const meets = [r>=1.8, t>=0.60, o>=0.15, (it.microprice_bias||0)>0, ch5>=1.5].filter(Boolean).length;
         if(meets<4) score = Math.min(score, 69);
@@ -208,7 +209,7 @@
   }
 
   // ===== ULTRA =====
-  async function selectMarket(market, name){ selectedMarket=market; $('u-title').textContent = `${name} (${market})`; await loadUltra(); }
+  async function selectMarket(market, name){ selectedMarket=market; $('u-title').textContent = `${name} (${market})`; await loadUltra(); updateWsCodes(new Set([market,...sparkData.slice(0,10).map(x=>x.market)])); }
   function applyBullBear(sig){
     const C=+sig.price||0, A=+sig.atr||Math.max(1, C*0.012); const r=+sig.rvol||1.5, t=+sig.tbr||0.55, k=+sig.kimp||0, f=+sig.force_index||60, v=+sig.vwap_dist||0, bs=+sig.basis||0, fd=+sig.funding||0;
     let mode='neutral'; if( ((r>=2)+(t>=0.65)+(k>=3)+(f>=80)+(v>=1.5)+(fd>0 && bs>0))>=3 ) mode='bull'; if( ((r>=1.4 && v<0)+(t<=0.45)+(f<=35)+(bs<0 || fd<0))>=3 ) mode='bear';
@@ -224,6 +225,52 @@
       const data = await getJSON(url); patchUltra(applyBullBear(data||{}));
     }catch(e){ const ref=(sparkData||[]).find(x=>x.market===selectedMarket)||{}; const fake=applyBullBear({market:selectedMarket, price:ref.price||0, atr:ref.atr||((ref.price||0)*0.012||100), rvol:ref.rvol||1.5, tbr:ref.tbr||0.55, kimp:ref.kimp||0, force_index:ref.force_index||60, rv_percentile:ref.atr_rank||50, ment:(ref.spark_score>=90?'폭발 임박 — 분할익절 계획 수립': ref.spark_score>=70? '예열 진행 — 눌림매수 대기':'관망 구간')}); patchUltra(fake);} }
   function patchUltra(s){ const pEl=$('u-price'); pEl.classList.remove('price-up','price-down'); pEl.classList.add((s.price_chg24h||0)>=0?'price-up':'price-down'); pEl.textContent=fmtKRW(s.price||0)+'원'; $('u-risk').textContent=String(s.risk??'-'); $('u-buy1').textContent=fmtKRW(s.buy1||0)+'원'; $('u-buy2').textContent=fmtKRW(s.buy2||0)+'원'; $('u-tp1').textContent=fmtKRW(s.tp1||0)+'원'; $('u-tp2').textContent=fmtKRW(s.tp2||0)+'원'; $('u-sl').textContent=fmtKRW(s.sl||0)+'원'; $('u-force').textContent=String(Math.round(s.force_index||0)); $('u-ment').textContent=s.ment||''; }
+
+  // ===== Upbit WebSocket =====
+  function updateWsCodes(newSet){
+    const key = (x)=>x; // direct market codes
+    const next = new Set([...newSet].map(key));
+    const same = next.size===wsCodes.size && [...next].every(c=>wsCodes.has(c));
+    if(same && ws && ws.readyState===1) return; // already good
+    wsCodes = next; connectWS();
+  }
+  function connectWS(){
+    try{ if(ws){ try{ ws.close(); }catch{} ws=null; }
+      $('wsStat').textContent = 'WS 연결중…';
+      ws = new WebSocket(UPBIT_WS);
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = ()=>{
+        wsRetry=0; $('wsStat').textContent = 'WS 연결완료';
+        const sub = [
+          { ticket: 'satoshi-'+Math.random().toString(36).slice(2) },
+          { type:'ticker', codes:[...wsCodes], isOnlyRealtime:true },
+          { format:'SIMPLE' }
+        ];
+        ws.send(new TextEncoder().encode(JSON.stringify(sub)));
+      };
+      ws.onmessage = (ev)=>{
+        const text = new TextDecoder('utf-8').decode(new Uint8Array(ev.data));
+        let msg; try{ msg = JSON.parse(text); }catch{return}
+        if(!msg || !msg.code) return;
+        const mkt = msg.code; const price = msg.trade_price ?? msg.tp ?? msg.trade_price ?? null;
+        if(typeof price==='number'){
+          const el = document.getElementById('spark-price-'+mkt);
+          if(el){ el.textContent = fmtKRW(roundTickKRW(price))+'원'; }
+          if(selectedMarket===mkt){
+            // 현재가만 실시간 패치 (나머지는 백엔드 시그널 유지)
+            $('u-price').textContent = fmtKRW(roundTickKRW(price))+'원';
+          }
+        }
+      };
+      ws.onclose = ()=>{ $('wsStat').textContent = 'WS 연결종료'; scheduleReconnect(); };
+      ws.onerror = ()=>{ $('wsStat').textContent = 'WS 에러'; try{ ws.close(); }catch{} };
+    }catch(e){ $('wsStat').textContent = 'WS 실패'; scheduleReconnect(); }
+  }
+  function scheduleReconnect(){
+    if(wsTimer){ clearTimeout(wsTimer); wsTimer=null; }
+    const delay = Math.min(15000, 1000 * Math.pow(2, wsRetry++));
+    wsTimer = setTimeout(()=> connectWS(), delay);
+  }
 
   // ===== 이벤트 =====
   $('search').addEventListener('input', renderSearch);
