@@ -125,5 +125,127 @@
       `;
     }
   </script>
+  <!-- === Satoshi: Search + API wiring (기존기능유지) === -->
+<style>
+  .satoshi-search-wrap{display:flex;gap:8px;justify-content:center;align-items:center;margin:16px auto;max-width:720px}
+  .satoshi-search{flex:1;padding:10px 14px;border-radius:10px;border:1px solid #333;background:#111;color:#eee}
+  .satoshi-btn{padding:10px 14px;border-radius:10px;border:1px solid #444;background:#1f2937;color:#fff;cursor:pointer}
+  .satoshi-results{max-width:720px;margin:8px auto 24px;display:grid;gap:8px}
+  .satoshi-card{padding:10px 12px;border:1px solid #30363d;border-radius:12px;background:#0b0f14;color:#e5e7eb;display:flex;justify-content:space-between;align-items:center}
+  .satoshi-pill{font-size:12px;padding:3px 8px;border-radius:999px;background:#1f2937;border:1px solid #374151}
+  .satoshi-msg{max-width:720px;margin:12px auto;color:#9CA3AF;font-size:14px;text-align:center}
+</style>
+
+<div id="satoshi-search-area" class="satoshi-search-wrap">
+  <input id="satoshi-search-input" class="satoshi-search" placeholder="코인 이름 또는 심볼 입력… (예: 시바이누, ETH, KRW-ETH)" />
+  <button id="satoshi-search-btn" class="satoshi-btn">검색</button>
+</div>
+<div id="satoshi-search-results" class="satoshi-results"></div>
+<div id="satoshi-search-msg" class="satoshi-msg"></div>
+
+<script>
+(function(){
+  // 0) API 베이스 (워커 주소 정확히!)
+  const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
+
+  // 1) 헬스체크로 연결 확인 후 안내
+  async function ping(){
+    try{
+      const r = await fetch(`${API_BASE}/health`, {mode:'cors'});
+      const j = await r.json();
+      if(!j.ok) throw 0;
+      msg('연결 완료 ✅');
+    }catch(e){
+      msg('연결 실패 ❌ (CORS 또는 워커 배포 확인 필요)');
+    }
+  }
+
+  // 2) 업비트 마켓 목록 받아서 로컬 캐시
+  let MARKET_CACHE = [];
+  async function loadMarkets(){
+    if (MARKET_CACHE.length) return MARKET_CACHE;
+    const r = await fetch(`${API_BASE}/upbit/markets`);
+    const j = await r.json();
+    // KRW 마켓만, 한국어명 포함
+    MARKET_CACHE = (j.markets || j || [])
+      .filter(m => (m.market||'').startsWith('KRW-'))
+      .map(m => ({market:m.market, korean_name:m.korean_name || m.koreanName || '', english_name:m.english_name || ''}));
+    return MARKET_CACHE;
+  }
+
+  // 3) 검색 실행 (최대 5개)
+  async function doSearch(){
+    const q = (inp.value || '').trim().toLowerCase();
+    if (!q){ render([], '검색어를 입력하세요.'); return; }
+    try{
+      await loadMarkets();
+      const matched = MARKET_CACHE.filter(m => 
+        m.market.toLowerCase().includes(q) ||
+        (m.korean_name||'').toLowerCase().includes(q) ||
+        (m.english_name||'').toLowerCase().includes(q)
+      ).slice(0,5); // 5개 제한
+      if(!matched.length){ render([], '검색 결과가 없습니다.'); return; }
+      render(matched);
+    }catch(e){
+      render([], '검색 실패 (연결 확인 필요)');
+    }
+  }
+
+  // 4) 검색 결과 렌더 & 클릭 시 ULTRA 시그널 불러오기
+  async function onPick(market){
+    try{
+      msg('ULTRA 시그널 불러오는 중…');
+      const r = await fetch(`${API_BASE}/ultra/signal?market=${encodeURIComponent(market)}`);
+      const j = await r.json();
+      msg(''); // 안내 지움
+      // 화면 어딘가에 이미 존재하는 ULTRA 영역이 있다면 값을 채우고, 없으면 간단히 알림.
+      // 여기선 최소 표시(현재가/BUY1/TP/SL/예상상승·하락률)만 안내:
+      alert(
+        `[${market}] ULTRA 시그널\n` +
+        `현재가: ${j.price ?? '-'}원\n` +
+        `BUY1 : ${j.buy1 ?? '-'}원\n` +
+        `TP1/TP2: ${j.tp1 ?? '-'} / ${j.tp2 ?? '-'}원\n` +
+        `SL   : ${j.sl ?? '-'}원\n` +
+        `예상상승률 / 하락률: ${j.exp_up ?? '-'}% / ${j.exp_down ?? '-'}%`
+      );
+    }catch(e){
+      msg('ULTRA 불러오기 실패 (CORS 또는 API 오류)');
+    }
+  }
+
+  // 5) DOM 헬퍼
+  const inp = document.getElementById('satoshi-search-input');
+  const btn = document.getElementById('satoshi-search-btn');
+  const box = document.getElementById('satoshi-search-results');
+  const msgBox = document.getElementById('satoshi-search-msg');
+
+  function render(list, hint=''){
+    box.innerHTML = '';
+    if (hint) msg(hint); else msg('');
+    list.forEach(m=>{
+      const row = document.createElement('div');
+      row.className = 'satoshi-card';
+      row.innerHTML = `
+        <div>
+          <div style="font-weight:600">${m.korean_name || '-'} <span class="satoshi-pill">${m.market}</span></div>
+          <div style="font-size:12px;color:#9ca3af">${m.english_name || ''}</div>
+        </div>
+        <button class="satoshi-btn" data-market="${m.market}">선택</button>
+      `;
+      row.querySelector('button').onclick = () => onPick(m.market);
+      box.appendChild(row);
+    });
+  }
+  function msg(t){ msgBox.textContent = t || ''; }
+
+  // 6) 이벤트 (No-Motion: 입력시 화면 점프 없음)
+  btn.addEventListener('click', doSearch);
+  inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doSearch(); });
+
+  // 시작 시 헬스핑
+  ping();
+})();
+</script>
+<!-- === /Satoshi: Search + API wiring === -->
 </body>
 </html>
