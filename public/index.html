@@ -510,6 +510,140 @@ async function loadUltra(market) {
 })();
 </script>
  window.API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+<script>
+(async function () {
+  // --- 엘리먼트 훅 (ID는 실제 페이지에 맞게 조정) ---
+  const $input = document.querySelector('input[type="search"], #search, [data-id="search"]') 
+              || document.querySelector('input'); // 안전훅
+  const $resultBox = document.querySelector('#search-results') 
+                  || createResultBox();
+  const $ultraBox  = document.querySelector('#ultra-panel') 
+                  || document.querySelector('[data-ultra]') 
+                  || createUltraBox();
+
+  // 검색결과 박스가 없으면 만들어서 붙인다
+  function createResultBox(){
+    const div = document.createElement('div');
+    div.id = 'search-results';
+    div.style.marginTop = '8px';
+    div.style.background = 'rgba(255,255,255,0.03)';
+    div.style.border = '1px solid rgba(255,255,255,0.08)';
+    div.style.borderRadius = '10px';
+    div.style.padding = '8px';
+    div.style.maxHeight = '220px';
+    div.style.overflowY = 'auto';
+    $input.parentNode.insertAdjacentElement('afterend', div);
+    return div;
+  }
+
+  // ULTRA 패널이 없으면 간단 박스 생성 (기존 패널 있으면 생략됨)
+  function createUltraBox(){
+    const div = document.createElement('div');
+    div.id = 'ultra-panel';
+    div.style.marginTop = '16px';
+    div.style.padding = '12px';
+    div.style.borderRadius = '12px';
+    div.style.background = 'rgba(255,255,255,0.03)';
+    div.style.border = '1px solid rgba(255,255,255,0.08)';
+    $resultBox.insertAdjacentElement('afterend', div);
+    div.innerHTML = `<b>ULTRA 시그널 — 선택한 코인</b><div style="opacity:.7">코인을 선택하면 매수·익절·손절(스켈레톤)이 표시됩니다.</div>`;
+    return div;
+  }
+
+  // --- 마켓 로딩 (5분 캐시) ---
+  let markets = [];
+  async function loadMarkets() {
+    try {
+      const r = await fetch(API_BASE + "/api/upbit/markets");
+      const j = await r.json();
+      if (j.ok) markets = j.items || [];
+    } catch(e) { console.warn("markets load fail", e); }
+  }
+  await loadMarkets();
+
+  // --- 검색 & 렌더 (최대 5개) ---
+  let last = "";
+  $input && $input.addEventListener('input', () => {
+    const q = ($input.value || "").trim();
+    if (q === last) return;
+    last = q;
+    renderResults(q);
+  });
+
+  function renderResults(q){
+    $resultBox.innerHTML = "";
+    if (!q) return;
+    const q2 = q.toLowerCase();
+    const hits = markets.filter(m =>
+      (m.korean_name && m.korean_name.includes(q)) ||
+      (m.market && m.market.toLowerCase().includes(q2)) ||
+      (m.english_name && m.english_name.toLowerCase().includes(q2))
+    ).slice(0, 5); // 최대 5개
+
+    if (!hits.length){
+      $resultBox.innerHTML = `<div style="opacity:.6">검색 결과 없음</div>`;
+      return;
+    }
+
+    for (const m of hits){
+      const btn = document.createElement('button');
+      btn.textContent = `${m.korean_name} (${m.market})`;
+      btn.style.display = 'block';
+      btn.style.width = '100%';
+      btn.style.textAlign = 'left';
+      btn.style.margin = '6px 0';
+      btn.style.padding = '10px 12px';
+      btn.style.borderRadius = '10px';
+      btn.style.border = '1px solid rgba(255,255,255,0.1)';
+      btn.style.background = 'rgba(255,255,255,0.02)';
+      btn.onmouseenter = () => btn.style.background = 'rgba(255,255,255,0.06)';
+      btn.onmouseleave = () => btn.style.background = 'rgba(255,255,255,0.02)';
+      btn.onclick = () => selectMarket(m.market, m.korean_name);
+      $resultBox.appendChild(btn);
+    }
+  }
+
+  // --- 선택 시 ULTRA 시그널 호출 & 표시 ---
+  async function selectMarket(market, kor){
+    try{
+      // ULTRA API
+      const r = await fetch(API_BASE + "/api/ultra/signal?market=" + encodeURIComponent(market));
+      const j = await r.json();
+      if (!j.ok && !j.market) throw new Error(j.error || "signal fail");
+      renderUltra(j, kor);
+      // 스크롤 포커스 (모바일 배려)
+      $ultraBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }catch(e){
+      renderUltra({ ok:false, market, comment: "신호 호출 실패: " + e.message }, kor);
+    }
+  }
+
+  function renderUltra(sig, korName){
+    const m = sig.market || "";
+    const title = korName ? `${korName} (${m})` : m;
+    $ultraBox.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <b>ULTRA 시그널 — 선택한 코인</b>
+        <span style="opacity:.7">${title}</span>
+      </div>
+      <div style="margin-top:8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+        <div>현재가: <b>${fmt(sig.price)}</b></div>
+        <div>위험도: <b>${fmt(sig.risk)}</b></div>
+        <div>매수(BUY1): <b>${fmt(sig.buy1)}</b></div>
+        <div>매수(BUY2): <b>${fmt(sig.buy2)}</b></div>
+        <div>익절(TP1/TP2): <b>${fmt(sig.tp1)} / ${fmt(sig.tp2)}</b></div>
+        <div>손절(SL): <b style="color:#ff6a6a">${fmt(sig.sl)}</b></div>
+      </div>
+      <div style="margin-top:10px;opacity:.9">쩔어한마디: ${sig.comment || '-'}</div>
+    `;
+  }
+
+  function fmt(v){ return (v===undefined || v===null) ? '-' : v; }
+
+  // 초기 상태 메시지
+  if ($input && $input.value) renderResults($input.value);
+})();
 </script>
+
 </body>
 </html>
