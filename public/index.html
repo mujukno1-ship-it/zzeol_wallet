@@ -1,67 +1,65 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>사토시의지갑 v12 — KRW 실시간</title>
-  <style>
-    body { background:#0d0d0d; color:white; font-family:Pretendard, sans-serif; margin:0; padding:0; text-align:center; }
-    h2 { color:#ff9500; }
-    .section { border:1px solid #222; border-radius:16px; margin:20px auto; padding:20px; width:90%; max-width:800px; background:#121212; }
-    .coin { display:flex; justify-content:space-between; padding:6px 10px; border-bottom:1px solid #222; }
-    .no-motion * { transition:none !important; animation:none !important; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>사토시의지갑 v12</title>
+<style>
+body{background:#0c0d10;color:#e9eef4;font-family:Pretendard,system-ui;}
+header{background:#0f1115;padding:14px;position:sticky;top:0;z-index:10}
+.wrap{max-width:1080px;margin:0 auto;padding:16px}
+.btn{background:#151a22;padding:8px 12px;border-radius:10px;border:1px solid #232a35;color:#fff;cursor:pointer}
+.box{border:1px solid #1b2230;background:#0f141c;border-radius:16px;padding:16px;margin:16px 0}
+.item{display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-top:1px solid #182133}
+.mono{font-family:ui-monospace,monospace}
+.gain{color:#62ffa0}.loss{color:#ff6780}
+</style>
 </head>
-<body class="no-motion">
-  <h2>🔥 ULTRA 시그널 — 선택한 코인</h2>
-  <div id="ultra"></div>
+<body>
+<header class="wrap">
+<input id="q" type="text" placeholder="코인 이름 입력 (KRW)" style="width:60%;padding:10px;border-radius:8px;border:1px solid #333;background:#0c121a;color:#fff;">
+<button class="btn" onclick="doSearch()">검색</button>
+</header>
 
-  <h2>⚡ SPARK TOP10 — 급등 사전 예열 감지</h2>
-  <div id="spark"></div>
+<main class="wrap">
+<section class="box"><b>⚡ SPARK TOP10</b><div id="spark">불러오는 중…</div></section>
+<section class="box"><b>🔥 ULTRA 시그널</b><div id="ultra">선택 시 표시</div></section>
+<section class="box"><b>🔎 검색 결과</b><div id="search">검색어 입력 후 표시</div></section>
+</main>
 
-  <script>
-    const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
+<script>
+const API_BASE="https://satoshi-proxy.mujukno1.workers.dev/api";
 
-    // SPARK 목록
-    async function loadSpark() {
-      try {
-        const res = await fetch(`${API_BASE}/spark/top10`);
-        const data = await res.json();
-        const items = Array.isArray(data.items) ? data.items : [];
-        const div = document.getElementById("spark");
-        if (!items.length) return div.innerHTML = "SPARK 데이터 없음.";
-        div.innerHTML = items.map(x => `
-          <div class="coin">
-            <span>${x.name} (${x.symbol})</span>
-            <span>${x.expected_gain || ""}</span>
-            <span>${x.comment || ""}</span>
-          </div>`).join("");
-      } catch (e) {
-        document.getElementById("spark").innerHTML = "SPARK 로딩 실패 ⚠️";
-      }
-    }
+function roundTickKRW(p){if(p>=2000000)return Math.round(p/1000)*1000;if(p>=1000000)return Math.round(p/500)*500;if(p>=500000)return Math.round(p/100)*100;if(p>=100000)return Math.round(p/50)*50;if(p>=10000)return Math.round(p/10)*10;if(p>=1000)return Math.round(p/5)*5;if(p>=100)return Math.round(p/1)*1;if(p>=10)return Math.round(p/0.1)*0.1;if(p>=1)return Math.round(p/0.01)*0.01;return Math.round(p/0.001)*0.001;}
 
-    // ULTRA 시그널
-    async function loadUltra(market="KRW-SHIB") {
-      try {
-        const res = await fetch(`${API_BASE}/ultra/signal?market=${market}`);
-        const data = await res.json();
-        const div = document.getElementById("ultra");
-        if (!data.ok) return div.innerHTML = "ULTRA 신호 없음.";
-        div.innerHTML = `
-          <div class="section">
-            <h3>${data.market}</h3>
-            <p>${data.comment}</p>
-            <p>세력지수: ${data.ForceIndex_AI} / RVOL: ${data.RVOL} / 위험도: ${data.risk}</p>
-          </div>`;
-      } catch (e) {
-        document.getElementById("ultra").innerHTML = "ULTRA 연결 실패 ⚠️";
-      }
-    }
+async function loadSpark(){
+  const e=document.getElementById("spark");
+  try{
+    const r=await fetch(`${API_BASE}/spark/top10`);const d=await r.json();
+    e.innerHTML=d.items.map(x=>`<div class="item"><div>${x.name} (${x.market})<br><small>${x.comment} · 예열강도 ${x.spark_score}</small></div><div class="mono gain">${x.expected_gain}</div></div>`).join("");
+  }catch{e.textContent="SPARK 불러오기 실패";}
+}
 
-    // 초기 실행
-    loadSpark();
-    loadUltra("KRW-SHIB");
-  </script>
+async function doSearch(){
+  const q=document.getElementById("q").value.trim();
+  const e=document.getElementById("search");
+  if(!q){e.textContent="검색어를 입력하세요.";return;}
+  try{
+    const r=await fetch(`${API_BASE}/markets?q=${encodeURIComponent(q)}`);const d=await r.json();
+    e.innerHTML=d.items.map(x=>`<div class="item"><div>${x.korean_name} (${x.market})</div><button class="btn" onclick="pick('${x.market}')">선택</button></div>`).join("");
+  }catch{e.textContent="검색 실패";}
+}
+
+async function pick(m){
+  const e=document.getElementById("ultra");
+  e.textContent="불러오는 중…";
+  const r=await fetch(`${API_BASE}/ultra/signal?market=${m}`);const d=await r.json();
+  if(!d.ok){e.textContent="신호 없음";return;}
+  const C=3720,tp1=roundTickKRW(C*(1+d.signal.expected_up_pct/100*0.6)),tp2=roundTickKRW(C*(1+d.signal.expected_up_pct/100)),sl=roundTickKRW(C*(1-d.signal.expected_down_pct/100));
+  e.innerHTML=`<div>현재가 ${C}원<br>익절 ${tp1}/${tp2}원<br>손절 ${sl}원<br>위험도 ${d.signal.risk}</div><div class="mono">${d.comment}</div>`;
+}
+
+loadSpark();
+</script>
 </body>
 </html>
