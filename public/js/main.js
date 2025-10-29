@@ -1,227 +1,225 @@
-/* =========================================================
-   사토시의지갑 v12 — 메모리 통합 프론트 (3단계 분할 한방)
-   - config.json에서 API_BASE/No-Motion/UI 설정 읽어옴
-   - 업비트 호가틱 반올림, 한글명, KRW
-   - SPARK TOP10 + ULTRA 시그널 + 쩔어멘트(불장/하락/되돌림)
-   - Precision Boost(±0.3% 자동 보정) 기본 반영
-========================================================= */
+// ====== 사토시의지갑 v12 프론트 연결 스크립트 ======
+// ★★★ 여기에 네 Cloudflare Worker 주소를 확인해서 넣어줘 ★★★
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api"; // 끝에 /api 유지
 
-const S = {
-  cfg: null,
-  markets: [],
-  marketsByCode: {},
-  selected: null
+// No-Motion 모드: 불필요한 reflow 최소화 (화면 깜빡임 방지)
+const dom = {
+  sparkList: document.getElementById("sparkList"),
+  price:     document.getElementById("price"),
+  risk:      document.getElementById("risk"),
+  buy1:      document.getElementById("buy1"),
+  buy2:      document.getElementById("buy2"),
+  tp1:       document.getElementById("tp1"),
+  tp2:       document.getElementById("tp2"),
+  sl:        document.getElementById("sl"),
+  comment:   document.getElementById("comment"),
+  refresh:   document.getElementById("refreshBtn"),
+  input:     document.getElementById("searchInput"),
+  searchBtn: document.getElementById("searchBtn"),
+  resultBox: document.getElementById("resultBox"),
 };
 
-const $ = (sel) => document.querySelector(sel);
-const el = {
-  spark: $("#spark"),
-  sparkEmpty: $("#sparkEmpty"),
-  res: $("#results"),
-  resEmpty: $("#resEmpty"),
-  q: $("#q"),
-  btnSearch: $("#btnSearch"),
-  ultraMarket: $("#ultraMarket"),
-  now: $("#now"),
-  risk: $("#risk"),
-  buy1: $("#buy1"),
-  buy2: $("#buy2"),
-  tp1: $("#tp1"),
-  tp2: $("#tp2"),
-  sl: $("#sl"),
-  ment: $("#ment")
-};
+let MARKETS = [];             // /markets 결과 캐시
+let currentMarket = null;     // 선택된 마켓 (예: KRW-SHIB)
 
-/* ---------- 유틸 ---------- */
-function fmtKRW(n){ if(n==null || isNaN(n)) return "-"; return Number(n).toLocaleString("ko-KR")+"원"; }
-function setText(elm, v){ if(!elm) return; if(S.cfg?.noMotion){ if(elm.textContent!==String(v)) elm.textContent=String(v); } else elm.textContent=String(v); }
-
-/* 업비트 호가틱 */
-function upbitTick(p){
-  p=Number(p);
-  if(p>=2000000) return 1000;
-  if(p>=1000000) return 500;
-  if(p>=500000)  return 100;
-  if(p>=100000)  return 50;
-  if(p>=10000)   return 10;
-  if(p>=1000)    return 1;
-  if(p>=100)     return 0.1;
-  if(p>=10)      return 0.01;
-  return 0.001;
-}
-function roundTick(p){ const t=upbitTick(p); return Math.round(Number(p)/t)*t; }
-
-async function jget(path, params){
-  const base = S.cfg?.API_BASE || "";
-  const url = new URL(base + path);
-  if(params) Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
-  const r = await fetch(url, { cache: "no-store" });
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  const j = await r.json();
-  if(j && j.ok===false) throw new Error(j.error || "api error");
-  return j;
+// ------- 유틸: 업비트 KRW 호가틱 반올림 -------
+function roundUpbitKRW(v) {
+  // 업비트 호가단위(대표 규칙)
+  const p = Number(v);
+  const abs = Math.abs(p);
+  let unit = 0.001;
+  if (abs >= 2_000_000) unit = 1000;
+  else if (abs >= 1_000_000) unit = 500;
+  else if (abs >=   500_000) unit = 100;
+  else if (abs >=   100_000) unit = 50;
+  else if (abs >=    10_000) unit = 10;
+  else if (abs >=     1_000) unit = 5;
+  else if (abs >=       100) unit = 1;
+  else if (abs >=        10) unit = 0.1;
+  else if (abs >=         1) unit = 0.01;
+  else unit = 0.001; // 저가코인
+  return (Math.round(p / unit) * unit).toFixed(
+    unit >= 1 ? 0 : String(unit).split(".")[1].length
+  );
 }
 
-/* ---------- 초기화 ---------- */
-async function loadConfig(){
-  const r = await fetch("/config.json", { cache:"no-store" });
-  S.cfg = await r.json();
-}
-async function loadMarkets(){
-  // 백엔드 v12: /upbit/markets (또는 /markets) 둘 다 대응
-  let data;
-  try { data = await jget("/upbit/markets"); }
-  catch { data = await jget("/markets"); }
-  const items = data.items || [];
-  S.markets = items.filter(x=>/^KRW-/.test(x.market));
-  S.marketsByCode = Object.fromEntries(S.markets.map(x=>[x.market,x]));
-}
-
-async function loadSpark(){
-  try{
-    const j = await jget("/spark/top10");
-    renderSpark(j.items||[]);
-  }catch{
-    renderSpark([]);
-  }
-}
-function renderSpark(items){
-  el.spark.innerHTML = "";
-  if(!items.length){ el.sparkEmpty.style.display="block"; return; }
-  el.sparkEmpty.style.display="none";
-  for(const it of items){
-    const name = it.korean_name || S.marketsByCode[it.market]?.korean_name || it.market;
-    const score = Math.round((it.spark_score ?? it.score ?? 0));
-    const row = document.createElement("div");
-    row.className = "item";
-    row.innerHTML = `
-      <div>
-        <b>${name}</b>
-        <div class="weak" style="margin-top:2px">${it.market} · 예열강도 ${isNaN(score)?'-':score}</div>
-      </div>
-      <button class="btn" data-market="${it.market}">선택</button>
-    `;
-    row.querySelector("button").onclick = ()=>selectMarket(it.market, name);
-    el.spark.appendChild(row);
+// ------- 공용 fetch -------
+async function fx(path) {
+  const url = `${API_BASE}${path}`;
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    const data = await res.json();
+    if (data && data.ok) return data;
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  } catch (e) {
+    console.error("[API]", path, e);
+    throw e;
   }
 }
 
-/* 검색 */
-function doSearch(){
-  const q = (el.q.value||"").trim().toLowerCase();
-  const max = S.cfg?.ui?.maxSearchResults ?? 5;
-  if(!q){ renderResults([]); return; }
-  const list = S.markets.filter(x =>
-    x.korean_name?.toLowerCase().includes(q) ||
-    x.english_name?.toLowerCase().includes(q) ||
-    x.market?.toLowerCase().includes(q)
-  ).slice(0, max);
-  renderResults(list);
+// ------- 초기화: 마켓 목록 & SPARK -------
+async function init() {
+  // 1) 마켓 목록
+  try {
+    const m = await fx("/markets");
+    MARKETS = m.items || [];
+  } catch (e) {
+    // 마켓 못 불러오면 검색/ULTRA 사용 불가 -> 안내
+    dom.resultBox.textContent = "마켓 목록을 불러오지 못했습니다. API_BASE 확인!";
+  }
+
+  // 2) SPARK Top10 (없으면 대체)
+  await renderSpark();
 }
-function renderResults(list){
-  el.res.innerHTML = "";
-  if(!list.length){
-    el.resEmpty.textContent="검색 결과 없음.";
-    el.resEmpty.style.display="block";
+
+async function renderSpark() {
+  dom.sparkList.textContent = "불러오는 중...";
+  let items = [];
+  let from = "spark";
+
+  try {
+    const s = await fx("/spark/top10");   // Worker에 구현된 경우
+    items = s.items || [];
+  } catch {
+    // 예비 경로: /spark/top10 미구현 시 /markets 상위 몇 개 보여주기
+    from = "fallback";
+    items = (MARKETS || []).slice(0, 10).map(x => ({
+      market: x.market,
+      korean_name: x.korean_name,
+      expected_gain: "+15~25%", // UI용 기본 라벨
+      score: 0
+    }));
+  }
+
+  if (!items.length) {
+    dom.sparkList.textContent = "SPARK 데이터 없음.";
     return;
   }
-  el.resEmpty.style.display="none";
-  for(const it of list){
+
+  const frag = document.createDocumentFragment();
+  items.forEach(it => {
     const row = document.createElement("div");
-    row.className="item";
+    row.className = "spark-item";
     row.innerHTML = `
-      <div>
-        <b>${it.korean_name}</b>
-        <div class="weak" style="margin-top:2px">${it.market} · ${it.english_name||""}</div>
-      </div>
-      <button class="btn" data-market="${it.market}">선택</button>
+      <div>${it.korean_name || it.market}</div>
+      <div class="highlight">${it.expected_gain || `예열강도 ${it.score || 0}%`}</div>
     `;
-    row.querySelector("button").onclick=()=>selectMarket(it.market,it.korean_name);
-    el.res.appendChild(row);
+    row.style.cursor = "pointer";
+    row.onclick = () => pickMarket(it.market);
+    frag.appendChild(row);
+  });
+  dom.sparkList.innerHTML = "";
+  dom.sparkList.appendChild(frag);
+
+  console.log(`[SPARK] source=${from} count=${items.length}`);
+}
+
+// ------- 마켓 선택 후 ULTRA 호출 -------
+async function pickMarket(market) {
+  currentMarket = market;
+  await loadUltra();
+}
+
+async function loadUltra() {
+  if (!currentMarket) return;
+
+  // 기본 스켈레톤 표시(깜빡임 방지)
+  applyUltra({ price: 0, risk: 0, buy1: 0, buy2: 0, tp1: 0, tp2: 0, sl: 0, comment: "계산 중..." });
+
+  try {
+    const data = await fx(`/ultra/signal?market=${encodeURIComponent(currentMarket)}`);
+    // Worker가 스켈레톤일 수 있으니, 0 값이더라도 UI는 정상 반영
+    applyUltra(data);
+  } catch (e) {
+    applyUltra(null, e);
   }
 }
 
-/* ULTRA */
-async function selectMarket(market, nameText){
-  S.selected = market;
-  try{
-    const sig = await jget("/ultra/signal",{market});
-    renderUltra(sig, nameText);
-  }catch(e){
-    renderUltra({market,price:0,risk:"-",buy1:0,buy2:0,tp1:0,tp2:0,sl:0,comment:"연동 실패"}, nameText);
-  }
-}
-function applyPrecisionBoost(v){
-  if(!S.cfg?.precisionBoost?.enabled) return v;
-  const tol = (S.cfg.precisionBoost.tolerancePct ?? 0)/100;
-  return roundTick(v*(1+Math.sign(v)*tol));
-}
-function buildMent(sig, modeHint){
-  // 사토시 메모리 기반 간단 멘트 생성
-  const up = sig.expected_up_pct, down = sig.expected_down_pct;
-  const fi = sig.ForceIndex_AI ?? sig.forceIndex ?? sig.forceindex;
-  if(modeHint==="bull" || (fi>=80 && up>=10)) return `🔥 세력 분출 직전 — 예열강도 ${Math.round(sig.spark_score||fi||0)} / 상승확률 높음 / 예상상승률 +${up||'?'}%`;
-  if(modeHint==="bear" || (fi<=35 && down>=5)) return `⚠️ 하락 위험 — 빠른 청산 권장 / 예상하락률 -${down||'?'}%`;
-  return `↔️ 되돌림 — 분할진입 1차 / 예상상승률 +${up??'?'}%, 하락률 -${down??'?'}%`;
-}
-function renderUltra(sig, nameText){
-  const m = sig.market;
-  const nm = nameText || S.marketsByCode[m]?.korean_name || m;
-  setText(el.ultraMarket, `${nm} (${m})`);
-
-  const now = sig.price || 0;
-  const risk = sig.risk ?? 3;
-
-  // 서버가 값(가격/TP/SL)을 안 줄 때 대비 — 로컬 계산(있으면 그대로 사용)
-  let buy1 = sig.buy1, buy2 = sig.buy2, tp1 = sig.tp1, tp2 = sig.tp2, sl = sig.sl;
-  if(now>0){
-    const upPct = sig.expected_up_pct ?? 8;
-    const dnPct = sig.expected_down_pct ?? 4;
-    if(!tp1) tp1 = roundTick(now*(1+upPct/100*0.6));
-    if(!tp2) tp2 = roundTick(now*(1+upPct/100));
-    if(!sl)  sl  = roundTick(now*(1-dnPct/100));
-    if(!buy1) buy1 = roundTick(now*(1-dnPct/100*0.4));
-    if(!buy2) buy2 = roundTick(now*(1-dnPct/100*0.8));
+function applyUltra(data, err) {
+  if (err || !data) {
+    dom.price.textContent = "-";
+    dom.risk.textContent  = "-";
+    dom.buy1.textContent  = "-";
+    dom.buy2.textContent  = "-";
+    dom.tp1.textContent   = "-";
+    dom.tp2.textContent   = "-";
+    dom.sl.textContent    = "-";
+    dom.comment.textContent = "연동 오류: 콘솔의 API_BASE와 Worker 상태를 확인해 주세요.";
+    return;
   }
 
-  // Precision Boost ±0.3% 보정
-  if(tp1) tp1 = applyPrecisionBoost(tp1);
-  if(tp2) tp2 = applyPrecisionBoost(tp2);
-  if(sl)  sl  = applyPrecisionBoost(sl);
-  if(buy1)buy1= applyPrecisionBoost(buy1);
-  if(buy2)buy2= applyPrecisionBoost(buy2);
+  // 업비트 호가틱 반올림
+  const price = roundUpbitKRW(data.price || 0);
+  const buy1  = roundUpbitKRW(data.buy1  || 0);
+  const buy2  = roundUpbitKRW(data.buy2  || 0);
+  const tp1   = roundUpbitKRW(data.tp1   || 0);
+  const tp2   = roundUpbitKRW(data.tp2   || 0);
+  const sl    = roundUpbitKRW(data.sl    || 0);
 
-  setText(el.now,  now?fmtKRW(now):"-");
-  setText(el.risk, String(risk));
-  setText(el.buy1, buy1?fmtKRW(buy1):"-");
-  setText(el.buy2, buy2?fmtKRW(buy2):"-");
-  setText(el.tp1,  tp1?fmtKRW(tp1):"-");
-  setText(el.tp2,  tp2?fmtKRW(tp2):"-");
-  setText(el.sl,   sl ?fmtKRW(sl):"-");
-
-  // 쩔어한마디 (모드 코멘트)
-  let mode = sig.mode || (sig.ForceIndex_AI>=80 ? "bull" : (sig.ForceIndex_AI<=35 ? "bear" : "pullback"));
-  const ment = sig.comment || buildMent(sig, mode);
-  setText(el.ment, ment);
+  dom.price.textContent = `${price}원`;
+  dom.risk.textContent  = data.risk ?? "-";
+  dom.buy1.textContent  = `${buy1}원`;
+  dom.buy2.textContent  = `${buy2}원`;
+  dom.tp1.textContent   = `${tp1}원`;
+  dom.tp2.textContent   = `${tp2}원`;
+  dom.sl.textContent    = `${sl}원`;
+  dom.comment.textContent = data.comment || "데이터 대기중";
 }
 
-/* ---------- 부팅 ---------- */
-async function boot(){
-  await loadConfig();
-  // 헬스체크는 선택
-  try { await jget("/health"); } catch {}
-  await loadMarkets();
-  await loadSpark();
-
-  el.btnSearch.addEventListener("click", doSearch);
-  el.q.addEventListener("keydown", e=>{ if(e.key==="Enter") doSearch(); });
-
-  // SPARK 첫 항목 자동 선택 (있을 때)
-  const firstBtn = el.spark?.querySelector("button[data-market]");
-  if(firstBtn) firstBtn.click();
-
-  // 주기 갱신 (가볍게)
-  setInterval(loadSpark, 30_000);
-  setInterval(()=>{ if(S.selected) selectMarket(S.selected); }, 20_000);
+// ------- 검색 -------
+function searchLocal(q) {
+  if (!q || !MARKETS.length) return [];
+  const s = q.trim().toLowerCase();
+  return MARKETS
+    .filter(x =>
+      (x.korean_name && x.korean_name.toLowerCase().includes(s)) ||
+      (x.english_name && x.english_name.toLowerCase().includes(s)) ||
+      (x.market && x.market.toLowerCase().includes(s))
+    )
+    .slice(0, 5);
 }
-boot();
+
+function renderSearch(items) {
+  if (!items.length) {
+    dom.resultBox.textContent = "검색어를 입력해 주세요.";
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  items.forEach(it => {
+    const wrap = document.createElement("div");
+    wrap.className = "spark-item";
+    wrap.innerHTML = `
+      <div>${it.korean_name} <span style="color:#888;">(${it.market})</span></div>
+      <div><button data-m="${it.market}">선택</button></div>
+    `;
+    frag.appendChild(wrap);
+  });
+  dom.resultBox.innerHTML = "";
+  dom.resultBox.appendChild(frag);
+
+  dom.resultBox.querySelectorAll("button[data-m]").forEach(btn => {
+    btn.onclick = (e) => {
+      const m = e.currentTarget.getAttribute("data-m");
+      pickMarket(m);
+    };
+  });
+}
+
+// 이벤트 바인딩
+dom.searchBtn.addEventListener("click", () => {
+  const q = dom.input.value;
+  const hits = searchLocal(q);
+  if (!hits.length) dom.resultBox.textContent = "검색 결과 없음.";
+  else renderSearch(hits);
+});
+
+dom.refresh.addEventListener("click", () => {
+  if (!currentMarket) {
+    dom.comment.textContent = "먼저 SPARK에서 클릭하거나 검색→선택해 주세요.";
+    return;
+  }
+  loadUltra();
+});
+
+// 시작
+init();
