@@ -6,28 +6,24 @@
   <title>사토시의지갑 v12 — KRW 실시간</title>
   <style>
     :root {
-      --bg: #0f1216; --panel: #161a20; --panel2:#11151a;
-      --text:#e6edf3; --weak:#94a3b8; --accent:#22d3ee; --good:#15e0a5; --bad:#ff5d5d; --chip:#1f2630;
+      --bg:#0e1116; --panel:#141922; --panel2:#10151c;
+      --text:#e7ecf3; --weak:#9aa6b2; --accent:#22d3ee; --good:#15e0a5; --bad:#ff5d5d; --chip:#1d2530;
+      --border:#253041;
     }
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family: system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo, Noto Sans KR, sans-serif;}
-    .wrap{max-width:980px;margin:32px auto;padding:0 16px}
-    .row{background:var(--panel);border:1px solid #252b36;border-radius:14px;padding:16px 18px;margin-bottom:16px}
+    *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+    .wrap{max-width:980px;margin:28px auto;padding:0 16px}
+    .row{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+    .row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
     .title{display:flex;align-items:center;gap:8px;font-weight:700}
-    .title .dot{width:8px;height:8px;border-radius:50%}
-    .title .s1{background:#ff7a7a}.title .s2{background:#ffb857}.title .s3{background:#7ae582}
-    .weak{color:var(--weak);font-size:13px}
+    .dot{width:8px;height:8px;border-radius:50%}.s1{background:#ff7a7a}.s2{background:#ffb857}.s3{background:#7ae582}
+    .weak{color:var(--weak);font-size:13px}.chip{display:inline-flex;gap:6px;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px}
     .grid{display:grid;gap:8px}
-    .spark-item,.result-item{display:flex;align-items:center;justify-content:space-between;background:var(--panel2);border:1px solid #283140;border-radius:12px;padding:12px}
-    .btn{background:#243041;border:1px solid #2e3a4c;color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .item{display:flex;justify-content:space-between;align-items:center;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px}
+    input[type="text"]{width:100%;background:#0d131b;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+    .btn{background:#1b2432;border:1px solid #2a3546;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer}
     .btn:hover{filter:brightness(1.1)}
-    .btn.pri{background:#1f2937;border-color:#334155}
-    .chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid #2a3343;border-radius:999px;padding:6px 10px;font-size:12px}
-    .good{color:var(--good)} .bad{color:var(--bad)} .accent{color:var(--accent)}
-    .kv{display:grid;grid-template-columns:120px 1fr;gap:8px; margin:6px 0}
-    input[type="text"]{width:100%;background:#0f141b;color:var(--text);border:1px solid #283140;border-radius:12px;padding:12px 14px}
-    .row-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-    .muted{opacity:.7}
+    .kv{display:grid;grid-template-columns:120px 1fr;gap:8px;margin:6px 0}
+    .bad{color:var(--bad)} .good{color:var(--good)}
     .empty{color:var(--weak);font-size:13px;padding:12px}
   </style>
 </head>
@@ -37,39 +33,38 @@
     <div class="row">
       <div class="row-head">
         <div class="title"><span class="dot s1"></span>코인 이름 입력 (KRW)</div>
-        <div class="chip">KRW 기준 · <span class="muted">No-Motion</span></div>
+        <div class="chip">업비트 호가틱 · 한글명 · No-Motion</div>
       </div>
       <div style="display:flex;gap:10px">
         <input id="q" type="text" placeholder="예: 시바이누, 이더리움, 아비트럼…" />
-        <button id="btnSearch" class="btn pri">검색</button>
+        <button id="btnSearch" class="btn">검색</button>
       </div>
-      <div class="weak" style="margin-top:8px">검색 결과는 입력 시 표시(최대 5개). 결과/화면 깜빡임 없이 갱신됩니다.</div>
+      <div class="weak" style="margin-top:8px">검색 결과는 최대 5개만 표기 (화면 깜빡임 없음)</div>
     </div>
 
-    <!-- SPARK TOP10 -->
+    <!-- SPARK -->
     <div class="row">
       <div class="row-head">
         <div class="title"><span class="dot s2"></span>SPARK TOP10 — 급등 사전 예열 감지</div>
-        <div class="weak">필터: RVOL·TBR·OBI·ForceIndex 종합. 5분변동률 ≥ +1.5% 후보.</div>
+        <div class="weak">RVOL·TBR·OBI·5분변동률 종합 (예열강도 표시)</div>
       </div>
       <div id="spark" class="grid"></div>
-      <div id="sparkEmpty" class="empty" style="display:none">SPARK 데이터 없음.</div>
+      <div id="sparkEmpty" class="empty" style="display:none">SPARK 데이터 없음</div>
     </div>
 
-    <!-- ULTRA 시그널 -->
+    <!-- ULTRA -->
     <div class="row">
       <div class="row-head">
         <div class="title"><span class="dot s3"></span>ULTRA 시그널 — 선택한 코인</div>
-        <span id="ultraMarket" class="chip muted">선택 시 표시</span>
+        <span id="ultraMarket" class="chip">선택 시 표시</span>
       </div>
-
       <div id="ultraPanel">
-        <div class="kv"><div class="weak">현재가</div><div id="now">0원</div></div>
+        <div class="kv"><div class="weak">현재가</div><div id="now">-</div></div>
         <div class="kv"><div class="weak">위험도</div><div id="risk">-</div></div>
-        <div class="kv"><div class="weak">매수(BUY1)</div><div id="buy1">0원</div></div>
-        <div class="kv"><div class="weak">매수(BUY2)</div><div id="buy2">0원</div></div>
-        <div class="kv"><div class="weak">익절(TP1 / TP2)</div><div><span id="tp1">0원</span> / <span id="tp2">0원</span></div></div>
-        <div class="kv"><div class="weak">손절(SL)</div><div id="sl" class="bad">0원</div></div>
+        <div class="kv"><div class="weak">매수(BUY1)</div><div id="buy1">-</div></div>
+        <div class="kv"><div class="weak">매수(BUY2)</div><div id="buy2">-</div></div>
+        <div class="kv"><div class="weak">익절(TP1 / TP2)</div><div><span id="tp1">-</span> / <span id="tp2">-</span></div></div>
+        <div class="kv"><div class="weak">손절(SL)</div><div id="sl" class="bad">-</div></div>
         <div class="kv"><div class="weak">쩔어한마디</div><div id="ment" class="weak">선택 후 표시됩니다.</div></div>
       </div>
     </div>
@@ -85,7 +80,6 @@
     </div>
   </div>
 
-  <!-- 프론트 스크립트 -->
-  <script src="/js/app.js"></script>
+  <script src="/js/main.js"></script>
 </body>
 </html>
