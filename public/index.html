@@ -1,90 +1,90 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>사토시의지갑 v12 완전체</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>사토시의지갑 v13 · KRW 실시간</title>
   <style>
-    body {
-      background-color: #0d0d0d;
-      color: #f1f1f1;
-      font-family: 'Pretendard', sans-serif;
-      margin: 0;
-      padding: 20px;
+    :root{
+      --bg:#0f1216;--panel:#151a22;--panel2:#10151a;--text:#e6edf3;--weak:#94a3b8;
+      --border:#263244;--accent:#22d3ee;--good:#15e0a5;--bad:#ff5d5d;--chip:#1e2632;
     }
-    .card {
-      background: #1a1a1a;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.3);
-    }
-    h2 { color: #fff; font-size: 18px; margin-top: 0; }
-    .search-bar { display: flex; align-items: center; gap: 8px; }
-    input[type="text"] {
-      flex: 1;
-      background: #111;
-      border: 1px solid #333;
-      color: #fff;
-      padding: 10px;
-      border-radius: 8px;
-    }
-    button {
-      background: #3b82f6;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 16px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    button:hover { background: #2563eb; }
-    .spark-list, .ultra-info, .result-box {
-      background: #111;
-      border-radius: 12px;
-      padding: 15px;
-      margin-top: 10px;
-    }
-    .spark-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #222; }
-    .spark-item:last-child { border-bottom: none; }
-    .highlight { color: #facc15; }
+    *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+    .wrap{max-width:980px;margin:28px auto;padding:0 16px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+    .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .title{display:flex;align-items:center;gap:8px;font-weight:700}
+    .dot{width:8px;height:8px;border-radius:50%}.s1{background:#ff7a7a}.s2{background:#ffb857}.s3{background:#7ae582}
+    .chip{display:inline-flex;gap:6px;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px;color:var(--weak)}
+    .grid{display:grid;gap:8px}
+    .item{display:flex;align-items:center;justify-content:space-between;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px}
+    input[type="text"]{width:100%;background:#0e141c;color:#e6edf3;border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+    .btn{background:#1c2533;border:1px solid #2a3547;color:#e6edf3;padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn:hover{filter:brightness(1.08)}
+    .kv{display:grid;grid-template-columns:120px 1fr;gap:8px;margin:6px 0}
+    .weak{color:var(--weak);font-size:13px}.good{color:var(--good)}.bad{color:var(--bad)}
+    .empty{color:var(--weak);font-size:13px;padding:12px}
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>🪙 코인 이름 입력 (KRW)</h2>
-    <div class="search-bar">
-      <input type="text" id="searchInput" placeholder="예: 이더리움, 시바이누..." />
-      <button id="searchBtn">검색</button>
+  <div class="wrap">
+
+    <!-- 검색 -->
+    <div class="card">
+      <div class="head">
+        <div class="title"><span class="dot s1"></span>코인 이름 입력 (KRW)</div>
+        <div class="chip">업비트 호가틱 · 한글 · No-Motion</div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <input id="q" type="text" placeholder="예: 시바이누, 이더리움, 아비트럼…" />
+        <button id="btnSearch" class="btn">검색</button>
+      </div>
+      <div class="weak" style="margin-top:8px">검색 결과는 최대 5개, 화면 깜빡임 없음</div>
     </div>
-    <p style="color:#aaa;font-size:13px;margin-top:8px;">업비트 기준 · 호가틱 반올림 · No-Motion</p>
-  </div>
 
-  <div class="card">
-    <h2>⚡ SPARK TOP10 — 급등 사전 예열 감지</h2>
-    <div id="sparkList" class="spark-list">불러오는 중...</div>
-  </div>
+    <!-- SPARK TOP10 -->
+    <div class="card">
+      <div class="head">
+        <div class="title"><span class="dot s2"></span>SPARK TOP10 — 급등 사전 예열 감지</div>
+        <div class="chip">RVOL·TBR·OBI·5분변동률 종합</div>
+      </div>
+      <div id="spark" class="grid"></div>
+      <div id="sparkEmpty" class="empty" style="display:none">SPARK 데이터 없음</div>
+    </div>
 
-  <div class="card">
-    <h2>🧠 ULTRA 시그널 — 선택한 코인</h2>
-    <div class="ultra-info">
-      <p>현재가: <span id="price">-</span></p>
-      <p>위험도: <span id="risk">-</span></p>
-      <p>매수(BUY1): <span id="buy1">-</span></p>
-      <p>매수(BUY2): <span id="buy2">-</span></p>
-      <p>익절(TP1/TP2): <span id="tp1">-</span> / <span id="tp2">-</span></p>
-      <p>손절(SL): <span id="sl">-</span></p>
-      <p>쩔어한마디 💬: <span id="comment">선택 후 표시됩니다.</span></p>
-      <button id="refreshBtn">선택 시 표시</button>
+    <!-- ULTRA 시그널 -->
+    <div class="card">
+      <div class="head">
+        <div class="title"><span class="dot s3"></span>ULTRA 시그널 — 선택한 코인</div>
+        <span id="ultraMarket" class="chip">선택 시 표시</span>
+      </div>
+      <div id="ultraPanel">
+        <div class="kv"><div class="weak">현재가</div><div id="now">-</div></div>
+        <div class="kv"><div class="weak">위험도</div><div id="risk">-</div></div>
+        <div class="kv"><div class="weak">매수(BUY1)</div><div id="buy1">-</div></div>
+        <div class="kv"><div class="weak">매수(BUY2)</div><div id="buy2">-</div></div>
+        <div class="kv"><div class="weak">익절(TP1 / TP2)</div><div><span id="tp1">-</span> / <span id="tp2">-</span></div></div>
+        <div class="kv"><div class="weak">손절(SL)</div><div id="sl" class="bad">-</div></div>
+        <div class="kv"><div class="weak">쩔어한마디</div><div id="ment" class="weak">선택 후 표시됩니다.</div></div>
+      </div>
+    </div>
+
+    <!-- 검색 결과 -->
+    <div class="card">
+      <div class="head">
+        <div class="title"><span class="dot s1"></span>검색 결과</div>
+        <span class="weak">검색어 입력 후 표시</span>
+      </div>
+      <div id="results" class="grid"></div>
+      <div id="resEmpty" class="empty">검색어를 입력해 주세요.</div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>🔍 검색 결과</h2>
-    <div id="resultBox" class="result-box">검색어를 입력해 주세요.</div>
-  </div>
-
-  <script src="main.js"></script>
+  <script>
+    // 프론트에서 API 버전 고정 (연동안끊김 핵심)
+    window.API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api/v1";
+  </script>
+  <script src="/js/main.js"></script>
 </body>
 </html>
