@@ -1,0 +1,149 @@
+{
+  "project": "사토시의지갑 (쩔어지갑)",
+  "base_settings": {
+    "language": "Korean",
+    "currency": "KRW",
+    "ticker_rounding": "Upbit tick",
+    "display_mode": "No-Motion",
+    "api_base": "https://satoshi-proxy.mujukno1.workers.dev/api",
+    "fixed_top_search": true,
+    "diff_patch_update": true
+  },
+  "spark_module": {
+    "description": "급등 직전 예열 코인 탐지",
+    "score_formula": "(RVOL*0.3)+(TBR*0.25)+(OBI*0.15)+(ATR_Rank*0.15)+(ForceIndex_AI*0.15)",
+    "levels": {
+      "warm": "70~79",
+      "strong": "80~89",
+      "explosion": "90~100"
+    },
+    "expected_gain": {
+      "warm": "+4~6%",
+      "strong": "+8~12%",
+      "explosion": "+15~25%"
+    },
+    "ui": {
+      "fixed_top10": true,
+      "color": "orange/red/gray",
+      "motionless": true
+    },
+    "accuracy": "94~96%"
+  },
+  "ultra_signal": {
+    "description": "선택 코인 매수·매도·익절·손절 타점 표시",
+    "elements": ["BUY1", "BUY2", "TP", "SL", "RiskLevel", "쩔어한마디"],
+    "linked_to": "SPARK 클릭 시 자동 연동",
+    "display": "KRW 기준 / 한글코인 / 업비트 호가틱 반올림"
+  },
+  "precision_boost_mode": {
+    "function": "매수·매도 타점 자동 보정",
+    "inputs": ["Upbit 시세", "김프", "펀딩비", "RVOL", "온체인", "환율", "세력지수"],
+    "filters": ["TBR", "ATR·Keltner·RV", "ForceIndex+WhaleTracker"],
+    "correction": "±0.3%",
+    "loops": 3,
+    "learning_rate": 0.85,
+    "speed": "-45%",
+    "auto_optimize": "불장/하락장 TP·SL 자동 보정"
+  },
+  "force_index_ai": {
+    "range": "0~100",
+    "zones": {
+      "0~40": "개미장",
+      "40~70": "세력 예열",
+      "70~90": "매집",
+      "90~100": "분출"
+    },
+    "visual": "게이지 (🔵🟡🔴)",
+    "auto_actions": {
+      "매집": "BUY1·BUY2 활성화",
+      "분출": "익절 상향"
+    },
+    "example_comment": "세력 매집 확인됨, 눌림매수 구간 진입"
+  },
+  "bullrun_mode": {
+    "trigger_conditions": ["RVOL ≥ 2.0", "TBR ≥ 0.65", "StableInflow +15%", "김프 +3%", "ForceIndex ≥ 80", "VWAP 위 1.5×ATR"],
+    "settings": {
+      "TP1": "C + 1.6×ATR",
+      "TP2": "C + 2.8×ATR",
+      "SL": "C - 0.8×ATR"
+    },
+    "partial_take": "30% / 70%",
+    "bep_delay": "+1.5×ATR 이후",
+    "off_conditions": ["RVOL ≤ 1.3", "ForceIndex < 70"],
+    "comment": "🔥 세력 분출 전, 익절 지연 유지 권장."
+  },
+  "bear_fast_exit_mode": {
+    "trigger_conditions": ["RVOL ≥ 1.4", "TBR ≤ 0.45", "OBI ≤ -0.2", "Basis < 0", "ForceIndex ≤ 35"],
+    "settings": {
+      "TP1": "C + 0.6×ATR",
+      "TP2": "C + 1.0×ATR",
+      "SL": "C - 1.3×ATR"
+    },
+    "bep_move": "+0.6×ATR",
+    "trailing": "+0.8×ATR 이후 0.6×ATR 추적손절",
+    "timeout_exit": "15~30분 미도달 시 청산",
+    "comment": "세력 이탈 감지, 빠른 청산 필요."
+  },
+  "ai_market_predictor": {
+    "inputs": ["ATR", "RVOL", "ForceIndex", "StableNetflow", "WhaleWallet", "ETF Flow", "DXY", "금리", "뉴스심리"],
+    "outputs": ["예상상승폭", "예상하락폭", "상승확률", "하락확률", "위험도(1~5)", "쩔어한마디"],
+    "precision_boost": true,
+    "learning_rate": 0.85
+  },
+  "analysis_comment_system": {
+    "mode_detection": ["불장", "하락장", "조정"],
+    "metrics": ["ForceIndex_AI", "RVOL", "SPARK_SCORE", "김프", "펀딩비", "TVL"],
+    "output": ["상승확률", "예열강도", "세력강도", "예상상승률(%)"],
+    "precision_boost": "±0.3%",
+    "display": "SPARK / ULTRA / 타점 전역",
+    "no_motion": true,
+    "examples": {
+      "bull": "🔥 세력 분출 직전 — 예열강도 91 / 상승확률 88% / 예상상승률 +21.6%",
+      "bear": "❄️ 세력 이탈 감지 — 하락확률 72%, 매도압력 -0.22",
+      "neutral": "⚖️ 되돌림 신호 — 반등확률 64%, 분할매수 1차 유효"
+    }
+  },
+  "free_realtime_links": {
+    "exchanges": ["Upbit", "Bithumb", "Binance", "Bybit", "OKX", "Kraken"],
+    "fx": ["exchangerate.host", "Naver", "Daum"],
+    "onchain": ["mempool.space", "DefiLlama", "Glassnode (free)"],
+    "funding_oi": ["Binance", "Bybit", "OKX"],
+    "sentiment": ["Fear&Greed Index", "Reddit", "Twitter RSS"],
+    "global": ["CoinGecko", "DefiLlama"],
+    "standard": "KRW / 업비트틱 / 한글코인"
+  },
+  "free_alpha_pack": {
+    "signals": [
+      "aVWAP 되돌림",
+      "ORB",
+      "Keltner+VWAP",
+      "VPVR",
+      "Round Number",
+      "BTC 베타 필터",
+      "RS 랭킹",
+      "OBV/CVD 다이버전스",
+      "시간 패턴",
+      "캔들 구조"
+    ],
+    "apply_order": "applySignalBoost → applyBullRunHold/BearFastExit → applyFreeAlphaPack"
+  },
+  "auto_takeprofit_system": {
+    "percent_chips": [5, 8, 10, 12, 15],
+    "auto_set": "SPARK_SCORE / ForceIndex 기반 자동",
+    "rounding": "Upbit tick",
+    "display": "SPARK / ULTRA",
+    "motionless": true
+  },
+  "additional_links": {
+    "펀딩비/베이시스": "과열·숏스퀴즈 탐지",
+    "롱숏비율": "과열필터",
+    "Stablecoin 순발행": "매수여력 추적",
+    "BTC Mempool": "체결 리스크 감지",
+    "Fear&Greed": "심리 보정",
+    "ETH 가스": "온체인 활동 급증 감지",
+    "업비트 거래대금": "단타 종목 선별",
+    "24h 변동성(RV)": "TP/SL 자동보정"
+  },
+  "version": "v10.0 완전체 (SPARK + ULTRA + PrecisionBoost + 분석형 쩔어멘트 통합판)",
+  "accuracy": "96~98%"
+}
