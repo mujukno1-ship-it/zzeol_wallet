@@ -2,11 +2,11 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>사토시의지갑 v10.5 — KRW · 업비트 호가틱 · 한글명 · No-Motion</title>
 <style>
   :root{--bg:#0d141c;--panel:#121b26;--line:#1e2a3a;--text:#d9e6f2;--sub:#9fb2c8;--pill:#253244;--good:#1da83a;--warn:#e6b800;--hot:#c73232;--bar:#2f8cff}
-  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,Apple Color Emoji,Noto Color Emoji}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Apple SD Gothic Neo,Segoe UI,Roboto}
   .wrap{max-width:1100px;margin:24px auto;padding:0 12px}
   header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .badge{font-weight:700;background:#142031;border:1px solid var(--line);padding:8px 12px;border-radius:12px}
@@ -49,17 +49,19 @@
   </header>
 
   <div class="grid">
+    <!-- SPARK -->
     <section class="card">
       <div class="title"><span class="dot"></span><b>SPARK TOP10 — 급등 전 예열코인</b><span class="muted"> (고정)</span></div>
       <div id="spark"></div>
       <div id="spark-cond" class="muted" style="margin-top:6px">예열 조건: RVOL≥1.8 · TBR≥0.60 · OBI≥+0.15 · 최근5분 변동률≥+1.5% (4개 이상 충족 시 확정)</div>
     </section>
 
+    <!-- ULTRA -->
     <section class="card">
-      div class="title">
-  <span class="dot" style="background:#67d38d"></span>
-  <b>ULTRA 시그널 — <span id="ul-title-name">선택된 코인</span></b>
-</div>
+      <div class="title">
+        <span class="dot" style="background:#67d38d"></span>
+        <b>ULTRA 시그널 — <span id="ul-title-name">선택된 코인</span></b>
+      </div>
       <div class="kv">
         <div class="box"><div class="ttl">현재가</div><div id="ul-price" class="val">-</div></div>
         <div class="box"><div class="ttl">매수 (BUY1)</div><div id="ul-buy1" class="val">-</div></div>
@@ -74,19 +76,23 @@
         <span class="pill" id="pill-prob">상승확률 -</span>
         <span class="pill" id="pill-rise">예상상승률 -</span>
         <span class="pill" id="pill-risk">위험도 -</span>
+        <span class="pill" id="pill-retr">되돌림 0%</span>
       </div>
       <div id="ment" class="ment">코인을 선택하면 쩔어한마디가 표시됩니다.</div>
     </section>
   </div>
 
-  <footer>사토시의지갑 v10.5 · Precision Boost · ForceIndex_AI · Bull/Bear Mode · Free Alpha Pack · No-Motion DOM Patch</footer>
+  <footer>사토시의지갑 v10.5 · Precision Boost · ForceIndex_AI · Bull/Bear Mode · Free Alpha Pack · 되돌림% · No-Motion</footer>
 </div>
 
 <script>
-/* =========================
- * 사토시의지갑 v10.5 — 단일파일(HTML+JS)
- * KRW 기준 · 업비트 호가틱 · 한글명 · No-Motion · 검색→ULTRA 즉시 갱신
- * ========================= */
+/* ─────────────────────────────────────────────────────────
+   사토시의지갑 v10.5 — 메모리 최신판 반영 단일파일
+   기준: KRW · 업비트 호가틱 · 한글명 · No-Motion
+   기능: SPARK TOP10, 검색→ULTRA 강제 갱신, 타점(BUY/TP/SL), 되돌림% 칩/멘트,
+        불장/하락장 모드 규칙, Precision Boost 요약 적용
+   API_BASE: 사토시 프록시
+────────────────────────────────────────────────────────── */
 const CONFIG = {
   API_BASE: "https://satoshi-proxy.mujukno1.workers.dev/api",
   SPARK_WINDOW: "5m",
@@ -97,12 +103,12 @@ const CONFIG = {
 };
 document.getElementById("api-url").textContent = CONFIG.API_BASE;
 
-/* ===== 업비트 KRW 호가틱 (저가 완전 대응) ===== */
+/* ── 업비트 호가틱(저가코인 완벽 대응) ───────────────────── */
 function krwTickStep(p){
   if (p >= 2000000) return 1000;
   if (p >= 1000000) return 500;
   if (p >= 500000)  return 100;
-  if (p >= 100000)  return 50;
+  if (p ≥ 100000)   return 50;
   if (p >= 10000)   return 10;
   if (p >= 1000)    return 1;
   if (p >= 100)     return 0.1;
@@ -112,20 +118,20 @@ function krwTickStep(p){
   return 0.00001;
 }
 function roundTick(p){
-  const step = krwTickStep(p);
-  const r = Math.round(p / step) * step;
-  const d = (step.toString().split('.')[1] || '').length;
+  const s = krwTickStep(p);
+  const r = Math.round(p / s) * s;
+  const d = (s.toString().split('.')[1] || '').length;
   return Number(r.toFixed(d));
 }
 function fmtKRW(v){
   if (!isFinite(v)) return "-";
-  const step = krwTickStep(v);
-  const d = (step.toString().split(".")[1] || "").length;
+  const s = krwTickStep(v);
+  const d = (s.toString().split(".")[1] || "").length;
   if (v >= 1000) return Math.round(v).toLocaleString("ko-KR") + "원";
   return v.toFixed(d) + "원";
 }
 
-/* ===== 공용 fetch (타임아웃+재시도) ===== */
+/* ── 공용 fetch(타임아웃+재시도) ────────────────────────── */
 async function fetchJSON(url, {timeout=CONFIG.FETCH_TIMEOUT_MS, retries=CONFIG.RETRIES}={}){
   for (let i=0;i<=retries;i++){
     const ctrl = new AbortController(); const tm = setTimeout(()=>ctrl.abort(), timeout);
@@ -137,38 +143,46 @@ async function fetchJSON(url, {timeout=CONFIG.FETCH_TIMEOUT_MS, retries=CONFIG.R
   }
 }
 
-/* ===== 한글명/별칭 ===== */
-const NAME = {
-  "KRW-SHIB":"시바이누","KRW-BTC":"비트코인","KRW-ETH":"이더리움","KRW-XRP":"리플",
-  "KRW-DOGE":"도지코인","KRW-SOL":"솔라나","KRW-CHZ":"칠리즈","KRW-ONDO":"온도",
-  "KRW-FIL":"파일코인","KRW-BAT":"베이직어텐션토큰","KRW-WAVES":"웨이브","KRW-LSK":"리스크"
-};
-const ALIAS = {
-  "에이다":"KRW-ADA","ada":"KRW-ADA",
-  "리플":"KRW-XRP","xrp":"KRW-XRP",
-  "이더리움":"KRW-ETH","eth":"KRW-ETH",
-  "비트코인":"KRW-BTC","btc":"KRW-BTC",
-  "시바이누":"KRW-SHIB","shib":"KRW-SHIB",
-  "솔라나":"KRW-SOL","sol":"KRW-SOL",
-  "리스크":"KRW-LSK","lsk":"KRW-LSK"
-};
+/* ── 한글명 사전/별칭 ───────────────────────────────────── */
+const NAME = {"KRW-SHIB":"시바이누","KRW-BTC":"비트코인","KRW-ETH":"이더리움","KRW-XRP":"리플","KRW-SOL":"솔라나","KRW-ADA":"에이다","KRW-DOGE":"도지코인","KRW-CHZ":"칠리즈","KRW-ONDO":"온도"};
+const ALIAS = {"시바이누":"KRW-SHIB","shib":"KRW-SHIB","에이다":"KRW-ADA","ada":"KRW-ADA","리플":"KRW-XRP","xrp":"KRW-XRP","이더리움":"KRW-ETH","eth":"KRW-ETH","비트코인":"KRW-BTC","btc":"KRW-BTC","솔라나":"KRW-SOL","sol":"KRW-SOL"};
 async function loadKoreanNames(){
   try{
     const arr = await fetchJSON("https://api.upbit.com/v1/market/all?isDetails=true",{timeout:8000,retries:1});
-    arr.filter(x=>x.market?.startsWith("KRW-"))
-       .forEach(x=> NAME[x.market]=x.korean_name);
+    arr.filter(x=>x.market?.startsWith("KRW-")).forEach(x=> NAME[x.market]=x.korean_name);
   }catch(_){}
 }
 
-/* ===== 상태 ===== */
-let TICKERS = new Map();     // market -> { price }
-let LAST_SPARK = [];         // spark items
-let SPARK_CACHE = [];        // DOM cache for filter
+/* ── 상태 ──────────────────────────────────────────────── */
+let TICKERS = new Map();   // market -> {price}
+let LAST_SPARK = [];       // 최근 SPARK 아이템들
+let SPARK_CACHE = [];      // DOM 캐시(검색 필터용)
 
-/* ===== 데이터 로딩 ===== */
+/* ── 실시간 가격 버퍼(되돌림% 계산용, 15분) ─────────────── */
+const PRICEBUF = new Map(); // market -> {arr:[], max:180}
+function pushPrice(market, price){
+  let slot = PRICEBUF.get(market);
+  if(!slot){ slot = { arr: [], max: 180 }; PRICEBUF.set(market, slot); }
+  if (price>0) { slot.arr.push(price); if (slot.arr.length>slot.max) slot.arr.shift(); }
+}
+function getRetrPct(market, fallbackPrice){
+  const slot = PRICEBUF.get(market);
+  const arr  = (slot && slot.arr.length>=5) ? slot.arr : null;
+  const p    = Number(fallbackPrice||0);
+  if(!arr) return { pct:0, band:"데이터적음" };
+  const H = Math.max(...arr), L = Math.min(...arr);
+  if(!isFinite(H)||!isFinite(L)||H<=L) return { pct:0, band:"무의미" };
+  const C = p>0 ? p : arr[arr.length-1];
+  const pct = Math.max(0, Math.min(100, ((H - C) / (H - L)) * 100));
+  let band="얕음"; if(pct>=35&&pct<65) band="보통"; else if(pct>=65) band="깊음";
+  return { pct: Number(pct.toFixed(1)), band };
+}
+
+/* ── 데이터 로딩 ───────────────────────────────────────── */
 async function fetchTickers(){
   const data = await fetchJSON(`${CONFIG.API_BASE}/upbit/tickers`);
-  const m = new Map(); for (const t of data){ m.set(t.market, {price: Number(t.tradePrice)||0}); }
+  const m = new Map();
+  for (const t of data){ const price = Number(t.tradePrice)||0; m.set(t.market,{price}); pushPrice(t.market, price); }
   TICKERS = m;
 }
 async function fetchSparkTop(){
@@ -187,36 +201,53 @@ async function fetchSparkTop(){
   LAST_SPARK = []; return [];
 }
 
-/* ===== 지표 → 멘트/타점 ===== */
-function expectedRise(score){ if (score>=90) return 0.21; if (score>=80) return 0.10; if (score>=70) return 0.05; return 0.02; }
-function riseProb(score){ if (score>=90) return 0.88; if (score>=80) return 0.72; if (score>=70) return 0.60; return 0.45; }
+/* ── 점수→확률·상승률·위험도 ───────────────────────────── */
+function expectedRise(score){ if(score>=90) return 0.21; if(score>=80) return 0.10; if(score>=70) return 0.05; return 0.02; }
+function riseProb(score){ if(score>=90) return 0.88; if(score>=80) return 0.72; if(score>=70) return 0.60; return 0.45; }
 function riskLevel(score){ return (score>=80?2:(score>=70?3:4)); }
-function buildMent(item){
-  const { score, rvol=0, tbr=0, obi=0, market } = item;
-  const name = NAME[market] || market.replace("KRW-","");
-  // 되돌림 조건(완화 구간)
-  if ((score>=60 && score<=69) || (rvol>=1.2 && rvol<=1.8 && tbr>=0.48 && tbr<=0.58))
-    return `🔵 되돌림 신호 — ${name} 분할매수 1차 진입, TP1 근접 시 30% 익절 · 실패 시 손절 엄수`;
-  if (score>=90) return `🔥 세력 분출 직전 — ${name} 예열강도 ${score} / 상승확률 ${(riseProb(score)*100|0)}% / 예상상승률 +${(expectedRise(score)*100).toFixed(1)}%`;
-  if (score>=80) return `⚡ 강력 예열 — ${name} 모멘텀 우세(TBR ${(tbr*100).toFixed(0)}%) · RVOL ${rvol.toFixed(2)} · 예열강도 ${score}`;
-  if (score>=70) return `🟡 예열 진행 — ${name} 관망 또는 소량 분할 진입 권장 (OBI ${(obi*100).toFixed(0)}%)`;
-  return `🔵 대기 — 신호 약함. 조건 충족 대기 권장`;
-}
-function buildTargets(cur, score){
-  const tp1P = (score>=90? 0.016 : score>=80? 0.012 : 0.008);
-  const tp2P = (score>=90? 0.028 : score>=80? 0.020 : 0.014);
-  const slP  = (score>=90? -0.008 : score>=80? -0.010 : -0.012);
-  const buy1 = roundTick(cur * (1 - 0.003));
-  const buy2 = roundTick(cur * (1 - 0.008));
-  const tp1  = roundTick(cur * (1 + tp1P));
-  const tp2  = roundTick(cur * (1 + tp2P));
-  const sl   = roundTick(cur * (1 + slP));
-  return {buy1,buy2,tp1,tp2,sl};
+
+/* ── 불장/하락장 모드 규칙(요약 적용) ──────────────────── */
+function calcTargetsByMode(cur, score, ctx){
+  // ctx: {rvol,tbr,kimchi,force,vwapDistance,basis,funding}
+  // 기본 퍼센트 (메모리 규칙 반영)
+  let tp1P=(score>=90?0.016:score>=80?0.012:0.008);
+  let tp2P=(score>=90?0.028:score>=80?0.020:0.014);
+  let slP =(score>=90?-0.008:score>=80?-0.010:-0.012);
+
+  const bull = (ctx.rvol>=2.0)+(ctx.tbr>=0.65)+(ctx.kimchi>=3)+(ctx.force>=80)+(ctx.vwapDistance>=1.5) >= 3;
+  const bear = (ctx.rvol>=1.4 && ctx.vwapBelow) || (ctx.tbr<=0.45) || (ctx.obi<=-0.2) || (ctx.force<=35) || (ctx.basis<0)|| (ctx.funding<0&&ctx.oiUp);
+
+  if (bull){ tp1P=0.016; tp2P=0.028; slP=-0.008; }              // 불장 방어 모드
+  if (bear){ tp1P=0.006; tp2P=0.010; slP=-0.013; }              // 하락장 빠른매도
+
+  return {
+    buy1: roundTick(cur*(1-0.003)),
+    buy2: roundTick(cur*(1-0.008)),
+    tp1 : roundTick(cur*(1+tp1P)),
+    tp2 : roundTick(cur*(1+tp2P)),
+    sl  : roundTick(cur*(1+slP))
+  };
 }
 
-/* ===== 렌더 ===== */
+/* ── 쩔어한마디 ────────────────────────────────────────── */
+function buildMent(item, retr){
+  const { score=75, rvol=0, tbr=0, obi=0, market="KRW-?" } = item;
+  const name = NAME[market] || market.replace("KRW-","");
+  const retrTxt = ` ｜ 되돌림 ${retr.pct}% (${retr.band})`;
+
+  // 되돌림 구간 멘트 우선 반영
+  if ((score>=60 && score<=69) || (rvol>=1.2 && rvol<=1.8 && tbr>=0.48 && tbr<=0.58)) {
+    const guide = (retr.band==="깊음" ? "분할매수 1차/리스크 확인" : retr.band==="보통" ? "눌림진입 유효" : "추격주의, TP 보수화");
+    return `🔵 되돌림 신호 — ${name} ${guide}${retrTxt}`;
+  }
+  if (score>=90) return `🔥 세력 분출 직전 — ${name} 예열강도 ${score} / 상승확률 ${(riseProb(score)*100|0)}% / 예상상승률 +${(expectedRise(score)*100).toFixed(1)}%${retrTxt}`;
+  if (score>=80) return `⚡ 강력 예열 — ${name} 모멘텀 우세(TBR ${(tbr*100).toFixed(0)}%) · RVOL ${rvol.toFixed(2)} · 예열강도 ${score}${retrTxt}`;
+  if (score>=70) return `🟡 예열 진행 — ${name} 관망 또는 소량 분할 진입 권장 (OBI ${(obi*100).toFixed(0)}%)${retrTxt}`;
+  return `🔵 대기 — 신호 약함. 조건 충족 대기 권장${retrTxt}`;
+}
+
+/* ── 렌더(SPARK) ───────────────────────────────────────── */
 const $spark = document.getElementById("spark");
-const $q = document.getElementById("q") || document.getElementById("search-input");
 function cacheSparkCards(){
   const cards = $spark.querySelectorAll('.coin');
   SPARK_CACHE = Array.from(cards).map(el=>{
@@ -260,30 +291,57 @@ function renderSpark(list){
     };
   });
   cacheSparkCards();
-  if (!$q.value.trim() && LAST_SPARK[0]) selectUltra(LAST_SPARK[0]);
-}
-function selectUltra(item){
-  if (!item) return;
-  const price0 = TICKERS.get(item.market)?.price || 0;
-  const cur = roundTick(price0);
-  const kname = NAME[item.market] || item.market.split("-")[1];
-  const by = id => document.getElementById(id);
-  by("pill-name").textContent = `${kname} (${item.market})`;
-  by("ul-price").textContent = fmtKRW(cur);
-  const {buy1,buy2,tp1,tp2,sl} = buildTargets(cur, item.score|0);
-  by("ul-buy1").textContent = fmtKRW(buy1);
-  by("ul-buy2").textContent = fmtKRW(buy2);
-  by("ul-tp1").textContent  = fmtKRW(tp1);
-  by("ul-tp2").textContent  = fmtKRW(tp2);
-  by("ul-sl").textContent   = fmtKRW(sl);
-  by("pill-score").textContent = `예열강도 ${item.score|0}`;
-  by("pill-prob").textContent  = `상승확률 ${Math.round(riseProb(item.score)*100)}%`;
-  by("pill-rise").textContent  = `예상상승률 +${(expectedRise(item.score)*100).toFixed(1)}%`;
-  by("pill-risk").textContent  = `위험도 ${riskLevel(item.score)}`;
-  by("ment").textContent = buildMent(item);
 }
 
-/* ===== 검색 (SPARK 없을 때도 ULTRA 강제 로드) ===== */
+/* ── ULTRA 표시 ───────────────────────────────────────── */
+function selectUltra(item){
+  if (!item) return;
+  const mkt   = item.market;
+  const t     = TICKERS.get(mkt) || {};
+  const cur0  = Number(t.price||0);
+  const cur   = roundTick(cur0);
+  const kname = NAME[mkt] || mkt.split("-")[1];
+
+  // 제목·칩
+  const set = id=>document.getElementById(id);
+  const $title = document.getElementById("ul-title-name");
+  if ($title) $title.textContent = `${kname} (${mkt})`;
+  set("pill-name").textContent  = `${kname} (${mkt})`;
+  set("ul-price").textContent   = fmtKRW(cur);
+
+  // 되돌림 %
+  const retr = getRetrPct(mkt, cur0);
+  set("pill-retr").textContent  = `되돌림 ${retr.pct}%`;
+
+  // 불장/하락장 컨텍스트(요약: 외부 신호가 없을 때 보수값)
+  const ctx = {
+    rvol: Number(item.rvol||1.6),
+    tbr:  Number(item.tbr||0.52),
+    obi:  Number(item.obi||0.10),
+    kimchi: 0, force: Number(item.force||item.score||75),
+    vwapDistance: 1.0, vwapBelow: false,
+    basis: 0, funding: 0, oiUp: false
+  };
+  const tg = calcTargetsByMode(cur, item.score|0, ctx);
+  set("ul-buy1").textContent = fmtKRW(tg.buy1);
+  set("ul-buy2").textContent = fmtKRW(tg.buy2);
+  set("ul-tp1").textContent  = fmtKRW(tg.tp1);
+  set("ul-tp2").textContent  = fmtKRW(tg.tp2);
+  set("ul-sl").textContent   = fmtKRW(tg.sl);
+
+  // 칩: 점수/확률/상승률/위험도
+  const score = item.score|0;
+  set("pill-score").textContent = `예열강도 ${score}`;
+  set("pill-prob").textContent  = `상승확률 ${Math.round(riseProb(score)*100)}%`;
+  set("pill-rise").textContent  = `예상상승률 +${(expectedRise(score)*100).toFixed(1)}%`;
+  set("pill-risk").textContent  = `위험도 ${riskLevel(score)}`;
+
+  // 멘트
+  document.getElementById("ment").textContent = buildMent(item, retr);
+}
+
+/* ── 검색 → SPARK 필터 + ULTRA 강제 로드 ──────────────── */
+const $q = document.getElementById("q");
 function showEmptyMsg(msg){
   let el = document.getElementById('empty-msg');
   if (!el){ el = document.createElement('div'); el.id='empty-msg'; el.className='muted'; el.style.cssText='padding:12px;border:1px dashed var(--line);border-radius:10px'; $spark.appendChild(el); }
@@ -336,6 +394,7 @@ async function forceUltraWhenNoMatch(raw){
   if (!TICKERS.size){ try{ await fetchTickers(); }catch(_){ } }
   const ultra = await fetchUltraByMarket(market);
   selectUltra(ultra);
+  // 좌측 임시 카드(UX)
   if (!$spark.querySelector(`[data-market="${market}"]`)){
     const price = TICKERS.get(market)?.price || 0;
     const kname = NAME[market] || market.split('-')[1];
@@ -356,18 +415,18 @@ const onSearch = debounce(()=>{
   SPARK_CACHE.forEach(it=>{ const ok = it.text.includes(q); it.el.style.display = ok?'':'none'; if (ok) matched.push(it); });
   if (!matched.length){ forceUltraWhenNoMatch($q.value); }
   else { hideEmptyMsg(); const item = LAST_SPARK.find(x=>x.market===matched[0].market); if (item) selectUltra(item); }
-}, 90);
+}, 100);
 $q.addEventListener("input", onSearch);
 $q.addEventListener("keydown", e=>{ if (e.key==="Enter") forceUltraWhenNoMatch($q.value); });
 
-/* ===== 루프 ===== */
+/* ── 루프(No-Motion: DOM diff만 갱신) ─────────────────── */
 async function loop(){
   try{ await fetchTickers(); const s = await fetchSparkTop(); renderSpark(s); }
   catch(e){ /* 조용히 재시도 */ }
   finally{ setTimeout(loop, CONFIG.REFRESH_MS); }
 }
 
-/* ===== 시작 ===== */
+/* ── 시작 ─────────────────────────────────────────────── */
 (async()=>{ await loadKoreanNames(); loop(); })();
 </script>
 </body>
