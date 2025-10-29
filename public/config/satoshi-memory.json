@@ -1,176 +1,245 @@
 {
-  "project": "사토시의지갑 (쩔어지갑)",
-  "version": "v10.0 완전체 (SPARK + ULTRA + PrecisionBoost + 분석형 쩔어멘트 통합판)",
-  "base_settings": {
-    "language": "ko",
+  "project": "사토시의지갑",
+  "version": "v13-full",
+  "api": {
+    "API_BASE": "https://satoshi-proxy.mujukno1.workers.dev/api",
+    "health": "/health"
+  },
+  "global_rules": {
     "currency": "KRW",
-    "api_base": "https://satoshi-proxy.mujukno1.workers.dev/api",
-    "fixed_top_search": true,
+    "rounding": "upbit_tick",
+    "coin_label_lang": "ko",
     "no_motion": true,
-    "diff_patch_update": true,
-    "ticker_rounding": "upbit_tick",
-    "display_rules": {
-      "korean_coin_names": true,
-      "round_to_upbit_tick": true
+    "fixed_searchbar": true,
+    "display_tables_inline": true
+  },
+  "ui": {
+    "sections": [
+      "search_fixed_top",
+      "spark_top10_always_on",
+      "ultra_signal_panel",
+      "selected_coin_detail",
+      "ai_comment_area"
+    ],
+    "badges": {
+      "risk": true,
+      "expected_gain_loss": true,
+      "spark_score_gauge": true
+    },
+    "labels": {
+      "buy1": "매수(BUY1)",
+      "buy2": "매수(BUY2)",
+      "tp1": "익절(TP1)",
+      "tp2": "익절(TP2)",
+      "sl": "손절(SL)",
+      "risk": "위험도",
+      "ai_comment": "쩔어한마디"
     }
   },
-  "spark": {
-    "enabled": true,
-    "description": "급등 직전 예열 코인 탐지",
-    "score_formula": "(RVOL*0.3)+(TBR*0.25)+(OBI*0.15)+(ATR_Rank*0.15)+(ForceIndex_AI*0.15)",
-    "levels": {
-      "warm": { "range": "70-79", "expected_gain_pct": "4-6" },
-      "strong": { "range": "80-89", "expected_gain_pct": "8-12" },
-      "explosion": { "range": "90-100", "expected_gain_pct": "15-25" }
-    },
-    "ui": { "top10_fixed": true, "motionless": true, "show_gauge": true },
-    "integration": { "on_click_open_ultra": true },
-    "expected_accuracy_pct": "94-96"
+  "rounding_rules": {
+    "BUY1": "floor_tick",
+    "BUY2": "floor_tick",
+    "TP1": "ceil_tick",
+    "TP2": "ceil_tick",
+    "SL": "floor_tick"
   },
-  "ultra_signal": {
-    "enabled": true,
-    "fields": ["price_now","buy1","buy2","tp1","tp2","sl","risk_level","comment"],
-    "display": { "currency": "KRW", "korean_names": true, "round_to_upbit_tick": true },
-    "integration": { "from_spark_click": true }
+  "signal_engine": {
+    "inputs": [
+      "RVOL",
+      "TBR",
+      "OBI",
+      "ATR_percent",
+      "ForceIndex_AI",
+      "kimchi_premium",
+      "funding_rate",
+      "basis",
+      "whale_inout",
+      "stablecoin_netflow",
+      "VWAP_relation"
+    ],
+    "outputs": [
+      "price",
+      "risk_level_1to5",
+      "BUY1","BUY2","TP1","TP2","SL",
+      "expected_up_pct",
+      "expected_down_pct",
+      "ai_comment"
+    ],
+    "logic": {
+      "expected_up_down_is_primary": true,
+      "multi_timeframe_sync": ["5m","1h","4h","1d"],
+      "enter_on_candle_close_rule": true,
+      "split_entry_tranches": 3,
+      "move_to_bep_rule": true
+    }
   },
   "precision_boost_mode": {
     "enabled": true,
-    "inputs": ["upbit_prices","kimchi_premium","funding_rate","rvol","onchain","fx_rate","force_index_ai"],
-    "triple_filters": ["TBR","ATR_Keltner_RV","ForceIndexAI_WhaleTracker"],
-    "auto_correction_pct": 0.3,
-    "correction_loops": 3,
+    "tolerance_pct": 0.3,
+    "loops": 3,
     "learning_rate": 0.85,
-    "latency_improvement_pct": -45,
-    "auto_optimize_by_market_mode": true
-  },
-  "market_modes": {
-    "bull_run_hold": {
-      "trigger": {
-        "rvol_min": 2.0,
-        "tbr_min": 0.65,
-        "kimchi_premium_min_pct": 3,
-        "force_index_ai_min": 80,
-        "vwap_distance_atr_min": 1.5,
-        "stable_inflow_boost_pct": 15
-      },
-      "settings": { "tp1": "C+1.6*ATR", "tp2": "C+2.8*ATR", "sl": "C-0.8*ATR" },
-      "partial_take": "30/70",
-      "bep_move_delay_atr": 1.5,
-      "off_conditions": { "rvol_max": 1.3, "force_index_ai_max": 69 },
-      "comment": "🔥 세력 분출 전, 익절 지연 유지 권장."
-    },
-    "bear_fast_exit": {
-      "trigger": {
-        "rvol_min": 1.4,
-        "tbr_max": 0.45,
-        "obi_max": -0.2,
-        "basis_negative": true,
-        "force_index_ai_max": 35
-      },
-      "settings": { "tp1": "C+0.6*ATR", "tp2": "C+1.0*ATR", "sl": "C-1.3*ATR" },
-      "bep_move_atr": 0.6,
-      "trailing_after_atr": 0.8,
-      "trailing_width_atr": 0.6,
-      "timeout_close_min": [15,30],
-      "comment": "❄️ 세력 이탈 감지, 빠른 청산 필요."
-    },
-    "pullback_retracement": {
-      "trigger": {
-        "vwap_reentry": true,
-        "rvol_range": [1.2,1.8],
-        "tbr_around": 0.55,
-        "hv_rank_mid": true,
-        "vpvr_poc_retest_ok": true
-      },
-      "comment_templates": [
-        "세력 되돌림 신호 — 분할매수 1차 유효",
-        "되돌림 마감 임박 — 1차 익절 준비",
-        "되돌림 실패 조짐 — 반등 포지션 정리 권장"
-      ]
+    "speed_improvement": -45,
+    "dynamic_opt": {
+      "bull_bear_auto": true,
+      "inputs_weighting": ["upbit_price","kimchi","funding","RVOL","onchain","fx","force_index"]
     }
+  },
+  "spark_module": {
+    "always_on": true,
+    "topN": 10,
+    "metrics": ["5m_change","RVOL","OBI","ATR_rank","TBR","ForceIndex_AI"],
+    "score_formula": "SPARK = RVOL*0.3 + TBR*0.25 + OBI*0.15 + ATR_Rank*0.15 + ForceIndex_AI*0.15",
+    "bands": [
+      {"range":"70-79","label":"예열","expected_gain":"4~6%"},
+      {"range":"80-89","label":"강력 예열","expected_gain":"8~12%"},
+      {"range":"90-100","label":"폭발 임박","expected_gain":"15~25%"}
+    ],
+    "filters_upgrade": {
+      "RVOL_min": 1.8,
+      "TBR_min": 0.60,
+      "OBI_min": 0.15,
+      "chg5m_min_pct": 1.5
+    },
+    "ui": {
+      "show_score_gauge": true,
+      "show_expected_gain": true,
+      "one_click_link_to_ultra": true
+    }
+  },
+  "free_alpha_pack": {
+    "enabled": true,
+    "modules": [
+      "aVWAP_daily_weekly_monthly_reversion",
+      "ORB_30m_breakout",
+      "Keltner_with_VWAP_filter",
+      "VPVR_POC_retest",
+      "RS_ranking_top20",
+      "OBV_CVD_divergence",
+      "round_number_and_orderwall_snap",
+      "BTC_beta_correlation_filter",
+      "time_day_pattern",
+      "inside_outside_bar_signal"
+    ]
   },
   "force_index_ai": {
     "enabled": true,
-    "inputs": ["rvol","tbr","obi","microprice","whale_inout","stablecoin_netflow","liqmap_strength"],
-    "scale_0_100": true,
-    "zones": {
-      "0-40": "개미장",
-      "40-70": "세력 예열",
-      "70-90": "매집",
-      "90-100": "분출"
-    },
-    "auto_actions": { "accumulation_buy": true, "eruption_takeprofit_up": true },
-    "ui_gauge": true,
-    "example_comment": "세력 매집 확인됨, 눌림매수 구간 진입."
-  },
-  "ai_move_predictor": {
-    "enabled": true,
-    "inputs": ["ATR","RVOL","ForceIndexAI","StablecoinNetflow","WhaleWallet","ETF_Flow","DXY","Rate","NewsSentiment"],
-    "outputs": ["expected_up_pct","expected_down_pct","prob_up_pct","prob_down_pct","risk_1to5","comment"],
-    "precision_boost_link": true,
-    "learning_rate": 0.85
-  },
-  "zzeol_comment_numeric": {
-    "enabled": true,
-    "priority": ["bear_fast_exit","bull_run_hold","pullback_retracement","neutral"],
-    "metrics": ["ForceIndexAI","RVOL","SPARK_SCORE","KimchiPremium","Funding","TVL"],
-    "format_examples": {
-      "bull": "🔥 세력 분출 직전 — 예열강도 {spark_score} / 상승확률 {prob_up}% / 예상상승률 +{expected_up}%",
-      "bear": "🧊 세력 이탈 — 하락확률 {prob_down}% / 매도압력 {order_imbalance}",
-      "pullback": "⚖️ 되돌림 — 매집강도 {force_index} / 반등확률 {prob_up}% / aVWAP 재진입",
-      "neutral": "⏳ 관망 — 신호 혼재 (RVOL {rvol} / TBR {tbr})"
-    },
-    "no_motion": true,
-    "precision_boost_link": true,
-    "show_on": ["spark","ultra","signal_panel"]
-  },
-  "free_realtime_bundle": {
-    "exchanges_ws_rest": ["Upbit","Bithumb","Binance","Bybit","OKX","Kraken"],
-    "fx_kimchi": ["exchangerate.host","naver","daum","upbit-binance-comparison"],
-    "onchain": ["mempool.space","DefiLlama","Glassnode_public"],
-    "derivatives": ["Binance","Bybit","OKX"],
-    "sentiment": ["alternative.me_FearGreed","Reddit_RSS","Twitter_RSS"],
-    "global": ["CoinGecko","DefiLlama"],
-    "standardize": { "currency": "KRW", "upbit_tick": true, "korean_names": true }
-  },
-  "free_alpha_pack": {
-    "signals": [
-      "aVWAP_retrace",
-      "ORB_opening_range_breakout",
-      "Keltner_plus_VWAP",
-      "VPVR_light_POC",
-      "RoundNumber_walls",
-      "BTC_beta_correlation_filter",
-      "RS_rank_top20",
-      "OBV_CVD_divergence",
-      "TimeOfDay_weekday_pattern",
-      "InsideOutside_bar_structure"
+    "scale": "0-100",
+    "zones": [
+      {"range":"0-40","label":"개미장(관망)"},
+      {"range":"40-70","label":"세력 예열(소량 분할)"},
+      {"range":"70-90","label":"세력 매집(적극 매수/홀드)"},
+      {"range":"90-100","label":"세력 분출(익절 경계)"}
     ],
-    "apply_order": "applySignalBoost -> applyBullRunHold/BearFastExit -> applyFreeAlphaPack"
+    "ui_gauge": true
   },
-  "auto_takeprofit": {
-    "percent_chips": [5,8,10,12,15],
-    "auto_default_logic": "SPARK_SCORE & ForceIndexAI",
-    "round_to_upbit_tick": true,
-    "show_on": ["spark","ultra"],
-    "motionless": true
+  "bull_run_hold_mode": {
+    "enabled": true,
+    "on_conditions_at_least": 3,
+    "conditions": [
+      "RVOL>=2.0",
+      "TBR>=0.65",
+      "stablecoin_netflow_pct>=15",
+      "kimchi_premium>=3",
+      "ForceIndex_AI>=80",
+      "price_above_VWAP_by>=1.5_ATR"
+    ],
+    "adjustments": {
+      "TP1":"C+1.6*ATR",
+      "TP2":"C+2.8*ATR",
+      "SL":"C-0.8*ATR",
+      "partial_tp_ratio":"30/70",
+      "bep_move_delay_at":"C+1.5*ATR"
+    },
+    "off_conditions": [
+      "RVOL<=1.3","ForceIndex_AI<70","funding_or_basis_spike"
+    ]
   },
-  "extra_accuracy_links": {
-    "funding_basis": "overheat_squeeze_detector",
-    "long_short_ratio": "overheat_filter",
-    "stablecoin_supply_netflow": "buying_power",
-    "btc_mempool": "execution_risk",
-    "fear_greed": "sentiment_adjust",
-    "eth_gas": "onchain_activity_spike",
-    "upbit_krw_volume_rank": "scalping_candidates",
-    "rv_24h": "tp_sl_auto_adjust"
+  "bear_fast_exit_mode": {
+    "enabled": true,
+    "on_conditions": [
+      "RVOL>=1.4 && close_below_VWAP",
+      "TBR<=0.45",
+      "OBI<=-0.2",
+      "basis<0 OR (funding<0 && OI_up)",
+      "ForceIndex_AI<=35",
+      "whale_inflow_exchange_up"
+    ],
+    "adjustments": {
+      "TP1":"C+0.6*ATR",
+      "TP2":"C+1.0*ATR",
+      "SL":"C-1.3*ATR",
+      "bep_move_at":"C+0.6*ATR",
+      "trail_after":"C+0.8*ATR with 0.6*ATR",
+      "time_exit_minutes":"15-30",
+      "disable_buy2": true,
+      "partial_tp_when_long_liq_near":"70%"
+    },
+    "contextual_tweaks": [
+      "if funding<0 && OI_up => TP1 += 0.1*ATR",
+      "if whale_inflow_up => SL += 0.1*ATR",
+      "if HVRank>=80 => TP1/TP2 -= 0.1*ATR; reentry_cooldown=60m"
+    ]
   },
-  "ui_texts": {
-    "labels": {
-      "spark_top10": "SPARK TOP10 — 급등 사전 예열 감지",
-      "ultra_signal": "ULTRA 시그널 — 선택한 코인",
-      "comment_title": "쩔어한마디"
+  "ai_comment_system": {
+    "enabled": true,
+    "modes": ["bull","bear","pullback"],
+    "outputs": [
+      "상승확률","예열강도","세력강도","예상상승률_pct"
+    ],
+    "examples": {
+      "bull": "🔥 세력 분출 직전 — 예열강도 {spark} / 상승확률 {prob}% / 예상상승률 +{gain}%",
+      "bear": "⚠️ 세력 이탈 감지 — 빠른 청산 필요.",
+      "pullback": "↔️ 되돌림 — 분할진입 1차, 익절 준비."
+    },
+    "precision_boost_linked": true,
+    "no_motion_updates": true
+  },
+  "data_sources_free": {
+    "exchanges_realtime": ["Upbit","Bithumb","Binance","Bybit","OKX","Kraken","Bitfinex"],
+    "fx": ["exchangerate.host","naver/dau backup"],
+    "kimchi_premium": "Upbit-Binance cross + FX",
+    "onchain": ["mempool.space","DefiLlama (TVL, stablecoin)"],
+    "derivatives": ["Binance/Bybit/OKX funding","OI proxy"],
+    "sentiment": ["Fear&Greed","RSS Social Volume (lite)"],
+    "global": ["CoinGecko market data"]
+  },
+  "level2_3_expansion": {
+    "risk_black_swan": ["BlackSwanSentinel2.0","DynamicHedge","AI_AutoCut_v2"],
+    "liquidity_cluster": ["LiquidationClusterMap+","MarketMakerTracker","LiquidityHeatmapRadar"],
+    "global_flows": ["GlobalLiquidityIndex","ETF_Flow_Radar_v2","Stablecoin_Supply_Shock"],
+    "smart_money": ["SmartMoneyDivergence","WhaleAlarmAI_v2","CycleTracker(MVRV/NUPL)"],
+    "trading_engine": ["Adaptive_ATR_Trailing","VWAP_DynamicZone_Filter","HFT_Tick_Optimizer"],
+    "ai_ment_set": ["bull_run","bear_fast_exit","sideway","macro_shock"]
+  },
+  "expected_gain_mapping": [
+    {"spark_band":"70-79","gain_pct_range":"4-6"},
+    {"spark_band":"80-89","gain_pct_range":"8-12"},
+    {"spark_band":"90-100","gain_pct_range":"15-25"}
+  ],
+  "output_rules": {
+    "risk_level_allowed": [1,2],
+    "show_percent_bars": true,
+    "show_ultra_selected_coin_panel": true,
+    "KRW_only": true,
+    "upbit_tick_everywhere": true
+  },
+  "integration_links": {
+    "spark_to_ultra": true,
+    "ultra_to_chart": true,
+    "expected_gain_loss_on_panel": true
+  },
+  "defaults": {
+    "show_top_lists": ["SPARK_TOP10","ULTRA_signal_selected"],
+    "max_search_results": 5,
+    "refresh_intervals_sec": {
+      "tickers": 5,
+      "spark": 20,
+      "ultra": 20
     }
   },
-  "accuracy": { "overall_pct": "96-98" }
+  "dev_notes": {
+    "one_paste_deploy_preference": true,
+    "three_file_split_ready": true,
+    "keep_backward_compat": true
+  }
 }
