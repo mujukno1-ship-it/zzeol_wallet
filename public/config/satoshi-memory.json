@@ -1,0 +1,176 @@
+{
+  "project": "사토시의지갑 (쩔어지갑)",
+  "version": "v10.0 완전체 (SPARK + ULTRA + PrecisionBoost + 분석형 쩔어멘트 통합판)",
+  "base_settings": {
+    "language": "ko",
+    "currency": "KRW",
+    "api_base": "https://satoshi-proxy.mujukno1.workers.dev/api",
+    "fixed_top_search": true,
+    "no_motion": true,
+    "diff_patch_update": true,
+    "ticker_rounding": "upbit_tick",
+    "display_rules": {
+      "korean_coin_names": true,
+      "round_to_upbit_tick": true
+    }
+  },
+  "spark": {
+    "enabled": true,
+    "description": "급등 직전 예열 코인 탐지",
+    "score_formula": "(RVOL*0.3)+(TBR*0.25)+(OBI*0.15)+(ATR_Rank*0.15)+(ForceIndex_AI*0.15)",
+    "levels": {
+      "warm": { "range": "70-79", "expected_gain_pct": "4-6" },
+      "strong": { "range": "80-89", "expected_gain_pct": "8-12" },
+      "explosion": { "range": "90-100", "expected_gain_pct": "15-25" }
+    },
+    "ui": { "top10_fixed": true, "motionless": true, "show_gauge": true },
+    "integration": { "on_click_open_ultra": true },
+    "expected_accuracy_pct": "94-96"
+  },
+  "ultra_signal": {
+    "enabled": true,
+    "fields": ["price_now","buy1","buy2","tp1","tp2","sl","risk_level","comment"],
+    "display": { "currency": "KRW", "korean_names": true, "round_to_upbit_tick": true },
+    "integration": { "from_spark_click": true }
+  },
+  "precision_boost_mode": {
+    "enabled": true,
+    "inputs": ["upbit_prices","kimchi_premium","funding_rate","rvol","onchain","fx_rate","force_index_ai"],
+    "triple_filters": ["TBR","ATR_Keltner_RV","ForceIndexAI_WhaleTracker"],
+    "auto_correction_pct": 0.3,
+    "correction_loops": 3,
+    "learning_rate": 0.85,
+    "latency_improvement_pct": -45,
+    "auto_optimize_by_market_mode": true
+  },
+  "market_modes": {
+    "bull_run_hold": {
+      "trigger": {
+        "rvol_min": 2.0,
+        "tbr_min": 0.65,
+        "kimchi_premium_min_pct": 3,
+        "force_index_ai_min": 80,
+        "vwap_distance_atr_min": 1.5,
+        "stable_inflow_boost_pct": 15
+      },
+      "settings": { "tp1": "C+1.6*ATR", "tp2": "C+2.8*ATR", "sl": "C-0.8*ATR" },
+      "partial_take": "30/70",
+      "bep_move_delay_atr": 1.5,
+      "off_conditions": { "rvol_max": 1.3, "force_index_ai_max": 69 },
+      "comment": "🔥 세력 분출 전, 익절 지연 유지 권장."
+    },
+    "bear_fast_exit": {
+      "trigger": {
+        "rvol_min": 1.4,
+        "tbr_max": 0.45,
+        "obi_max": -0.2,
+        "basis_negative": true,
+        "force_index_ai_max": 35
+      },
+      "settings": { "tp1": "C+0.6*ATR", "tp2": "C+1.0*ATR", "sl": "C-1.3*ATR" },
+      "bep_move_atr": 0.6,
+      "trailing_after_atr": 0.8,
+      "trailing_width_atr": 0.6,
+      "timeout_close_min": [15,30],
+      "comment": "❄️ 세력 이탈 감지, 빠른 청산 필요."
+    },
+    "pullback_retracement": {
+      "trigger": {
+        "vwap_reentry": true,
+        "rvol_range": [1.2,1.8],
+        "tbr_around": 0.55,
+        "hv_rank_mid": true,
+        "vpvr_poc_retest_ok": true
+      },
+      "comment_templates": [
+        "세력 되돌림 신호 — 분할매수 1차 유효",
+        "되돌림 마감 임박 — 1차 익절 준비",
+        "되돌림 실패 조짐 — 반등 포지션 정리 권장"
+      ]
+    }
+  },
+  "force_index_ai": {
+    "enabled": true,
+    "inputs": ["rvol","tbr","obi","microprice","whale_inout","stablecoin_netflow","liqmap_strength"],
+    "scale_0_100": true,
+    "zones": {
+      "0-40": "개미장",
+      "40-70": "세력 예열",
+      "70-90": "매집",
+      "90-100": "분출"
+    },
+    "auto_actions": { "accumulation_buy": true, "eruption_takeprofit_up": true },
+    "ui_gauge": true,
+    "example_comment": "세력 매집 확인됨, 눌림매수 구간 진입."
+  },
+  "ai_move_predictor": {
+    "enabled": true,
+    "inputs": ["ATR","RVOL","ForceIndexAI","StablecoinNetflow","WhaleWallet","ETF_Flow","DXY","Rate","NewsSentiment"],
+    "outputs": ["expected_up_pct","expected_down_pct","prob_up_pct","prob_down_pct","risk_1to5","comment"],
+    "precision_boost_link": true,
+    "learning_rate": 0.85
+  },
+  "zzeol_comment_numeric": {
+    "enabled": true,
+    "priority": ["bear_fast_exit","bull_run_hold","pullback_retracement","neutral"],
+    "metrics": ["ForceIndexAI","RVOL","SPARK_SCORE","KimchiPremium","Funding","TVL"],
+    "format_examples": {
+      "bull": "🔥 세력 분출 직전 — 예열강도 {spark_score} / 상승확률 {prob_up}% / 예상상승률 +{expected_up}%",
+      "bear": "🧊 세력 이탈 — 하락확률 {prob_down}% / 매도압력 {order_imbalance}",
+      "pullback": "⚖️ 되돌림 — 매집강도 {force_index} / 반등확률 {prob_up}% / aVWAP 재진입",
+      "neutral": "⏳ 관망 — 신호 혼재 (RVOL {rvol} / TBR {tbr})"
+    },
+    "no_motion": true,
+    "precision_boost_link": true,
+    "show_on": ["spark","ultra","signal_panel"]
+  },
+  "free_realtime_bundle": {
+    "exchanges_ws_rest": ["Upbit","Bithumb","Binance","Bybit","OKX","Kraken"],
+    "fx_kimchi": ["exchangerate.host","naver","daum","upbit-binance-comparison"],
+    "onchain": ["mempool.space","DefiLlama","Glassnode_public"],
+    "derivatives": ["Binance","Bybit","OKX"],
+    "sentiment": ["alternative.me_FearGreed","Reddit_RSS","Twitter_RSS"],
+    "global": ["CoinGecko","DefiLlama"],
+    "standardize": { "currency": "KRW", "upbit_tick": true, "korean_names": true }
+  },
+  "free_alpha_pack": {
+    "signals": [
+      "aVWAP_retrace",
+      "ORB_opening_range_breakout",
+      "Keltner_plus_VWAP",
+      "VPVR_light_POC",
+      "RoundNumber_walls",
+      "BTC_beta_correlation_filter",
+      "RS_rank_top20",
+      "OBV_CVD_divergence",
+      "TimeOfDay_weekday_pattern",
+      "InsideOutside_bar_structure"
+    ],
+    "apply_order": "applySignalBoost -> applyBullRunHold/BearFastExit -> applyFreeAlphaPack"
+  },
+  "auto_takeprofit": {
+    "percent_chips": [5,8,10,12,15],
+    "auto_default_logic": "SPARK_SCORE & ForceIndexAI",
+    "round_to_upbit_tick": true,
+    "show_on": ["spark","ultra"],
+    "motionless": true
+  },
+  "extra_accuracy_links": {
+    "funding_basis": "overheat_squeeze_detector",
+    "long_short_ratio": "overheat_filter",
+    "stablecoin_supply_netflow": "buying_power",
+    "btc_mempool": "execution_risk",
+    "fear_greed": "sentiment_adjust",
+    "eth_gas": "onchain_activity_spike",
+    "upbit_krw_volume_rank": "scalping_candidates",
+    "rv_24h": "tp_sl_auto_adjust"
+  },
+  "ui_texts": {
+    "labels": {
+      "spark_top10": "SPARK TOP10 — 급등 사전 예열 감지",
+      "ultra_signal": "ULTRA 시그널 — 선택한 코인",
+      "comment_title": "쩔어한마디"
+    }
+  },
+  "accuracy": { "overall_pct": "96-98" }
+}
