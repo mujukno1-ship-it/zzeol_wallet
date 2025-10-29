@@ -273,7 +273,118 @@ const onSearch = debounce(()=>{
   }
 }, 80);
 $q?.addEventListener("input", onSearch);
+/* ============================================
+ * 🔁 검색 확장: SPARK에 없어도 ULTRA 강제 로드
+ *  - '이더리움' / 'ETH' / 'KRW-ETH' / '시바이누' / 'KRW-SHIB' 전부 인식
+ *  - 실패 시에도 최소한 현재가로 타점 계산하여 표출
+ * ============================================ */
 
+// 한글명/심볼/마켓코드로 KRW-마켓 추론
+async function resolveMarket(query){
+  const q = query.trim().toLowerCase();
+
+  // 1) SPARK 캐시에서 먼저 찾기
+  for (const it of SPARK_CACHE){
+    if (it.text.includes(q)) return it.market;
+  }
+
+  // 2) 이미 로딩한 한글명 사전에서 찾기
+  for (const [m, kname] of Object.entries(NAME)){
+    const sym = m.split('-')[1]?.toLowerCase();
+    if (m.toLowerCase().includes(q) || sym?.includes(q) || kname?.toLowerCase().includes(q)) {
+      return m;
+    }
+  }
+
+  // 3) 업비트 마켓 전체 조회로 최종 매칭
+  try{
+    const arr = await fetchJSON("https://api.upbit.com/v1/market/all?isDetails=true",{timeout:8000,retries:1});
+    // KRW 마켓만
+    const krw = arr.filter(x=>x.market?.startsWith("KRW-"));
+    // 정확/포함 순으로 탐색
+    let pick = krw.find(x => x.market.toLowerCase()===q);
+    if (!pick) pick = krw.find(x => x.market.split('-')[1].toLowerCase()===q);
+    if (!pick) pick = krw.find(x => x.korean_name?.toLowerCase()===q);
+    if (!pick) pick = krw.find(x => (x.korean_name?.toLowerCase()||"").includes(q) || x.market.toLowerCase().includes(q));
+    if (pick){
+      NAME[pick.market] = pick.korean_name;
+      return pick.market;
+    }
+  }catch(_) {}
+  return null;
+}
+
+// 여러 후보 엔드포인트로 ULTRA 로드
+async function fetchUltraByMarket(market){
+  const urls = [
+    `${CONFIG.API_BASE}/ultra/signal?market=${encodeURIComponent(market)}`,
+    `${CONFIG.API_BASE}/ultra?market=${encodeURIComponent(market)}`,
+    `${CONFIG.API_BASE}/v1/ultra/signal?market=${encodeURIComponent(market)}`
+  ];
+  for (const u of urls){
+    try{
+      const r = await fetchJSON(u,{timeout:CONFIG.FETCH_TIMEOUT_MS,retries:1});
+      // 배열/객체 어떤 형식이든 market 포함시 채택
+      const obj = Array.isArray(r) ? r[0] : (r.data || r);
+      if (obj && (obj.market || obj.symbol)) {
+        const mk = obj.market || obj.symbol;
+        return {
+          market: mk,
+          score: Number(obj.score) || 75,
+          rvol : Number(obj.rvol)  || 1.8,
+          tbr  : Number(obj.tbr)   || 0.5,
+          obi  : Number(obj.obi)   || 0.10
+        };
+      }
+    }catch(_){ /* 다음 후보로 */ }
+  }
+  // 전부 실패하면 최소 정보로 fallback
+  return { market, score: 75, rvol: 1.8, tbr: 0.5, obi: 0.10 };
+}
+
+// onSearch 결과가 없을 때 자동 호출되도록 훅 추가
+async function forceUltraWhenNoMatch(rawQuery){
+  const market = await resolveMarket(rawQuery || ($q?.value||""));
+  if (!market){
+    showEmptyMsg(`❌ '${rawQuery}' 결과가 없습니다. (심볼/마켓 예: KRW-SHIB, ETH 로도 검색해 보세요)`);
+    return;
+  }
+  hideEmptyMsg();
+
+  // 티커 최신화(현재가 필요)
+  if (!TICKERS.size){
+    try{ await fetchTickers(); }catch(_){}
+  }
+
+  // ULTRA 로드 후 표시
+  try{
+    const ultra = await fetchUltraByMarket(market);
+    selectUltra(ultra);
+    // 좌측 목록에도 카드가 없으면 임시 카드 1개 삽입(사용자 경험용)
+    if ($spark && !$spark.querySelector(`[data-market="${market}"]`)){
+      const price = TICKERS.get(market)?.price || 0;
+      const kname = NAME[market] || market.split('-')[1];
+      const score = ultra.score|0;
+      const w = Math.min(100, Math.max(0, score));
+      const ghost = document.createElement('div');
+      ghost.className = 'coin';
+      ghost.setAttribute('data-market', market);
+      ghost.innerHTML = `
+        <div class="row" style="justify-content:space-between">
+          <div><div class="sym">${market}</div><div class="kname">${kname}</div></div>
+          <div class="price">${price? fmtKRW(roundTick(price)) : '-'}</div>
+        </div>
+        <div class="bar"><i style="width:${w}%"></i></div>
+        <span class="pill">SPARK ${score}</span>
+      `;
+      ghost.onclick = ()=> selectUltra(ultra);
+      $spark.prepend(ghost);
+      cacheSparkCards();
+    }
+  }catch(_){
+    showEmptyMsg(`⚠ '${market}' 시그널 로드 실패(네트워크). 잠시 후 다시 시도해 주세요.`);
+  }
+}
 /* ========== 루프(5초) ========== */
 async function tick(){
   try{
