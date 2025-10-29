@@ -449,6 +449,65 @@ async function selectMarket(market){
   }
 }
 </script>
+<script>
+/* 사토시 핫픽스 v1 — API 베이스 + 배열 가드 + 에러 안전화 */
+const API_BASE = "https://satoshi-proxy.mujukno1.workers.dev/api";
 
+/* 안전 파서: API 응답이 배열/객체 어떤 형태여도 프론트가 절대 안터지도록 */
+function toArray(x) {
+  if (Array.isArray(x)) return x;
+  if (x && Array.isArray(x.items)) return x.items;
+  return [];
+}
+
+/* 업비트 마켓 불러오기 (검색용) */
+async function loadMarkets() {
+  try {
+    const r = await fetch(`${API_BASE}/upbit/markets`, { cache: "no-store" });
+    const js = await r.json();
+    const list = toArray(js);
+    // TODO: 기존 검색 렌더 함수로 연결 (아래 예시는 이벤트 발생용 훅)
+    window.__UPBIT_MARKETS__ = list;
+    document.dispatchEvent(new CustomEvent("markets:loaded", { detail: list }));
+  } catch (e) {
+    console.error("loadMarkets error", e);
+    window.__UPBIT_MARKETS__ = [];
+  }
+}
+
+/* SPARK TOP10 로드 (없으면 빈배열) */
+async function loadSpark() {
+  try {
+    const r = await fetch(`${API_BASE}/spark/top10`, { cache: "no-store" });
+    const js = await r.json();
+    const list = toArray(js);
+    document.dispatchEvent(new CustomEvent("spark:loaded", { detail: list }));
+  } catch (e) {
+    console.error("loadSpark error", e);
+    document.dispatchEvent(new CustomEvent("spark:loaded", { detail: [] }));
+  }
+}
+
+/* 특정 코인 선택 시 ULTRA 신호 로드 (시장 파라미터는 KRW-XXX) */
+async function loadUltra(market) {
+  if (!market) return;
+  try {
+    const r = await fetch(`${API_BASE}/ultra/signal?market=${encodeURIComponent(market)}`, { cache: "no-store" });
+    const js = await r.json();
+    document.dispatchEvent(new CustomEvent("ultra:loaded", { detail: js }));
+  } catch (e) {
+    console.error("loadUltra error", e);
+    document.dispatchEvent(new CustomEvent("ultra:loaded", { detail: { ok:false, error:String(e) } }));
+  }
+}
+
+/* 페이지 초기 구동 */
+(async function initSatoshiHotfix(){
+  // 기존 init 전에 먼저 불러서 데이터 보장
+  await Promise.all([loadMarkets(), loadSpark()]);
+  // 기존 코드에서 선택 이벤트 발생 시, 아래 함수를 호출만 해주면 됨:
+  // loadUltra("KRW-BTC")
+})();
+</script>
 </body>
 </html>
