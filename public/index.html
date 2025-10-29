@@ -338,5 +338,117 @@ document.getElementById('btnKRW').onclick = ()=>alert("KRW 기준 / 업비트 �
 document.getElementById('btnNoMotion').onclick = ()=>alert("No-Motion 모드 — 모든 애니/트랜지션 비활성화");
 
 </script>
+  <script>
+/* ▼▼ 추가: 어떤 형식이 와도 배열로 바꿔주는 유틸 */
+function asArr(x){
+  if (Array.isArray(x)) return x;
+  if (x && Array.isArray(x.items)) return x.items;      // {items:[...]}
+  if (x && Array.isArray(x.data))  return x.data;       // {data:[...]}
+  if (x && typeof x === 'object') {
+    // { "KRW-BTC": {...}, "KRW-ETH": {...} } 형태도 대응
+    const vals = Object.values(x).filter(v=>v!=null);
+    // 값들이 배열 한 겹 더 들어있는 경우 [ [...], [...]]
+    if (vals.length && Array.isArray(vals[0])) return vals.flat();
+    return vals;
+  }
+  return [];
+}
+
+/* ▼▼ 공통 fetch (그대로, 단 ok:false 처리만 추가) */
+async function jget(url){
+  const r = await fetch(url, {mode:'cors',cache:'no-cache'});
+  const js = await r.json().catch(()=>null);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  if (js && js.ok === false) throw new Error(js.error || "API ok:false");
+  return js;
+}
+
+/* ▼▼ 마켓 목록 로더 — 응답을 배열로 정규화 */
+async function loadMarkets(){
+  const js = await jget(ENDPOINTS.markets);
+  const arr = asArr(js);
+  // 일부 엔드포인트가 {market, korean_name}가 아닌 경우 키 맞춤
+  KRW_MARKETS = arr
+    .map(x=>{
+      // 표준키 보정
+      const market = x.market || x.code || x.ticker || "";
+      const korean = x.korean_name || x.korName || x.name_kr || x.name || "";
+      return { market, korean_name: korean };
+    })
+    .filter(x => String(x.market||"").startsWith("KRW-"));
+}
+
+/* ▼▼ SPARK 로더 — 응답을 배열로 정규화 + 에러 출력 */
+async function loadSpark(){
+  const box = document.getElementById('spark');
+  const empty = document.getElementById('sparkEmpty');
+  setHTML(box, ""); setText(empty, "불러오는 중…");
+  let data;
+  try{
+    const js = await jget(ENDPOINTS.spark);
+    data = asArr(js);
+  }catch(e){
+    setText(empty, "SPARK 불러오기 실패: " + (e?.message||e));
+    return;
+  }
+  LAST_SPARK = data.map(it=>{
+    return {
+      market: it.market || it.code || it.ticker || "",
+      korean_name: it.korean_name || it.korName || it.name_kr || it.name || "",
+      price: Number(it.price ?? it.now ?? it.last ?? 0),
+      spark_score: Number(it.spark_score ?? it.score ?? it.force_index ?? 0),
+      prob_up: it.prob_up ?? it.prob ?? null,
+      force_index: Number(it.force_index ?? 0)
+    };
+  }).filter(x=>x.market.startsWith("KRW-"));
+
+  if(!LAST_SPARK.length){ setText(empty, "SPARK 데이터 없음."); return; }
+  setText(empty, "");
+  const frag = document.createDocumentFragment();
+  LAST_SPARK.slice(0,10).forEach(item=>{
+    const li = document.createElement('div'); li.className = 'li';
+    const left = document.createElement('div');
+    const right = document.createElement('div'); right.className='right small';
+
+    const name = (item.korean_name || item.market || "").replace("KRW-","");
+    const price = Number(item.price||0);
+    const score = Number(item.spark_score||item.force_index||0);
+    const prob = item.prob_up ?? null;
+
+    const badge = document.createElement('span'); badge.className='pill';
+    const label = (score>=90 ? "폭발 임박" : score>=80 ? "강력 예열" : score>=70 ? "예열" : "관망");
+    badge.textContent = `${label} • ${score|0}점`;
+
+    left.innerHTML = `<b>${name}</b> <span class="small">(${item.market})</span><br/><span class="small">${fmtKRW(price)}</span> `;
+    left.appendChild(badge);
+
+    const b = document.createElement('button'); b.className='btn'; b.textContent='선택';
+    b.onclick = ()=>selectMarket(item.market);
+
+    if (prob!=null){ right.textContent = `상승확률 ${pct(Number(prob),false)}`; }
+
+    li.append(left,right,b);
+    frag.append(li);
+  });
+  box.appendChild(frag);
+}
+
+/* ▼▼ ULTRA 선택 — ok:false/비정형 응답 대비 */
+async function selectMarket(market){
+  currentMarket = market;
+  setText(document.getElementById('ultraMarket'), market || "");
+  setDisplay('ultraEmpty', false); setDisplay('ultra', true);
+  try{
+    const raw = await jget(ENDPOINTS.ultra + "?market=" + encodeURIComponent(market));
+    // 일부 워커가 {data:{...}}로 줄 수도 있어 풀어주기
+    const js = raw?.data || raw;
+    renderUltraFromAPI(js);
+  }catch(e){
+    console.warn("ULTRA 연동 실패, 안전 계산으로 대체:", e?.message||e);
+    fallbackUltra(market);
+  }
+}
+</script>
+
 </body>
 </html>
