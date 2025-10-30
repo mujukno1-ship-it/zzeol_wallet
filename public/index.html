@@ -45,8 +45,7 @@
   #suggest .row{padding:8px 12px;cursor:pointer}
   #suggest .row:hover{background:#1f2937}
   .warn{margin-top:8px;color:#ffb8c0;font-size:12px;display:none}
-
-  /* --- 글로벌(지수) 패널 --- */
+  /* 글로벌 패널 */
   .gwrap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
   @media (max-width:980px){.gwrap{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .gbox{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
@@ -70,7 +69,7 @@
     </div>
     <div class="warn" id="apiWarn">API 연결이 원활하지 않습니다. 새로고침하거나 잠시 후 다시 시도하세요.</div>
 
-    <!-- 🔹 글로벌(미국증시·매크로) 요약 패널 -->
+    <!-- 글로벌(미국증시·매크로) -->
     <div class="gwrap" id="globalPanel" hidden>
       <div class="gbox">
         <div class="ghead">NASDAQ 100<span class="gsub">NDX</span></div>
@@ -110,7 +109,6 @@
     <section class="card">
       <div class="title" id="ultraTitle">ULTRA 시그널 — 선택된 코인</div>
 
-      <!-- 기본 6박스 -->
       <div class="ultra">
         <div class="box"><div class="k">현재가</div><div class="v" id="v_price">-</div></div>
         <div class="box"><div class="k">매수 (BUY1)</div><div class="v" id="v_buy1">-</div></div>
@@ -120,7 +118,6 @@
         <div class="box"><div class="k">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
       </div>
 
-      <!-- 절대 금액 타겟 -->
       <div class="ultra" style="margin-top:6px">
         <div class="box"><div class="k">예상 고점 1</div><div class="v" id="v_hi1">-</div></div>
         <div class="box"><div class="k">예상 고점 2</div><div class="v" id="v_hi2">-</div></div>
@@ -130,7 +127,6 @@
         <div class="box"><div class="k">되돌림 후 매도 2</div><div class="v" id="v_rs2">-</div></div>
       </div>
 
-      <!-- 칩들 -->
       <div class="pillrow" style="margin-top:10px">
         <span class="pill badge">예열강도 <b id="chip_heat">0</b></span>
         <span class="pill badge">상승확률 <b id="chip_prob">0%</b></span>
@@ -141,7 +137,6 @@
         <span class="pill badge">당일 저점 <b id="chip_DL">-</b></span>
       </div>
 
-      <!-- MTF 보정 칩 -->
       <div class="pillrow" style="margin-top:6px">
         <span class="pill badge">MTF 모드 <b id="chip_mtf_mode">-</b></span>
         <span class="pill badge">MTF 점수 <b id="chip_mtf_score">0</b></span>
@@ -155,7 +150,6 @@
   <footer>사토시의지갑 v11.0 · Precision Overdrive · Adaptive Timeframe AI(1m~1M) · No-Motion</footer>
 </div>
 
-<!-- 검색 드롭다운 -->
 <div id="suggest"></div>
 
 <script>
@@ -285,7 +279,7 @@ function makeZMsg(s){
   return {mode,msg:text,heat,prob,gain};
 }
 
-/* ===== MTF 가중 교차분석 — Precision Overdrive 보정 (±0.3%) ===== */
+/* ===== MTF 보정(±0.3%) ===== */
 function calcMTFAdjust(seed){
   const s = seed||{};
   const price = Number(s.price||0)||0;
@@ -334,7 +328,6 @@ async function openUltra(market, seed){
     else { tp1=pricePct(price,0.012); tp2=pricePct(price,0.020); sl=pricePct(price,-0.010); }
   }
 
-  // MTF 보정
   const mtf = calcMTFAdjust(s);
   const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
   const tpAdjPct = sign * mtf.adj;
@@ -367,7 +360,7 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':z.mode==='하락장'?'4':'3'));
+  setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':'하락장'?'4':'3'));
 
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
@@ -447,11 +440,7 @@ function ensureTempSparkCard(market){
   }
 }
 
-/* ===== 글로벌(미국증시 등) =====
-   - 무료 Stooq CSV → r.jina.ai 프록시로 CORS 우회
-   - 심볼: ^ndx(나스닥100), ^spx(S&P500), dxy(달러인덱스), us10y(미10년)
-   - 실패 시 패널 자동 숨김 (No-Motion)
-*/
+/* ===== 글로벌(미국증시 등) ===== */
 const STQ = (syms)=>
   `https://r.jina.ai/http://stooq.com/q/l/?s=${encodeURIComponent(syms)}&f=sd2t2ohlcv&h&e=csv`;
 
@@ -460,7 +449,6 @@ async function fetchStooqCSV(symbols){
     const r = await fetch(STQ(symbols));
     if(!r.ok) throw new Error('stooq '+r.status);
     const text = await r.text();
-    // CSV 헤더: Symbol,Date,Time,Open,High,Low,Close,Volume
     const lines = text.trim().split(/\r?\n/);
     const out = {};
     for(let i=1;i<lines.length;i++){
@@ -474,7 +462,6 @@ async function fetchStooqCSV(symbols){
     return out;
   }catch(e){ console.warn('stooq fail',e); return null; }
 }
-
 function paintGlobal(idBase, v){
   const num = $('#g_'+idBase), chg = $('#gc_'+idBase);
   if(!num||!chg||!v) return;
@@ -483,7 +470,6 @@ function paintGlobal(idBase, v){
   chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
   chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
 }
-
 async function loadGlobal(){
   const panel = $('#globalPanel');
   const data = await fetchStooqCSV('^ndx,^spx,dxy,us10y');
