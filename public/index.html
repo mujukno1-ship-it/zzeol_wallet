@@ -352,6 +352,159 @@ $('#q').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
   const first = $('#sparkList .item');
   if (first){ first.click(); }
 })();
+<script>
+/* ==== 전역 설정 ==== */
+const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
+let UPBIT_LIST = [];     // {market, korean_name, english_name}
+
+/* ==== 업비트 호가틱 + 포맷 ==== */
+function upbitTick(p){
+  if (p >= 2000000) return 1000;
+  if (p >= 1000000) return 500;
+  if (p >= 500000)  return 100;
+  if (p >= 100000)  return 50;
+  if (p >= 10000)   return 10;
+  if (p >= 1000)    return 1;
+  if (p >= 100)     return 0.1;
+  if (p >= 10)      return 0.01;
+  if (p >= 1)       return 0.001;
+  return 0.0001; // 저가코인(시바이누 등)
+}
+function roundTick(price){
+  const t = upbitTick(price);
+  return Math.round(price / t) * t;
+}
+function fmtKRW(p){
+  const t = upbitTick(p);
+  const frac = t < 1 ? String(t).split('.')[1].length : 0;
+  return roundTick(p).toLocaleString('ko-KR', { minimumFractionDigits: frac, maximumFractionDigits: frac }) + '원';
+}
+
+/* ==== 검색 UI 바인딩 (한글 리스트) ==== */
+const $search = document.querySelector('#search-input') || document.querySelector('input[type="search"], .search input');
+const $searchBtn = document.querySelector('#search-btn') || document.querySelector('button.search-btn, .search button');
+const $dropdown = document.createElement('div');
+$dropdown.style.position='absolute';
+$dropdown.style.zIndex='9999';
+$dropdown.style.background='#111';
+$dropdown.style.border='1px solid #333';
+$dropdown.style.borderRadius='8px';
+$dropdown.style.padding='6px 0';
+$dropdown.style.width='320px';
+$dropdown.style.display='none';
+document.body.appendChild($dropdown);
+
+function placeDropdown(){
+  const r = $search.getBoundingClientRect();
+  $dropdown.style.left = (window.scrollX + r.left) + 'px';
+  $dropdown.style.top  = (window.scrollY + r.bottom + 6) + 'px';
+  $dropdown.style.width = r.width + 'px';
+}
+window.addEventListener('resize', placeDropdown);
+window.addEventListener('scroll', placeDropdown);
+
+/* 리스트 로드 */
+async function loadUpbitList(){
+  try{
+    const r = await fetch(`${API_BASE}/upbit/tickers`);
+    const j = await r.json();
+    if(j.ok) UPBIT_LIST = j.items || [];
+  }catch(e){ console.warn('tickers load fail', e); }
+}
+loadUpbitList();
+
+/* 검색어 입력 시 한글 목록 드롭다운 */
+function renderDropdown(q){
+  if(!q){ $dropdown.style.display='none'; return; }
+  const qq = q.trim().toLowerCase();
+  const cand = UPBIT_LIST.filter(x=>{
+    const kn = (x.korean_name||'').toLowerCase();
+    const en = (x.english_name||'').toLowerCase();
+    const mk = (x.market||'').toLowerCase();
+    return kn.includes(qq) || en.includes(qq) || mk.includes(qq);
+  }).slice(0,10);
+
+  $dropdown.innerHTML = '';
+  cand.forEach(x=>{
+    const row = document.createElement('div');
+    row.style.padding='8px 12px';
+    row.style.cursor='pointer';
+    row.onmouseenter=()=>row.style.background='#1f2937';
+    row.onmouseleave=()=>row.style.background='transparent';
+    row.innerHTML = `<b>${x.korean_name}</b> <span style="opacity:.7">(${x.market.replace('KRW-','')})</span>`;
+    row.onclick = ()=>{ selectMarket(x); };
+    $dropdown.appendChild(row);
+  });
+  placeDropdown();
+  $dropdown.style.display = cand.length ? 'block' : 'none';
+}
+$search?.addEventListener('input', e=> renderDropdown(e.target.value));
+document.addEventListener('click', e=>{
+  if(e.target!==$search && !$dropdown.contains(e.target)) $dropdown.style.display='none';
+});
+
+/* 검색 버튼(엔터) 동작 */
+$search?.addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); submitSearch(); }
+});
+$searchBtn?.addEventListener('click', submitSearch);
+
+function submitSearch(){
+  const q = ($search?.value||'').trim();
+  if(!q) return;
+  // 우선 한글명 매칭 → 마켓코드/영문 순
+  let pick = UPBIT_LIST.find(x=> (x.korean_name||'').includes(q));
+  if(!pick) pick = UPBIT_LIST.find(x=> (x.market||'').toUpperCase() === q.toUpperCase());
+  if(!pick) pick = UPBIT_LIST.find(x=> (x.english_name||'').toUpperCase() === q.toUpperCase());
+  if(!pick) pick = UPBIT_LIST.find(x=> (x.market||'').toUpperCase().includes(q.toUpperCase()));
+  if(pick) selectMarket(pick);
+}
+
+/* ULTRA 호출 + 패널 업데이트 */
+async function selectMarket(item){
+  try{
+    $dropdown.style.display='none';
+    if($search) $search.value = item.korean_name; // 입력창에도 한글명 표시
+
+    // 패널 타이틀: "ULTRA 시그널 — {한글명} (KRW-XXX)"
+    const $title = document.querySelector('.ultra-title') || document.querySelector('.ultra .title, .right .title');
+    if($title){
+      $title.textContent = `ULTRA 시그널 — ${item.korean_name} (${item.market})`;
+    }
+
+    const r = await fetch(`${API_BASE}/ultra/signal?market=${encodeURIComponent(item.market)}`);
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error||'ultra fail');
+
+    // 값(업비트 호가틱 반올림) 표시
+    setBox('#price-now' , fmtKRW(j.price));
+    setBox('#price-buy1', fmtKRW(j.buy1));
+    setBox('#price-buy2', fmtKRW(j.buy2));
+    setBox('#price-tp1' , fmtKRW(j.tp1));
+    setBox('#price-tp2' , fmtKRW(j.tp2));
+    setBox('#price-sl'  , fmtKRW(j.sl));
+
+    // 칩/멘트 업데이트(예: 위험도, 되돌림%)
+    setBox('#chip-risk' , `위험도 ${j.risk_level||3}`);
+    setBox('#chip-retr' , `되돌림 ${j.retracement_percent||0}%`);
+    const $ment = document.querySelector('#zzeol-ment') || document.querySelector('.ment, .comment');
+    if($ment){
+      const mode = j.risk_level<=2 ? '불장' : (j.risk_level>=4 ? '하락' : '중립');
+      $ment.textContent = (mode==='불장')
+        ? '세력 예열 강함 — 눌림매수 1차 진입, TP 지연'
+        : (mode==='하락')
+          ? '세력 이탈 감지 — 빠른 청산/손절 강화'
+          : '관망/되돌림 중심 — 분할 대기';
+    }
+  }catch(e){
+    console.error(e);
+    alert('ULTRA 시그널을 불러오지 못했습니다.');
+  }
+}
+function setBox(sel, txt){
+  const el = document.querySelector(sel);
+  if(el) el.textContent = txt;
+}
 </script>
 </body>
 </html>
