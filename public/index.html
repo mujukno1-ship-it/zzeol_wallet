@@ -360,7 +360,8 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':'하락장'?'4':'3'));
+  /* 🔧 버그수정: 삼항 연산자 교정 */
+  setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
 
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
@@ -440,30 +441,9 @@ function ensureTempSparkCard(market){
   }
 }
 
-/* ===== 글로벌(미국증시 등) ===== */
-const STQ = (syms)=>
-  `https://r.jina.ai/http://stooq.com/q/l/?s=${encodeURIComponent(syms)}&f=sd2t2ohlcv&h&e=csv`;
-
-async function fetchStooqCSV(symbols){
-  try{
-    const r = await fetch(STQ(symbols));
-    if(!r.ok) throw new Error('stooq '+r.status);
-    const text = await r.text();
-    const lines = text.trim().split(/\r?\n/);
-    const out = {};
-    for(let i=1;i<lines.length;i++){
-      const cols = lines[i].split(',');
-      const sym = cols[0].toLowerCase();
-      const close = parseFloat(cols[6]);
-      const open  = parseFloat(cols[3]);
-      const chg   = (isFinite(close)&&isFinite(open)) ? ((close-open)/open*100) : 0;
-      out[sym] = { close, open, chg };
-    }
-    return out;
-  }catch(e){ console.warn('stooq fail',e); return null; }
-}
+/* ===== 글로벌(미국증시 등): Worker 프록시 사용 ===== */
 function paintGlobal(idBase, v){
-  const num = $('#g_'+idBase), chg = $('#gc_'+idBase);
+  const num = document.querySelector('#g_'+idBase), chg = document.querySelector('#gc_'+idBase);
   if(!num||!chg||!v) return;
   num.textContent = isFinite(v.close) ? v.close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
   const sign = v.chg>0 ? 'up' : v.chg<0 ? 'down' : '';
@@ -471,9 +451,10 @@ function paintGlobal(idBase, v){
   chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
 }
 async function loadGlobal(){
-  const panel = $('#globalPanel');
-  const data = await fetchStooqCSV('^ndx,^spx,dxy,us10y');
-  if(!data){ panel.hidden = true; return; }
+  const panel = document.querySelector('#globalPanel');
+  const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`).then(r=>r.json()).catch(()=>null);
+  if(!d?.ok){ panel.hidden = true; return; }
+  const data = d.data || {};
   panel.hidden = false;
   paintGlobal('ndx',  data['^ndx'] || data['ndx']);
   paintGlobal('spx',  data['^spx'] || data['spx']);
@@ -487,7 +468,7 @@ async function loadGlobal(){
   await loadGlobal().catch(()=>{});
   await loadMarkets();
   await loadSpark();
-  const first=$('#sparkList .item'); if(first) first.click();
+  const first=document.querySelector('#sparkList .item'); if(first) first.click();
 })();
 </script>
 </body>
