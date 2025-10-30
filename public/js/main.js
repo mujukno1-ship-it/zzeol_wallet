@@ -331,5 +331,7 @@ function ensureTempSparkCard(market){
   const first=$('#sparkList .item'); if(first) first.click();
 })();
 </script>
+<div id="suggest"></div>
+<script src="./js/main.js" defer></script>  
 </body>
 </html>
