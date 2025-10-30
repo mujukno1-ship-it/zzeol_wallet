@@ -45,6 +45,16 @@
   #suggest .row{padding:8px 12px;cursor:pointer}
   #suggest .row:hover{background:#1f2937}
   .warn{margin-top:8px;color:#ffb8c0;font-size:12px;display:none}
+
+  /* --- 글로벌(지수) 패널 --- */
+  .gwrap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+  @media (max-width:980px){.gwrap{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .gbox{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
+  .ghead{display:flex;justify-content:space-between;align-items:center;font-weight:700}
+  .gsub{font-size:11px;color:var(--muted)}
+  .gnum{font-weight:800;margin-top:6px}
+  .gchg{font-size:12px;margin-top:2px}
+  .up{color:var(--up)} .down{color:var(--down)}
 </style>
 </head>
 <body>
@@ -59,6 +69,30 @@
       <button id="btnSearch">검색</button>
     </div>
     <div class="warn" id="apiWarn">API 연결이 원활하지 않습니다. 새로고침하거나 잠시 후 다시 시도하세요.</div>
+
+    <!-- 🔹 글로벌(미국증시·매크로) 요약 패널 -->
+    <div class="gwrap" id="globalPanel" hidden>
+      <div class="gbox">
+        <div class="ghead">NASDAQ 100<span class="gsub">NDX</span></div>
+        <div class="gnum" id="g_ndx">-</div>
+        <div class="gchg" id="gc_ndx">-</div>
+      </div>
+      <div class="gbox">
+        <div class="ghead">S&P 500<span class="gsub">SPX</span></div>
+        <div class="gnum" id="g_spx">-</div>
+        <div class="gchg" id="gc_spx">-</div>
+      </div>
+      <div class="gbox">
+        <div class="ghead">Dollar Index<span class="gsub">DXY</span></div>
+        <div class="gnum" id="g_dxy">-</div>
+        <div class="gchg" id="gc_dxy">-</div>
+      </div>
+      <div class="gbox">
+        <div class="ghead">US 10Y<span class="gsub">Yield</span></div>
+        <div class="gnum" id="g_us10y">-</div>
+        <div class="gchg" id="gc_us10y">-</div>
+      </div>
+    </div>
   </div>
 
   <div class="grid">
@@ -86,7 +120,7 @@
         <div class="box"><div class="k">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
       </div>
 
-      <!-- 절대 금액 타겟 6박스 -->
+      <!-- 절대 금액 타겟 -->
       <div class="ultra" style="margin-top:6px">
         <div class="box"><div class="k">예상 고점 1</div><div class="v" id="v_hi1">-</div></div>
         <div class="box"><div class="k">예상 고점 2</div><div class="v" id="v_hi2">-</div></div>
@@ -107,7 +141,7 @@
         <span class="pill badge">당일 저점 <b id="chip_DL">-</b></span>
       </div>
 
-      <!-- MTF 보정 칩 (신규) -->
+      <!-- MTF 보정 칩 -->
       <div class="pillrow" style="margin-top:6px">
         <span class="pill badge">MTF 모드 <b id="chip_mtf_mode">-</b></span>
         <span class="pill badge">MTF 점수 <b id="chip_mtf_score">0</b></span>
@@ -121,7 +155,7 @@
   <footer>사토시의지갑 v11.0 · Precision Overdrive · Adaptive Timeframe AI(1m~1M) · No-Motion</footer>
 </div>
 
-<!-- 검색 드롭다운 (단일 선언) -->
+<!-- 검색 드롭다운 -->
 <div id="suggest"></div>
 
 <script>
@@ -131,6 +165,7 @@ document.getElementById('apiBaseTxt').textContent = API_BASE;
 const $ = s=>document.querySelector(s);
 const setTxt=(el,v)=>{ if(el && String(el.textContent)!==String(v)) el.textContent=String(v); };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);}};
 
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
@@ -143,7 +178,7 @@ function upbitTick(p){
   if (p >= 100)     return 0.1;
   if (p >= 10)      return 0.01;
   if (p >= 1)       return 0.001;
-  return 0.0001; // 초저가(시바이누 등)
+  return 0.0001;
 }
 function roundTick(price){ const t=upbitTick(price); return Math.round(price/t)*t; }
 function fmtKRW(n){
@@ -166,7 +201,7 @@ async function jget(path){
   }catch(e){ console.error('API ERR',path,e); return null; }
 }
 
-/* ===== API 건강 체크 표시 ===== */
+/* ===== API 건강 체크 ===== */
 async function ping(){
   const badge = $('#apiHealth');
   const warn  = $('#apiWarn');
@@ -200,7 +235,7 @@ function resolveMarket(input){
 async function loadSpark(){
   const listEl=$('#sparkList'), emptyEl=$('#sparkEmpty');
   listEl.innerHTML='';
-  const d=await jget('/spark/top?window=5m&limit=10');
+  const d=await jget('/spark/top?limit=10');
   if(!Array.isArray(d?.list)||d.list.length===0){ emptyEl.hidden=false; return; }
   emptyEl.hidden=true;
   d.list.forEach(it=>{
@@ -221,7 +256,7 @@ async function loadSpark(){
   });
 }
 
-/* ===== 되돌림(%) 계산(캔들 입력 시) ===== */
+/* ===== 되돌림(%) 계산 ===== */
 function computeRetracement(candles){
   if(!Array.isArray(candles)||!candles.length) return null;
   const L=candles.slice(-15);
@@ -250,10 +285,7 @@ function makeZMsg(s){
   return {mode,msg:text,heat,prob,gain};
 }
 
-/* ===== MTF(1m~1M) 가중 교차분석 — Precision Overdrive 보정 =====
-   외부 캔들이 없어도 /ultra/signal의 지표(heat/rvol/tbr/retr/당일H·L)를 사용해
-   각 TF의 가상 시그널을 추정 → 가중 평균 스코어 → tp/sl ±보정(캡 ±0.3%)
-*/
+/* ===== MTF 가중 교차분석 — Precision Overdrive 보정 (±0.3%) ===== */
 function calcMTFAdjust(seed){
   const s = seed||{};
   const price = Number(s.price||0)||0;
@@ -261,50 +293,22 @@ function calcMTFAdjust(seed){
   const rvol  = Number(s.rvol||0);
   const tbr   = Number(s.tbr||0);
   const retrP = Number(s.retracement_percent||0);
-  // TF 가중(변동성↑ 단기 비중↑, 변동성↓ 중장기 비중↑)
-  const volRank = clamp(rvol/3, 0, 1); // 0~1
-  const w = {
-    m1 : 0.18*volRank,
-    m5 : 0.16*volRank,
-    m30: 0.12*volRank + 0.04,
-    h1 : 0.12*(0.6+volRank*0.4),
-    h4 : 0.12*(0.5+ (1-volRank)*0.5),
-    h6 : 0.08*(0.5+ (1-volRank)*0.5),
-    d1 : 0.10*(0.4+ (1-volRank)*0.6),
-    w1 : 0.07*(0.3+ (1-volRank)*0.7),
-    m1x: 0.05*(0.3+ (1-volRank)*0.7)
-  };
-  // 각 TF 시그널(−1~+1): heat/tbr/retr 조합으로 추정
-  const sigShort = ((heat-50)/50)*0.5 + (tbr-0.5)*0.6 - (retrP>65?0.2:0) + (retrP<35?0.15:0);
-  const sigMid   = ((heat-50)/50)*0.4 + (tbr-0.5)*0.4;
-  const sigLong  = ((heat-50)/50)*0.3 + (tbr-0.5)*0.3;
-
-  const S = {
-    m1 : clamp(sigShort, -1, 1),
-    m5 : clamp(sigShort*0.9, -1, 1),
-    m30: clamp((sigShort*0.6+sigMid*0.4), -1, 1),
-    h1 : clamp(sigMid, -1, 1),
-    h4 : clamp((sigMid*0.7+sigLong*0.3), -1, 1),
-    h6 : clamp((sigMid*0.6+sigLong*0.4), -1, 1),
-    d1 : clamp(sigLong, -1, 1),
-    w1 : clamp(sigLong*0.8, -1, 1),
-    m1x: clamp(sigLong*0.7, -1, 1)
-  };
-
-  // 가중 평균 스코어(−100~+100)
-  const sumW = Object.values(w).reduce((a,b)=>a+b,0)||1;
-  let mtfScore = 0;
-  for(const k of Object.keys(S)){ mtfScore += (S[k]*100) * (w[k]/sumW); }
-  mtfScore = clamp(Math.round(mtfScore), -100, 100);
-
-  // 모드/보정량 산출 (±0.3% 캡 · Precision Overdrive)
-  const mode = mtfScore>=35 ? '불장'
-              : mtfScore<=-35 ? '하락장' : '조정';
-  // 기본 보정율: 0.0015 ~ 0.003 범위 내
-  let adj = Math.min(0.003, Math.max(0.0015, Math.abs(mtfScore)/4000)); // 0~0.025 → 캡
-  // 불장/하락장일 때 감도 상향
-  if(mode==='불장' || mode==='하락장') adj = Math.min(0.003, adj*1.2);
-
+  const volRank = clamp(rvol/3, 0, 1);
+  const w = { m1:0.18*volRank, m5:0.16*volRank, m30:0.12*volRank+0.04, h1:0.12*(0.6+volRank*0.4),
+              h4:0.12*(0.5+(1-volRank)*0.5), h6:0.08*(0.5+(1-volRank)*0.5), d1:0.10*(0.4+(1-volRank)*0.6),
+              w1:0.07*(0.3+(1-volRank)*0.7), m1x:0.05*(0.3+(1-volRank)*0.7)};
+  const sigShort=((heat-50)/50)*0.5 + (tbr-0.5)*0.6 - (retrP>65?0.2:0) + (retrP<35?0.15:0);
+  const sigMid  =((heat-50)/50)*0.4 + (tbr-0.5)*0.4;
+  const sigLong =((heat-50)/50)*0.3 + (tbr-0.5)*0.3;
+  const S={m1:clamp(sigShort,-1,1),m5:clamp(sigShort*0.9,-1,1),m30:clamp((sigShort*0.6+sigMid*0.4),-1,1),
+           h1:clamp(sigMid,-1,1),h4:clamp((sigMid*0.7+sigLong*0.3),-1,1),h6:clamp((sigMid*0.6+sigLong*0.4),-1,1),
+           d1:clamp(sigLong,-1,1),w1:clamp(sigLong*0.8,-1,1),m1x:clamp(sigLong*0.7,-1,1)};
+  const sumW=Object.values(w).reduce((a,b)=>a+b,0)||1;
+  let mtfScore=0; for(const k of Object.keys(S)){ mtfScore += (S[k]*100)*(w[k]/sumW); }
+  mtfScore=clamp(Math.round(mtfScore),-100,100);
+  const mode = mtfScore>=35 ? '불장' : mtfScore<=-35 ? '하락장' : '조정';
+  let adj = Math.min(0.003, Math.max(0.0015, Math.abs(mtfScore)/4000));
+  if(mode!=='조정') adj = Math.min(0.003, adj*1.2);
   return { mtfScore, mode, adj, price };
 }
 
@@ -314,18 +318,13 @@ async function openUltra(market, seed){
   const sig=await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
   const s=Object.assign({}, seed||{}, sig||{});
 
-  // 제목(한글명 우선)
-  const nameKor = s.korean_name
-    || (MARKET_LIST.find(x=>x.market===market)?.korean_name)
-    || s.name_kr || s.name || market;
+  const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
   setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
 
-  // 기준가
   const price=Number(s.price||s.last||s.close||0)||0;
   const buy1 = s.buy1!=null?Number(s.buy1):roundTick(price*0.997);
   const buy2 = s.buy2!=null?Number(s.buy2):roundTick(price*0.992);
 
-  // TP/SL 폴백 (워커 로직 그대로)
   let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
   if(tp1==null||tp2==null||sl==null){
     const force=Number(s.forceIndex||s.force||0), rvol=Number(s.rvol||0), tbr=Number(s.tbr||0);
@@ -335,18 +334,15 @@ async function openUltra(market, seed){
     else { tp1=pricePct(price,0.012); tp2=pricePct(price,0.020); sl=pricePct(price,-0.010); }
   }
 
-  // ===== v11.0 MTF 보정 (Precision Overdrive, ±0.3%) =====
+  // MTF 보정
   const mtf = calcMTFAdjust(s);
   const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
-
-  // TP는 모드 방향으로, SL은 반대 방향으로 미세 보정
-  const tpAdjPct = sign * mtf.adj;          // +상향 / -하향
-  const slAdjPct = -sign * (mtf.adj*0.8);   // 반대방향(조금 덜)
+  const tpAdjPct = sign * mtf.adj;
+  const slAdjPct = -sign * (mtf.adj*0.8);
   const tp1_adj = pricePct(tp1, tpAdjPct);
   const tp2_adj = pricePct(tp2, tpAdjPct);
   const sl_adj  = pricePct(sl , slAdjPct);
 
-  // 표시 업데이트
   setTxt($('#v_price'),fmtKRW(price));
   setTxt($('#v_buy1'),fmtKRW(buy1));
   setTxt($('#v_buy2'),fmtKRW(buy2));
@@ -354,7 +350,6 @@ async function openUltra(market, seed){
   setTxt($('#v_tp2'),fmtKRW(tp2_adj));
   setTxt($('#v_sl'), fmtKRW(sl_adj));
 
-  // 절대 금액 타겟 (워커 필드 → 폴백)
   const hi1 = s.target_high1 ?? tp1_adj;
   const hi2 = s.target_high2 ?? tp2_adj;
   const lo1 = s.target_low1  ?? sl_adj;
@@ -368,14 +363,12 @@ async function openUltra(market, seed){
   setTxt($('#v_rs1'), fmtKRW(rs1));
   setTxt($('#v_rs2'), fmtKRW(rs2));
 
-  // 기존 칩/멘트
   const z=makeZMsg(s);
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':z.mode==='하락장'?'4':'3'));
 
-  // 되돌림 칩
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
   if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
@@ -385,11 +378,9 @@ async function openUltra(market, seed){
     : `(${fmtKRW(pullPrice)}까지)`;
   setTxt($('#chip_pull'), retrTxt);
 
-  // 당일 H/L 칩 (있으면 표기)
   if(s.recent_high) setTxt($('#chip_DH'), fmtKRW(s.recent_high));
   if(s.recent_low)  setTxt($('#chip_DL'), fmtKRW(s.recent_low));
 
-  // 신규: MTF 칩
   setTxt($('#chip_mtf_mode'), mtf.mode);
   setTxt($('#chip_mtf_score'), mtf.mtfScore);
   setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
@@ -397,7 +388,7 @@ async function openUltra(market, seed){
   setTxt($('#z_msg'), z.msg);
 }
 
-/* ===== 검색(드롭다운 + 엔터/버튼) ===== */
+/* ===== 검색 ===== */
 const $q=$('#q'), $btn=$('#btnSearch'), $sug=$('#suggest');
 function placeSuggest(){
   const r=$q.getBoundingClientRect();
@@ -426,7 +417,7 @@ function renderSuggest(q){
   placeSuggest();
   $sug.style.display=cand.length?'block':'none';
 }
-$q.addEventListener('input', e=>renderSuggest(e.target.value));
+$q.addEventListener('input', debounce(e=>renderSuggest(e.target.value),120));
 document.addEventListener('click', e=>{ if(e.target!==$q && !$sug.contains(e.target)) $sug.style.display='none'; });
 async function doSearch(){
   const q=$q.value.trim(); if(!q) return;
@@ -456,9 +447,58 @@ function ensureTempSparkCard(market){
   }
 }
 
+/* ===== 글로벌(미국증시 등) =====
+   - 무료 Stooq CSV → r.jina.ai 프록시로 CORS 우회
+   - 심볼: ^ndx(나스닥100), ^spx(S&P500), dxy(달러인덱스), us10y(미10년)
+   - 실패 시 패널 자동 숨김 (No-Motion)
+*/
+const STQ = (syms)=>
+  `https://r.jina.ai/http://stooq.com/q/l/?s=${encodeURIComponent(syms)}&f=sd2t2ohlcv&h&e=csv`;
+
+async function fetchStooqCSV(symbols){
+  try{
+    const r = await fetch(STQ(symbols));
+    if(!r.ok) throw new Error('stooq '+r.status);
+    const text = await r.text();
+    // CSV 헤더: Symbol,Date,Time,Open,High,Low,Close,Volume
+    const lines = text.trim().split(/\r?\n/);
+    const out = {};
+    for(let i=1;i<lines.length;i++){
+      const cols = lines[i].split(',');
+      const sym = cols[0].toLowerCase();
+      const close = parseFloat(cols[6]);
+      const open  = parseFloat(cols[3]);
+      const chg   = (isFinite(close)&&isFinite(open)) ? ((close-open)/open*100) : 0;
+      out[sym] = { close, open, chg };
+    }
+    return out;
+  }catch(e){ console.warn('stooq fail',e); return null; }
+}
+
+function paintGlobal(idBase, v){
+  const num = $('#g_'+idBase), chg = $('#gc_'+idBase);
+  if(!num||!chg||!v) return;
+  num.textContent = isFinite(v.close) ? v.close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
+  const sign = v.chg>0 ? 'up' : v.chg<0 ? 'down' : '';
+  chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
+  chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
+}
+
+async function loadGlobal(){
+  const panel = $('#globalPanel');
+  const data = await fetchStooqCSV('^ndx,^spx,dxy,us10y');
+  if(!data){ panel.hidden = true; return; }
+  panel.hidden = false;
+  paintGlobal('ndx',  data['^ndx'] || data['ndx']);
+  paintGlobal('spx',  data['^spx'] || data['spx']);
+  paintGlobal('dxy',  data['dxy']);
+  paintGlobal('us10y',data['us10y']);
+}
+
 /* ===== 부팅 ===== */
 (async function boot(){
   ping().catch(()=>{});
+  await loadGlobal().catch(()=>{});
   await loadMarkets();
   await loadSpark();
   const first=$('#sparkList .item'); if(first) first.click();
