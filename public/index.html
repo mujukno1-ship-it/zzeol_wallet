@@ -360,7 +360,7 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  /* 🔧 버그수정: 삼항 연산자 교정 */
+  /* 🔧 버그수정: 위험도 칩 삼항 연산자 괄호 누락 수정 */
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
 
   let retr=null;
@@ -441,25 +441,35 @@ function ensureTempSparkCard(market){
   }
 }
 
-/* ===== 글로벌(미국증시 등): Worker 프록시 사용 ===== */
+/* ===== 글로벌(미국증시 등): Worker /api/global 사용 ===== */
 function paintGlobal(idBase, v){
   const num = document.querySelector('#g_'+idBase), chg = document.querySelector('#gc_'+idBase);
   if(!num||!chg||!v) return;
-  num.textContent = isFinite(v.close) ? v.close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
-  const sign = v.chg>0 ? 'up' : v.chg<0 ? 'down' : '';
-  chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
-  chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
+  const close = Number(v.close);
+  const chgp  = Number(v.chg);
+  num.textContent = Number.isFinite(close) ? close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
+  chg.classList.remove('up','down');
+  if (Number.isFinite(chgp)) {
+    if (chgp>0) chg.classList.add('up'); else if (chgp<0) chg.classList.add('down');
+    chg.textContent = `${chgp>0?'+':''}${chgp.toFixed(2)}%`;
+  } else chg.textContent='-';
 }
 async function loadGlobal(){
   const panel = document.querySelector('#globalPanel');
-  const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`).then(r=>r.json()).catch(()=>null);
-  if(!d?.ok){ panel.hidden = true; return; }
-  const data = d.data || {};
-  panel.hidden = false;
-  paintGlobal('ndx',  data['^ndx'] || data['ndx']);
-  paintGlobal('spx',  data['^spx'] || data['spx']);
-  paintGlobal('dxy',  data['dxy']);
-  paintGlobal('us10y',data['us10y']);
+  try{
+    const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`,{cache:'no-store'}).then(r=>r.json());
+    if(!d?.ok){ panel.hidden = true; return; }
+    const data = d.data || {};
+    panel.hidden = false;
+    paintGlobal('ndx',  data['^ndx'] || data['ndx']);
+    paintGlobal('spx',  data['^spx'] || data['spx']);
+    paintGlobal('dxy',  data['dxy']);
+    paintGlobal('us10y',data['us10y']);
+  }catch(e){
+    panel.hidden = true;
+  }
+  // 5분마다 자동 갱신
+  if(!loadGlobal._armed){ loadGlobal._armed=true; setInterval(()=>loadGlobal().catch(()=>{}), 300000); }
 }
 
 /* ===== 부팅 ===== */
