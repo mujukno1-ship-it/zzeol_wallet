@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v10.5 — KRW · 업비트 호가틱 · No-Motion</title>
+<title>사토시의지갑 v11.0 — Precision Overdrive · Adaptive Timeframe AI</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020;}
@@ -107,11 +107,18 @@
         <span class="pill badge">당일 저점 <b id="chip_DL">-</b></span>
       </div>
 
+      <!-- MTF 보정 칩 (신규) -->
+      <div class="pillrow" style="margin-top:6px">
+        <span class="pill badge">MTF 모드 <b id="chip_mtf_mode">-</b></span>
+        <span class="pill badge">MTF 점수 <b id="chip_mtf_score">0</b></span>
+        <span class="pill badge">보정량 <b id="chip_adj">±0.0%</b></span>
+      </div>
+
       <div class="note" id="z_msg">코인을 선택하면 쩔어한마디가 표시됩니다.</div>
     </section>
   </div>
 
-  <footer>사토시의지갑 v10.5 · Precision Boost · ForceIndex_AI · Bull/Bear Mode · Free Alpha Pack · 되돌림% · No-Motion DOM Patch</footer>
+  <footer>사토시의지갑 v11.0 · Precision Overdrive · Adaptive Timeframe AI(1m~1M) · No-Motion</footer>
 </div>
 
 <!-- 검색 드롭다운 (단일 선언) -->
@@ -243,6 +250,64 @@ function makeZMsg(s){
   return {mode,msg:text,heat,prob,gain};
 }
 
+/* ===== MTF(1m~1M) 가중 교차분석 — Precision Overdrive 보정 =====
+   외부 캔들이 없어도 /ultra/signal의 지표(heat/rvol/tbr/retr/당일H·L)를 사용해
+   각 TF의 가상 시그널을 추정 → 가중 평균 스코어 → tp/sl ±보정(캡 ±0.3%)
+*/
+function calcMTFAdjust(seed){
+  const s = seed||{};
+  const price = Number(s.price||0)||0;
+  const heat  = clamp(Number(s.spark||0),0,100);
+  const rvol  = Number(s.rvol||0);
+  const tbr   = Number(s.tbr||0);
+  const retrP = Number(s.retracement_percent||0);
+  // TF 가중(변동성↑ 단기 비중↑, 변동성↓ 중장기 비중↑)
+  const volRank = clamp(rvol/3, 0, 1); // 0~1
+  const w = {
+    m1 : 0.18*volRank,
+    m5 : 0.16*volRank,
+    m30: 0.12*volRank + 0.04,
+    h1 : 0.12*(0.6+volRank*0.4),
+    h4 : 0.12*(0.5+ (1-volRank)*0.5),
+    h6 : 0.08*(0.5+ (1-volRank)*0.5),
+    d1 : 0.10*(0.4+ (1-volRank)*0.6),
+    w1 : 0.07*(0.3+ (1-volRank)*0.7),
+    m1x: 0.05*(0.3+ (1-volRank)*0.7)
+  };
+  // 각 TF 시그널(−1~+1): heat/tbr/retr 조합으로 추정
+  const sigShort = ((heat-50)/50)*0.5 + (tbr-0.5)*0.6 - (retrP>65?0.2:0) + (retrP<35?0.15:0);
+  const sigMid   = ((heat-50)/50)*0.4 + (tbr-0.5)*0.4;
+  const sigLong  = ((heat-50)/50)*0.3 + (tbr-0.5)*0.3;
+
+  const S = {
+    m1 : clamp(sigShort, -1, 1),
+    m5 : clamp(sigShort*0.9, -1, 1),
+    m30: clamp((sigShort*0.6+sigMid*0.4), -1, 1),
+    h1 : clamp(sigMid, -1, 1),
+    h4 : clamp((sigMid*0.7+sigLong*0.3), -1, 1),
+    h6 : clamp((sigMid*0.6+sigLong*0.4), -1, 1),
+    d1 : clamp(sigLong, -1, 1),
+    w1 : clamp(sigLong*0.8, -1, 1),
+    m1x: clamp(sigLong*0.7, -1, 1)
+  };
+
+  // 가중 평균 스코어(−100~+100)
+  const sumW = Object.values(w).reduce((a,b)=>a+b,0)||1;
+  let mtfScore = 0;
+  for(const k of Object.keys(S)){ mtfScore += (S[k]*100) * (w[k]/sumW); }
+  mtfScore = clamp(Math.round(mtfScore), -100, 100);
+
+  // 모드/보정량 산출 (±0.3% 캡 · Precision Overdrive)
+  const mode = mtfScore>=35 ? '불장'
+              : mtfScore<=-35 ? '하락장' : '조정';
+  // 기본 보정율: 0.0015 ~ 0.003 범위 내
+  let adj = Math.min(0.003, Math.max(0.0015, Math.abs(mtfScore)/4000)); // 0~0.025 → 캡
+  // 불장/하락장일 때 감도 상향
+  if(mode==='불장' || mode==='하락장') adj = Math.min(0.003, adj*1.2);
+
+  return { mtfScore, mode, adj, price };
+}
+
 /* ===== ULTRA ===== */
 async function openUltra(market, seed){
   if(!market) return;
@@ -260,7 +325,7 @@ async function openUltra(market, seed){
   const buy1 = s.buy1!=null?Number(s.buy1):roundTick(price*0.997);
   const buy2 = s.buy2!=null?Number(s.buy2):roundTick(price*0.992);
 
-  // TP/SL 폴백
+  // TP/SL 폴백 (워커 로직 그대로)
   let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
   if(tp1==null||tp2==null||sl==null){
     const force=Number(s.forceIndex||s.force||0), rvol=Number(s.rvol||0), tbr=Number(s.tbr||0);
@@ -270,18 +335,29 @@ async function openUltra(market, seed){
     else { tp1=pricePct(price,0.012); tp2=pricePct(price,0.020); sl=pricePct(price,-0.010); }
   }
 
-  // 표시
+  // ===== v11.0 MTF 보정 (Precision Overdrive, ±0.3%) =====
+  const mtf = calcMTFAdjust(s);
+  const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
+
+  // TP는 모드 방향으로, SL은 반대 방향으로 미세 보정
+  const tpAdjPct = sign * mtf.adj;          // +상향 / -하향
+  const slAdjPct = -sign * (mtf.adj*0.8);   // 반대방향(조금 덜)
+  const tp1_adj = pricePct(tp1, tpAdjPct);
+  const tp2_adj = pricePct(tp2, tpAdjPct);
+  const sl_adj  = pricePct(sl , slAdjPct);
+
+  // 표시 업데이트
   setTxt($('#v_price'),fmtKRW(price));
   setTxt($('#v_buy1'),fmtKRW(buy1));
   setTxt($('#v_buy2'),fmtKRW(buy2));
-  setTxt($('#v_tp1'),fmtKRW(tp1));
-  setTxt($('#v_tp2'),fmtKRW(tp2));
-  setTxt($('#v_sl'), fmtKRW(sl));
+  setTxt($('#v_tp1'),fmtKRW(tp1_adj));
+  setTxt($('#v_tp2'),fmtKRW(tp2_adj));
+  setTxt($('#v_sl'), fmtKRW(sl_adj));
 
   // 절대 금액 타겟 (워커 필드 → 폴백)
-  const hi1 = s.target_high1 ?? tp1;
-  const hi2 = s.target_high2 ?? tp2;
-  const lo1 = s.target_low1  ?? sl;
+  const hi1 = s.target_high1 ?? tp1_adj;
+  const hi2 = s.target_high2 ?? tp2_adj;
+  const lo1 = s.target_low1  ?? sl_adj;
   const retrTo = s.retracement_to ?? buy1;
   const rs1 = s.post_dip_sell1 ?? pricePct(retrTo, +0.012);
   const rs2 = s.post_dip_sell2 ?? pricePct(retrTo, +0.020);
@@ -292,14 +368,14 @@ async function openUltra(market, seed){
   setTxt($('#v_rs1'), fmtKRW(rs1));
   setTxt($('#v_rs2'), fmtKRW(rs2));
 
-  // 칩/멘트
+  // 기존 칩/멘트
   const z=makeZMsg(s);
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':z.mode==='하락장'?'4':'3'));
 
-  // 되돌림 칩: % + 밴드 + 금액
+  // 되돌림 칩
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
   if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
@@ -312,6 +388,11 @@ async function openUltra(market, seed){
   // 당일 H/L 칩 (있으면 표기)
   if(s.recent_high) setTxt($('#chip_DH'), fmtKRW(s.recent_high));
   if(s.recent_low)  setTxt($('#chip_DL'), fmtKRW(s.recent_low));
+
+  // 신규: MTF 칩
+  setTxt($('#chip_mtf_mode'), mtf.mode);
+  setTxt($('#chip_mtf_score'), mtf.mtfScore);
+  setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
 
   setTxt($('#z_msg'), z.msg);
 }
