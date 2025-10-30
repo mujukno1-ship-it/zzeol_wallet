@@ -5,10 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>사토시의지갑 v10.5 — KRW · 업비트 호가틱 · No-Motion</title>
 <style>
-  :root{
-    --bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;
-    --up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020;
-  }
+  :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;
+        --up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020;}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
@@ -75,6 +73,8 @@
     <!-- ULTRA -->
     <section class="card">
       <div class="title" id="ultraTitle">ULTRA 시그널 — 선택된 코인</div>
+
+      <!-- 1) 기본 타점 -->
       <div class="ultra">
         <div class="box"><div class="k">현재가</div><div class="v" id="v_price">-</div></div>
         <div class="box"><div class="k">매수 (BUY1)</div><div class="v" id="v_buy1">-</div></div>
@@ -83,6 +83,24 @@
         <div class="box"><div class="k">익절 2 (TP2)</div><div class="v" id="v_tp2">-</div></div>
         <div class="box"><div class="k">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
       </div>
+
+      <!-- 2) 절대 금액 타겟 (신규) -->
+      <div class="ultra">
+        <div class="box"><div class="k">예상 고점 1</div><div class="v" id="v_th1">-</div></div>
+        <div class="box"><div class="k">예상 고점 2</div><div class="v" id="v_th2">-</div></div>
+        <div class="box"><div class="k">예상 저점 1</div><div class="v" id="v_tl1">-</div></div>
+        <div class="box"><div class="k">되돌림 목표</div><div class="v" id="v_retr_to">-</div></div>
+        <div class="box"><div class="k">되돌림 후 매도 1</div><div class="v" id="v_pds1">-</div></div>
+        <div class="box"><div class="k">되돌림 후 매도 2</div><div class="v" id="v_pds2">-</div></div>
+      </div>
+
+      <!-- 3) 당일 범위 -->
+      <div class="ultra">
+        <div class="box"><div class="k">당일 저가</div><div class="v" id="v_recent_low">-</div></div>
+        <div class="box"><div class="k">당일 고가</div><div class="v" id="v_recent_high">-</div></div>
+      </div>
+
+      <!-- 칩/멘트 -->
       <div class="pillrow" style="margin-top:10px">
         <span class="pill badge">예열강도 <b id="chip_heat">0</b></span>
         <span class="pill badge">상승확률 <b id="chip_prob">0%</b></span>
@@ -99,7 +117,7 @@
   </footer>
 </div>
 
-<!-- 검색 드롭다운 컨테이너 -->
+<!-- 검색 드롭다운 컨테이너 (중복 금지) -->
 <div id="suggest"></div>
 
 <script>
@@ -107,8 +125,8 @@
 const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
 document.getElementById('apiBaseTxt').textContent = API_BASE;
 const $ = s=>document.querySelector(s);
-function setTxt(el, v){ if(el && el.textContent!==v) el.textContent=v; }
-function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
+const setTxt=(el,v)=>{ if(el && el.textContent!==String(v)) el.textContent=String(v); };
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
@@ -126,50 +144,51 @@ function upbitTick(p){
 function roundTick(price){ const t=upbitTick(price); return Math.round(price/t)*t; }
 function fmtKRW(n){
   if(n==null || isNaN(n)) return '-';
-  const t = upbitTick(n);
-  const frac = t < 1 ? String(t).split('.')[1].length : 0;
-  return roundTick(n).toLocaleString('ko-KR', {minimumFractionDigits:frac, maximumFractionDigits:frac}) + '원';
+  const v=roundTick(Number(n));
+  const t=upbitTick(v);
+  const frac=t<1?String(t).split('.')[1].length:0;
+  return v.toLocaleString('ko-KR',{minimumFractionDigits:frac,maximumFractionDigits:frac})+'원';
 }
-function pricePct(base, pct){ return roundTick(base*(1+pct)); }
+function pricePct(base,pct){ return roundTick(Number(base)*(1+pct)); }
 
 /* ===== API ===== */
 async function jget(path){
   try{
-    const r = await fetch(API_BASE+path, {headers:{accept:'application/json'}});
+    const r=await fetch(API_BASE+path,{headers:{accept:'application/json'}});
     if(!r.ok) throw new Error(r.statusText);
-    const d = await r.json();
+    const d=await r.json();
     if(d && d.ok===false) throw new Error(d.error||'api');
     return d;
-  }catch(e){ console.error('API ERR', path, e); return null; }
+  }catch(e){ console.error('API ERR',path,e); return null; }
 }
 
 /* ===== 업비트 마켓 목록 & 검색 ===== */
-let MARKET_LIST = []; // {market,korean_name,english_name}
+let MARKET_LIST=[];
 async function loadMarkets(){
-  if (MARKET_LIST.length) return MARKET_LIST;
-  const d = await jget('/upbit/tickers');
-  if (Array.isArray(d?.items)) MARKET_LIST = d.items;
+  if(MARKET_LIST.length) return MARKET_LIST;
+  const d=await jget('/upbit/tickers');
+  if(Array.isArray(d?.items)) MARKET_LIST=d.items;
   return MARKET_LIST;
 }
 function resolveMarket(input){
   if(!input) return null;
-  const raw = input.trim();
-  const s   = raw.toUpperCase();
-  if (s.startsWith('KRW-')) return s;
-  let hit = MARKET_LIST.find(x => (x.english_name||'').toUpperCase() === s);
-  if (hit) return hit.market;
-  hit = MARKET_LIST.find(x => (x.korean_name||'').includes(raw)); // 한글 부분일치
-  if (hit) return hit.market;
-  hit = MARKET_LIST.find(x => (x.market||'').toUpperCase().includes(s));
-  return hit?.market || null;
+  const raw=input.trim();
+  const s=raw.toUpperCase();
+  if(s.startsWith('KRW-')) return s;
+  let hit=MARKET_LIST.find(x=>(x.english_name||'').toUpperCase()===s);
+  if(hit) return hit.market;
+  hit=MARKET_LIST.find(x=>(x.korean_name||'').includes(raw));
+  if(hit) return hit.market;
+  hit=MARKET_LIST.find(x=>(x.market||'').toUpperCase().includes(s));
+  return hit?.market||null;
 }
 
 /* ===== SPARK TOP10 ===== */
 async function loadSpark(){
   const listEl=$('#sparkList'), emptyEl=$('#sparkEmpty');
   listEl.innerHTML='';
-  const d = await jget('/spark/top?window=5m&limit=10');
-  if(!Array.isArray(d?.list) || d.list.length===0){ emptyEl.hidden=false; return; }
+  const d=await jget('/spark/top?window=5m&limit=10');
+  if(!Array.isArray(d?.list)||d.list.length===0){ emptyEl.hidden=false; return; }
   emptyEl.hidden=true;
   d.list.forEach(it=>{
     const row=document.createElement('div'); row.className='item'; row.dataset.m=it.market;
@@ -206,14 +225,17 @@ function makeZMsg(s){
   const force=Number(s.forceIndex||s.force||0),
         rvol =Number(s.rvol||0),
         tbr  =Number(s.tbr||0);
-  const prob=clamp(Math.round(Number(s.prob_up||s.winrate||0)),0,100);
-  const gain=Number(s.expected_gain||s.exp_gain||0);
+  const heat=clamp(Math.round(Number(s.spark||s.heat||0)),0,100);
   let mode='조정';
   if((rvol>=2&&tbr>=0.65)||force>=80) mode='불장';
   else if(tbr<=0.45||force<=35||s.vwapBelow) mode='하락장';
-  const heat=clamp(Math.round(Number(s.spark||s.heat||0)),0,100);
+
+  // 보조칩 값
+  const prob=clamp(Math.round(Number(s.prob_up ?? (heat/1.6))),0,100);
+  const gain=Number(s.expected_gain ?? (heat>=90?20:heat>=80?10:heat>=70?5:2));
+
   const text= mode==='불장'
-    ? `🔥 세력 분출 직전 — 예열강도 ${heat} / 상승확률 ${prob}% / 예상상승률 +${(gain||0).toFixed(1)}%`
+    ? `🔥 세력 분출 직전 — 예열강도 ${heat} / 상승확률 ${prob}% / 예상상승률 +${(+gain).toFixed(1)}%`
     : mode==='하락장'
       ? `🧊 세력 이탈 감지 — 빠른 청산 필요 / 예열강도 ${heat} / 방어모드`
       : `🔵 되돌림 신호 — 분할매수 1차 확인 / 예열강도 ${heat} / 중립`;
@@ -223,8 +245,8 @@ function makeZMsg(s){
 /* ===== ULTRA 시그널 ===== */
 async function openUltra(market, seed){
   if(!market) return;
-  const sig = await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
-  const s   = Object.assign({}, seed||{}, sig||{});
+  const sig=await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
+  const s=Object.assign({}, seed||{}, sig||{});
   const nameKor = s.korean_name||s.name_kr||s.name||market;
   setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
 
@@ -241,23 +263,41 @@ async function openUltra(market, seed){
     else { tp1=pricePct(price,0.012); tp2=pricePct(price,0.020); sl=pricePct(price,-0.010); }
   }
 
+  // 기본 타점 표시
   setTxt($('#v_price'),fmtKRW(price));
   setTxt($('#v_buy1'),fmtKRW(buy1));
   setTxt($('#v_buy2'),fmtKRW(buy2));
-  setTxt($('#v_tp1'), fmtKRW(tp1));
-  setTxt($('#v_tp2'), fmtKRW(tp2));
-  setTxt($('#v_sl'),  fmtKRW(sl));
+  setTxt($('#v_tp1'), fmtKRW(tp1));  setTxt($('#v_tp2'), fmtKRW(tp2));  setTxt($('#v_sl'),  fmtKRW(sl));
 
+  // 절대 금액 타겟(서버 제공 + 안전한 fallback)
+  const th1 = s.target_high1 ?? pricePct(price, 0.012);
+  const th2 = s.target_high2 ?? pricePct(price, 0.020);
+  const tl1 = s.target_low1  ?? pricePct(price,-0.010);
+  const rto = s.retracement_to ?? buy1;
+  const pds1= s.post_dip_sell1 ?? pricePct(rto, 0.012);
+  const pds2= s.post_dip_sell2 ?? pricePct(rto, 0.020);
+
+  setTxt($('#v_th1'), fmtKRW(th1));
+  setTxt($('#v_th2'), fmtKRW(th2));
+  setTxt($('#v_tl1'), fmtKRW(tl1));
+  setTxt($('#v_retr_to'), fmtKRW(rto));
+  setTxt($('#v_pds1'), fmtKRW(pds1));
+  setTxt($('#v_pds2'), fmtKRW(pds2));
+
+  setTxt($('#v_recent_low'),  fmtKRW(s.recent_low  ?? price));
+  setTxt($('#v_recent_high'), fmtKRW(s.recent_high ?? price));
+
+  // 칩 & 멘트
   const z=makeZMsg(s);
   setTxt($('#chip_heat'), z.heat);
   setTxt($('#chip_prob'), `${z.prob}%`);
-  setTxt($('#chip_gain'), `+${(z.gain||0).toFixed(1)}%`);
+  setTxt($('#chip_gain'), `+${(+z.gain).toFixed(1)}%`);
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':z.mode==='하락장'?'4':'3'));
 
   let retr=null;
-  if (Array.isArray(s.candles)) retr=computeRetracement(s.candles);
-  if (s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
-  setTxt($('#chip_pull'), retr? `${retr.R.toFixed(0)}% ${retr.band||''}` : '-');
+  if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
+  if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
+  setTxt($('#chip_pull'), retr? `${Number(retr.R).toFixed(0)}% ${retr.band||''}` : '-');
 
   setTxt($('#z_msg'), z.msg);
 }
@@ -325,13 +365,11 @@ function ensureTempSparkCard(market){
 
 /* ===== 부팅 ===== */
 (async function boot(){
-  jget('/ping').catch(()=>{});
-  await loadMarkets();     // 이더리움 / 이더리움클래식 모두 한글/심볼 매칭
+  jget('/api/ping').catch(()=>{});  // 경로 수정
+  await loadMarkets();
   await loadSpark();
   const first=$('#sparkList .item'); if(first) first.click();
 })();
 </script>
-<div id="suggest"></div>
-<script src="./js/main.js" defer></script>  
 </body>
 </html>
