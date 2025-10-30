@@ -187,7 +187,7 @@ const pricePct=(base,pct)=>roundTick(Number(base)*(1+pct));
 /* ===== API 헬퍼 ===== */
 async function jget(path){
   try{
-    const r=await fetch(API_BASE+path,{headers:{accept:'application/json'}});
+    const r=await fetch(API_BASE+path,{headers:{accept:'application/json'},cache:'no-store'});
     if(!r.ok) throw new Error(r.statusText);
     const d=await r.json();
     if(d && d.ok===false) throw new Error(d.error||'api');
@@ -282,7 +282,6 @@ function makeZMsg(s){
 /* ===== MTF 보정(±0.3%) ===== */
 function calcMTFAdjust(seed){
   const s = seed||{};
-  const price = Number(s.price||0)||0;
   const heat  = clamp(Number(s.spark||0),0,100);
   const rvol  = Number(s.rvol||0);
   const tbr   = Number(s.tbr||0);
@@ -303,12 +302,17 @@ function calcMTFAdjust(seed){
   const mode = mtfScore>=35 ? '불장' : mtfScore<=-35 ? '하락장' : '조정';
   let adj = Math.min(0.003, Math.max(0.0015, Math.abs(mtfScore)/4000));
   if(mode!=='조정') adj = Math.min(0.003, adj*1.2);
-  return { mtfScore, mode, adj, price };
+  return { mtfScore, mode, adj };
 }
 
 /* ===== ULTRA ===== */
+let CURRENT_MARKET = null;
+let ultraTimer = null;
+
 async function openUltra(market, seed){
   if(!market) return;
+  CURRENT_MARKET = market;
+
   const sig=await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
   const s=Object.assign({}, seed||{}, sig||{});
 
@@ -360,7 +364,7 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  /* 🔧 버그수정: 위험도 칩 삼항 연산자 괄호 누락 수정 */
+  // 🔧 위험도 칩 버그 수정(괄호 누락)
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
 
   let retr=null;
@@ -380,6 +384,12 @@ async function openUltra(market, seed){
   setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
 
   setTxt($('#z_msg'), z.msg);
+
+  // ▶ 실시간 자동 갱신(5초)
+  if (ultraTimer) clearInterval(ultraTimer);
+  ultraTimer = setInterval(()=>{
+    if (CURRENT_MARKET===market) openUltra(market, null);
+  }, 5000);
 }
 
 /* ===== 검색 ===== */
@@ -472,12 +482,20 @@ async function loadGlobal(){
   if(!loadGlobal._armed){ loadGlobal._armed=true; setInterval(()=>loadGlobal().catch(()=>{}), 300000); }
 }
 
+/* ===== 주기 새로고침(SPARK) ===== */
+let sparkTimer=null;
+function armSparkAuto(){
+  if (sparkTimer) clearInterval(sparkTimer);
+  sparkTimer=setInterval(()=>loadSpark().catch(()=>{}), 20000);
+}
+
 /* ===== 부팅 ===== */
 (async function boot(){
   ping().catch(()=>{});
   await loadGlobal().catch(()=>{});
   await loadMarkets();
   await loadSpark();
+  armSparkAuto();
   const first=document.querySelector('#sparkList .item'); if(first) first.click();
 })();
 </script>
