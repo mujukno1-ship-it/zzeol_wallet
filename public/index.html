@@ -12,10 +12,11 @@
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
   .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
   .badge{background:#19202a;color:#9bc3ff;border:1px solid #2a3950;border-radius:10px;padding:4px 8px;font-size:12px}
-  .api{margin-left:auto;font-size:12px;color:var(--muted)}
+  .api{margin-left:auto;font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center}
   .api .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#888;vertical-align:middle}
   .api.ok .dot{background:#1ec996}
   .api.fail .dot{background:#ff5b6b}
+  .lat{padding:2px 6px;border:1px solid #2a3950;border-radius:8px}
   .search{position:sticky;top:0;background:linear-gradient(180deg,rgba(15,18,24,.95),rgba(15,18,24,.75));padding:10px 0 12px;z-index:5;backdrop-filter:saturate(1.2) blur(2px)}
   .search .row{display:flex;gap:8px;align-items:center}
   .search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none}
@@ -45,7 +46,6 @@
   #suggest .row{padding:8px 12px;cursor:pointer}
   #suggest .row:hover{background:#1f2937}
   .warn{margin-top:8px;color:#ffb8c0;font-size:12px;display:none}
-  /* 글로벌 패널 */
   .gwrap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
   @media (max-width:980px){.gwrap{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .gbox{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
@@ -54,6 +54,8 @@
   .gnum{font-weight:800;margin-top:6px}
   .gchg{font-size:12px;margin-top:2px}
   .up{color:var(--up)} .down{color:var(--down)}
+  .pin{cursor:pointer;opacity:.7}
+  .pin.active{color:#ffd166;opacity:1}
 </style>
 </head>
 <body>
@@ -61,7 +63,11 @@
   <div class="search">
     <div class="row">
       <span class="badge">KRW · 업비트 호가틱 · 한글명 · No-Motion</span>
-      <div class="api" id="apiHealth"><span class="dot"></span><span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span></div>
+      <div class="api" id="apiHealth">
+        <span class="dot"></span>
+        <span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span>
+        <span class="lat" id="latTxt">- ms</span>
+      </div>
     </div>
     <div class="row" style="margin-top:8px">
       <input id="q" placeholder="검색: 한글명 / 심볼 / 마켓코드 (예: 에이다, ADA, KRW-ADA, 시바이누, SHIB, KRW-SHIB)" />
@@ -161,6 +167,9 @@ const setTxt=(el,v)=>{ if(el && String(el.textContent)!==String(v)) el.textConte
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);}};
 
+let CURRENT_MARKET = localStorage.getItem('ultra_market') || null;
+let LAST_SIGNAL = null;
+
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
   if (p >= 2000000) return 1000;
@@ -184,18 +193,24 @@ function fmtKRW(n){
 }
 const pricePct=(base,pct)=>roundTick(Number(base)*(1+pct));
 
-/* ===== API 헬퍼 ===== */
+/* ===== API 헬퍼 (지연 측정 포함) ===== */
 async function jget(path){
+  const t0 = performance.now();
   try{
     const r=await fetch(API_BASE+path,{headers:{accept:'application/json'}});
+    const latency = Math.max(1, Math.round(performance.now()-t0));
+    setTxt($('#latTxt'), `${latency} ms`);
     if(!r.ok) throw new Error(r.statusText);
     const d=await r.json();
     if(d && d.ok===false) throw new Error(d.error||'api');
     return d;
-  }catch(e){ console.error('API ERR',path,e); return null; }
+  }catch(e){
+    console.error('API ERR',path,e);
+    return null;
+  }
 }
 
-/* ===== API 건강 체크(30초 폴링) ===== */
+/* ===== API 건강 체크 ===== */
 async function ping(){
   const badge = $('#apiHealth');
   const warn  = $('#apiWarn');
@@ -203,7 +218,6 @@ async function ping(){
   if(ok?.pong){ badge.classList.add('ok'); badge.classList.remove('fail'); warn.style.display='none'; }
   else { badge.classList.add('fail'); badge.classList.remove('ok'); warn.style.display='block'; }
 }
-setInterval(ping, 30000);
 
 /* ===== 업비트 마켓 목록 & 검색 ===== */
 let MARKET_LIST=[];
@@ -226,52 +240,50 @@ function resolveMarket(input){
   return hit?.market||null;
 }
 
-/* ===== SPARK TOP10 (20초 자동 갱신, No-Motion diff) ===== */
-function patchSparkRow(row,it){
-  const priceEl = row.querySelector('[data-f=price]');
-  const barEl   = row.querySelector('.bar>span');
-  const chipsEl = row.querySelector('[data-f=chips]');
-  setTxt(priceEl, fmtKRW(Number(it.price||0)));
-  barEl.style.width = clamp(it.spark||0,0,100)+'%';
-  chipsEl.innerHTML =
-    `<span class="pill">SPARK ${it.spark||0}</span>
-     <span class="pill">RVOL ${isFinite(it.rvol)?Number(it.rvol).toFixed(2):'-'}</span>
-     <span class="pill">TBR ${Math.round((it.tbr||0)*100)}%</span>`;
-}
+/* ===== SPARK TOP10 ===== */
 async function loadSpark(){
   const listEl=$('#sparkList'), emptyEl=$('#sparkEmpty');
   const d=await jget('/spark/top?limit=10');
-  if(!Array.isArray(d?.list)||d.list.length===0){
-    if(listEl.children.length===0) emptyEl.hidden=false;
-    return;
-  }
+  listEl.innerHTML='';
+  if(!Array.isArray(d?.list)||d.list.length===0){ emptyEl.hidden=false; return; }
   emptyEl.hidden=true;
 
-  const byM = Object.fromEntries([...listEl.querySelectorAll('.item')].map(x=>[x.dataset.m,x]));
   d.list.forEach(it=>{
-    let row = byM[it.market];
-    if(!row){
-      row=document.createElement('div');
-      row.className='item'; row.dataset.m=it.market;
-      row.innerHTML=
-        `<div class="name">
-           <b>${it.korean_name||it.market}</b>
-           <small style="color:var(--muted)">${it.market}</small>
-         </div>
-         <div>
-           <div style="text-align:right" data-f="price">${fmtKRW(Number(it.price||0))}</div>
-           <div class="bar"><span style="width:${clamp(it.spark||0,0,100)}%"></span></div>
-           <div class="pillrow" data-f="chips" style="justify-content:flex-end"></div>
-         </div>`;
-      row.addEventListener('click',()=>openUltra(it.market,it));
-      listEl.appendChild(row);
-      patchSparkRow(row,it);
-    }else{
-      patchSparkRow(row,it);
-    }
+    const row=document.createElement('div'); row.className='item'; row.dataset.m=it.market;
+    const pin=document.createElement('span'); pin.className='pin'; pin.innerHTML='★';
+    if(localStorage.getItem('pin_'+it.market)) pin.classList.add('active');
+    pin.title='즐겨찾기 고정'; pin.onclick=(ev)=>{ev.stopPropagation();togglePin(it.market,pin);};
+
+    const n=document.createElement('div'); n.className='name';
+    n.innerHTML=`<b>${it.korean_name||it.market}</b><small style="color:var(--muted)">${it.market}</small>`;
+    n.prepend(pin);
+
+    const r=document.createElement('div');
+    const spark = clamp(it.spark||0,0,100);
+    const rvol  = (it.rvol??0);
+    const tbr   = Math.round((it.tbr||0)*100);
+    r.innerHTML=`<div style="text-align:right">${fmtKRW(Number(it.price||0))}</div>
+                 <div class="bar"><span style="width:${spark}%"></span></div>
+                 <div class="pillrow" style="justify-content:flex-end">
+                   <span class="pill">SPARK ${spark}</span>
+                   <span class="pill">RVOL ${isFinite(rvol)?Number(rvol).toFixed(2):'0.00'}</span>
+                   <span class="pill">TBR ${isFinite(tbr)?tbr:0}%</span>
+                 </div>`;
+    row.appendChild(n); row.appendChild(r);
+    row.addEventListener('click',()=>openUltra(it.market,it));
+    listEl.appendChild(row);
   });
+
+  // 고정코인 맨 위로 배치
+  [...listEl.children]
+    .sort((a,b)=> (localStorage.getItem('pin_'+b.dataset.m)?1:0) - (localStorage.getItem('pin_'+a.dataset.m)?1:0))
+    .forEach(el=>listEl.appendChild(el));
 }
-setInterval(loadSpark, 20000);
+function togglePin(market, el){
+  const key='pin_'+market;
+  if(localStorage.getItem(key)){ localStorage.removeItem(key); el.classList.remove('active'); }
+  else { localStorage.setItem(key,'1'); el.classList.add('active'); }
+}
 
 /* ===== 되돌림(%) 계산 ===== */
 function computeRetracement(candles){
@@ -332,8 +344,12 @@ function calcMTFAdjust(seed){
 /* ===== ULTRA ===== */
 async function openUltra(market, seed){
   if(!market) return;
+  CURRENT_MARKET = market;
+  localStorage.setItem('ultra_market', market);
+
   const sig=await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
   const s=Object.assign({}, seed||{}, sig||{});
+  LAST_SIGNAL = s;
 
   const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
   setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
@@ -383,15 +399,15 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  // 🔧 버그수정: 삼항연산자 괄호 보강
-  setTxt($('#chip_risk'), s.risk_level!=null ? String(s.risk_level) : (z.mode==='불장' ? '2' : (z.mode==='하락장' ? '4' : '3')));
+  // 🔧 버그수정: 삼항 연산자 괄호 누락 교정
+  setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
 
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
   if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
   const pullPrice = (s.retracement_to ?? s.pull_to ?? s.recent_low ?? buy1);
   const retrTxt = retr
-    ? `${isFinite(retr.R)?Number(retr.R).toFixed(0):'-'}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)`
+    ? `${Number(retr.R).toFixed(0)}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)`
     : `(${fmtKRW(pullPrice)}까지)`;
   setTxt($('#chip_pull'), retrTxt);
 
@@ -405,7 +421,47 @@ async function openUltra(market, seed){
   setTxt($('#z_msg'), z.msg);
 }
 
-/* ===== 검색 ===== */
+/* ===== 글로벌(미국증시 등) — 워커 우선 / 실패 시 폴백 ===== */
+function paintGlobal(idBase, v){
+  const num = document.querySelector('#g_'+idBase), chg = document.querySelector('#gc_'+idBase);
+  if(!num||!chg||!v) return;
+  num.textContent = isFinite(v.close) ? v.close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
+  const sign = v.chg>0 ? 'up' : v.chg<0 ? 'down' : '';
+  chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
+  chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
+}
+async function loadGlobal(){
+  const panel = document.querySelector('#globalPanel');
+  // 1) 워커 API
+  let data = null;
+  try{
+    const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`).then(r=>r.json());
+    if(d?.ok) data = d.data;
+  }catch(_){}
+  // 2) 폴백: stooq (r.jina.ai 프록시)
+  if(!data){
+    try{
+      const url = 'https://r.jina.ai/http://stooq.com/q/l/?s=%5Endx,%5Espx,dxy,us10y&f=sd2t2ohlcv&h&e=csv';
+      const text = await fetch(url).then(r=>r.text());
+      const out={};
+      const lines=text.trim().split(/\r?\n/);
+      for(let i=1;i<lines.length;i++){
+        const c=lines[i].split(',');
+        const sym=c[0].toLowerCase(), close=parseFloat(c[6]), open=parseFloat(c[3]);
+        out[sym]={close,open,chg:(isFinite(close)&&isFinite(open))?((close-open)/open*100):0};
+      }
+      data = out;
+    }catch(e){ data=null; }
+  }
+  if(!data){ panel.hidden = true; return; }
+  panel.hidden = false;
+  paintGlobal('ndx',  data['^ndx'] || data['ndx']);
+  paintGlobal('spx',  data['^spx'] || data['spx']);
+  paintGlobal('dxy',  data['dxy']);
+  paintGlobal('us10y',data['us10y']);
+}
+
+/* ===== 검색 & 서제스트 ===== */
 const $q=$('#q'), $btn=$('#btnSearch'), $sug=$('#suggest');
 function placeSuggest(){
   const r=$q.getBoundingClientRect();
@@ -446,82 +502,37 @@ async function doSearch(){
 }
 $btn.addEventListener('click', doSearch);
 $q.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
-// UX: '/' 키로 검색창 포커스
-window.addEventListener('keydown', (e)=>{ if(e.key==='/' && document.activeElement!==$q){ e.preventDefault(); $q.focus(); }});
+// 키보드 숏컷: '/' 포커스
+window.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement!==$q){ e.preventDefault(); $q.focus(); } });
 
 function ensureTempSparkCard(market){
   const listEl=$('#sparkList');
   if (![...listEl.querySelectorAll('.item')].some(x=>x.dataset.m===market)){
     const row=document.createElement('div'); row.className='item'; row.dataset.m=market;
+    const n=document.createElement('div'); n.className='name';
     const kn=(MARKET_LIST.find(x=>x.market===market)?.korean_name)||market;
-    row.innerHTML=
-      `<div class="name"><b>${kn}</b><small style="color:var(--muted)">${market}</small></div>
-       <div>
-         <div style="text-align:right" data-f="price">-</div>
-         <div class="bar"><span style="width:0%"></span></div>
-         <div class="pillrow" data-f="chips" style="justify-content:flex-end"><span class="pill">SPARK 0</span></div>
-       </div>`;
+    n.innerHTML=`<b>${kn}</b><small style="color:var(--muted)">${market}</small>`;
+    const r=document.createElement('div');
+    r.innerHTML=`<div style="text-align:right">-</div>
+                 <div class="bar"><span style="width:0%"></span></div>
+                 <div class="pillrow" style="justify-content:flex-end"><span class="pill">SPARK 0</span></div>`;
+    row.appendChild(n); row.appendChild(r);
     row.addEventListener('click',()=>openUltra(market,null));
     listEl.prepend(row);
   }
 }
 
-/* ===== 글로벌(미국증시 등): Worker 프록시 사용 + 백업 폴백 ===== */
-function paintGlobal(idBase, v){
-  const num = document.querySelector('#g_'+idBase), chg = document.querySelector('#gc_'+idBase);
-  if(!num||!chg||!v) return;
-  const close = Number(v.close);
-  const chgPct = Number(v.chg);
-  num.textContent = isFinite(close) ? close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
-  const sign = chgPct>0 ? 'up' : chgPct<0 ? 'down' : '';
-  chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
-  chg.textContent = isFinite(chgPct) ? `${chgPct>0?'+':''}${chgPct.toFixed(2)}%` : '-';
+/* ===== 주기적 자동 갱신 (No-Motion) ===== */
+let REF_TIMER=null, SPARK_TIMER=null, GLOBAL_TIMER=null;
+function startAutoRefresh(){
+  if(SPARK_TIMER) clearInterval(SPARK_TIMER);
+  if(REF_TIMER) clearInterval(REF_TIMER);
+  if(GLOBAL_TIMER) clearInterval(GLOBAL_TIMER);
+
+  SPARK_TIMER = setInterval(loadSpark, 5000);    // SPARK 5초
+  REF_TIMER   = setInterval(()=>{ if(CURRENT_MARKET) openUltra(CURRENT_MARKET, LAST_SIGNAL||null); }, 5000); // ULTRA 5초
+  GLOBAL_TIMER= setInterval(loadGlobal, 60000);  // 글로벌 60초
 }
-const STQ = (syms)=>`https://r.jina.ai/http://stooq.com/q/l/?s=${encodeURIComponent(syms)}&f=sd2t2ohlcv&h&e=csv`;
-async function fetchStooqCSV(symbols){
-  try{
-    const r = await fetch(STQ(symbols));
-    if(!r.ok) throw new Error('stooq '+r.status);
-    const text = await r.text();
-    const lines = text.trim().split(/\r?\n/);
-    const out = {};
-    for(let i=1;i<lines.length;i++){
-      const cols = lines[i].split(',');
-      const sym = cols[0].toLowerCase();
-      const close = parseFloat(cols[6]);
-      const open  = parseFloat(cols[3]);
-      const chg   = (isFinite(close)&&isFinite(open)) ? ((close-open)/open*100) : NaN;
-      out[sym] = { close, open, chg };
-    }
-    return out;
-  }catch(e){ return null; }
-}
-async function loadGlobal(){
-  const panel = document.querySelector('#globalPanel');
-  // 1차: Worker JSON
-  let d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`).then(r=>r.json()).catch(()=>null);
-  if(d?.ok){
-    const data = d.data || {};
-    panel.hidden = false;
-    paintGlobal('ndx',  data['^ndx'] || data['ndx']);
-    paintGlobal('spx',  data['^spx'] || data['spx']);
-    paintGlobal('dxy',  data['dxy']);
-    paintGlobal('us10y',data['us10y']);
-    return;
-  }
-  // 2차: CSV 폴백
-  const csv = await fetchStooqCSV('^ndx,^spx,dxy,us10y');
-  if(csv){
-    panel.hidden = false;
-    paintGlobal('ndx',  csv['^ndx'] || csv['ndx']);
-    paintGlobal('spx',  csv['^spx'] || csv['spx']);
-    paintGlobal('dxy',  csv['dxy']);
-    paintGlobal('us10y',csv['us10y']);
-  }else{
-    panel.hidden = true;
-  }
-}
-setInterval(loadGlobal, 30000); // 30초 주기
 
 /* ===== 부팅 ===== */
 (async function boot(){
@@ -529,7 +540,13 @@ setInterval(loadGlobal, 30000); // 30초 주기
   await loadGlobal().catch(()=>{});
   await loadMarkets();
   await loadSpark();
-  const first=document.querySelector('#sparkList .item'); if(first) first.click();
+  if(CURRENT_MARKET){
+    ensureTempSparkCard(CURRENT_MARKET);
+    openUltra(CURRENT_MARKET,null);
+  }else{
+    const first=document.querySelector('#sparkList .item'); if(first) first.click();
+  }
+  startAutoRefresh();
 })();
 </script>
 </body>
