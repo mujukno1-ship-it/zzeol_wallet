@@ -177,7 +177,6 @@ const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
-  // 프론트 표시용 세분화 (소수 가격 포함)
   if (p >= 2000000) return 1000;
   if (p >= 1000000) return 500;
   if (p >= 500000)  return 100;
