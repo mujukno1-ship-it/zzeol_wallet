@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v12.3 — Satoshi Precision Set (Stable)</title>
+<title>사토시의지갑 v12.4 — Satoshi Precision Set (Stable)</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -152,7 +152,7 @@
     </section>
   </div>
 
-  <footer>사토시의지갑 v12.3 · Satoshi Precision Set · Precision Boost Extended · No-Motion</footer>
+  <footer>사토시의지갑 v12.4 · Satoshi Precision Set · Precision Boost Extended · No-Motion</footer>
 </div>
 
 <div id="suggest"></div>
@@ -173,7 +173,6 @@ const setTxt=(el,v)=>{ if(el && String(el.textContent)!==String(v)) el.textConte
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);}};
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
-const onlyNum = s => Number(String(s||'').replace(/[^\d.-]/g,'')||NaN);
 
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
@@ -189,6 +188,8 @@ function upbitTick(p){
   return 0.0001;
 }
 function roundTick(price){ const t=upbitTick(price); return Math.round(price/t)*t; }
+function ceilTick(price){ const t=upbitTick(price); return Math.ceil(price/t)*t; }
+function floorTick(price){ const t=upbitTick(price); return Math.floor(price/t)*t; }
 function fmtKRW(n){
   if(n==null || isNaN(n)) return '-';
   const v=roundTick(Number(n));
@@ -225,7 +226,8 @@ async function jget(path, {retries=2, timeout=9000} = {}){
 
 /* ===== API 건강 체크 ===== */
 async function ping(){
-  const badge = $('#apiHealth'), warn  = $('#apiWarn');
+  const badge = $('#apiHealth');
+  const warn  = $('#apiWarn');
   const ok = await jget('/ping',{retries:1});
   if(ok?.pong){ badge.classList.add('ok'); badge.classList.remove('fail'); warn.style.display='none'; }
   else { badge.classList.add('fail'); badge.classList.remove('ok'); warn.style.display='block'; }
@@ -283,31 +285,33 @@ function startSparkAuto(){
   sparkTimer=setInterval(renderSpark, REFRESH_SPARK_MS);
 }
 
-/* ===== 캔들 → ATR/HH/LL ===== */
-let LAST_CANDLES=null;
+/* ===== 캔들 → ATR/HH/LL/aVWAP ===== */
 async function loadCandles(market){
   if(!USE_CANDLES) return null;
   const d=await jget(`/candles?market=${encodeURIComponent(market)}&tf=1m&limit=${CANDLE_LIMIT}`, {retries:1});
-  const items = Array.isArray(d?.items||d)?(d.items||d):null;
-  LAST_CANDLES = items;
-  return items;
+  return Array.isArray(d?.items||d)?.length ? (d.items||d) : null;
 }
 function calcATR(candles, n=14){
   if(!Array.isArray(candles)||candles.length<n+1) return {atr:0, atrPct:0, hh:null, ll:null};
-  let TR=0, atr=0;
+  let TR=0;
   for(let i=1;i<=n;i++){
     const c=candles[candles.length-1-i], p=candles[candles.length-2-i];
     const h=c.high, l=c.low, pc=(p?.close ?? c.open);
     const tr=Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
     TR += tr;
   }
-  atr = TR/n;
+  const atr = TR/n;
   const recent = candles.slice(-Math.max(n*2,30));
-  let hh=-Infinity,ll=Infinity;
+  let hh=-Infinity,ll=Infinity, lastClose=recent[recent.length-1]?.close;
   for(const c of recent){ if(c.high>hh) hh=c.high; if(c.low<ll) ll=c.low; }
-  const lastClose = candles[candles.length-1]?.close ?? (hh+ll)/2;
   const atrPct = lastClose? (atr/lastClose) : 0;
   return {atr, atrPct, hh, ll, lastClose};
+}
+function calcAVWAP(candles){
+  if(!Array.isArray(candles)||candles.length===0) return null;
+  let pv=0, vv=0;
+  for(const c of candles){ const v=(c.volume||c.candle_acc_trade_volume||0); const p=((c.high+c.low+c.close)/3); pv+=p*v; vv+=v; }
+  return vv>0 ? pv/vv : candles[candles.length-1].close;
 }
 
 /* ===== 되돌림 계산 ===== */
@@ -320,7 +324,7 @@ function computeRetracement(candles){
     if(!(H>Lw) || !isFinite(C)) return null;
     const R = clamp(((H-C)/(H-Lw))*100,0,100);
     const band = R<35?'얕음':(R<65?'보통':'깊음');
-    return {R, band, pullTo: roundTick(Lw + (H-Lw)*0.38)};
+    return {R, band, pullTo: roundTick(Lw + (H-Lw)*0.382)};
   }catch{ return null; }
 }
 
@@ -390,6 +394,43 @@ function calcPrecision(seed, mtf, atrPct){
 /* ===== 상태 ===== */
 let currentMarket=null, ultraTimer=null;
 
+/* ===== “풀세트형 바닥·천장” 계산기 ===== */
+function computeSniperLevels({price,buy1,mode,atr,atrPct,hh,ll,aVWAP,seed}){
+  // 기본 배율: 종합(풀세트) — 단타 왜곡 방지
+  let k = 2.5;                         // 기본 2.5×ATR
+  const force=Number(seed.forceIndex||seed.force||0), rvol=Number(seed.rvol||0), tbr=Number(seed.tbr||0);
+
+  if((rvol>=2 && tbr>=0.65) || force>=80) k = 3.0;         // 불장: 범위 확장
+  if(tbr<=0.45 || force<=35) k = 2.2;                      // 하락장: 다소 축소
+  if(mode==='불장') k = Math.max(k, 2.8);
+  if(mode==='하락장') k = Math.min(k, 2.4);
+
+  const base = aVWAP ?? price;
+  let ai_low  = Math.min(ll ?? price,  base - k*atr);
+  let ai_high = Math.max(hh ?? price,  base + k*atr);
+
+  // 안전 여유 (호가틱 기준 최소 간격)
+  const gapMin = upbitTick(price)*4; // 최소 4틱 간격
+  ai_low  = Math.min(ai_low, price - Math.max(k*atr*0.9, gapMin*4));
+  ai_high = Math.max(ai_high, price + Math.max(k*atr*0.9, gapMin*4));
+
+  // 순서 강제: ai_low ≤ BUY1 ≤ price ≤ TP1 ≤ ai_high
+  // 순서가 뒤엉키면 강제 재배치
+  const ensureOrder = (low,b1,p,tp1,high)=>{
+    const t = upbitTick(p);
+    const ε = t*2;
+    if(low > b1)  low  = floorTick(Math.min(b1 - ε, p - 6*t));
+    if(b1  > p)   b1   = floorTick(p - 4*t);
+    if(tp1 < p)   tp1  = ceilTick(p + 4*t);
+    if(high < tp1)high = ceilTick(tp1 + 4*t);
+    // low가 high보다 크지 않도록 마지막 점검
+    if(low >= high){ low = floorTick(p - 10*t); high = ceilTick(p + 12*t); }
+    return {low,b1,tp1,high};
+  };
+
+  return {ai_low, ai_high, orderFix: ensureOrder};
+}
+
 /* ===== ULTRA ===== */
 async function openUltra(market, seed){
   if(!market) return;
@@ -407,15 +448,17 @@ async function openUltra(market, seed){
   const buy1 = s.buy1!=null?Number(s.buy1):roundTick(price*0.997);
   const buy2 = s.buy2!=null?Number(s.buy2):roundTick(price*0.992);
 
-  let atr=0, atrPct=0, hh=null, ll=null, lastClose=price;
+  // ATR/HH/LL/aVWAP
+  let atr=0, atrPct=0, hh=null, ll=null, aVWAP=null;
   if(Array.isArray(candles)){
     const a=calcATR(candles,14);
-    atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll; lastClose=a.lastClose||price;
+    atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll;
+    aVWAP = calcAVWAP(candles);
   }
   if(s.recent_high) hh = s.recent_high;
   if(s.recent_low)  ll = s.recent_low;
 
-  // 베이스 TP/SL (분석 기반, 틱 계산 아님)
+  // 베이스 TP/SL (종합 모드)
   let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
   if(tp1==null||tp2==null||sl==null){
     const force=Number(s.forceIndex||s.force||0), rvol=Number(s.rvol||0), tbr=Number(s.tbr||0);
@@ -452,7 +495,7 @@ async function openUltra(market, seed){
   tp2_adj=pricePct(tp2_adj, adjExtra);
   sl_adj =pricePct(sl_adj , -adjExtra*0.6);
 
-  // 화면 세팅
+  // UI 표시
   setTxt($('#v_price'),fmtKRW(price));
   setTxt($('#v_buy1'),fmtKRW(buy1));
   setTxt($('#v_buy2'),fmtKRW(buy2));
@@ -500,56 +543,54 @@ async function openUltra(market, seed){
 
   setTxt($('#z_msg'), z.msg);
 
-  // 스나이퍼 즉시 갱신 (초기 1회)
-  await refreshSniper(false);
+  // 스나이퍼 즉시 갱신 (초기 1회, 보정 포함)
+  await refreshSniper(false, {price,buy1,tp1:tp1_adj,mode:mtf.mode,atr,atrPct,hh,ll,aVWAP,seed:s});
 
   // 자동 새로고침
   if(ultraTimer) clearInterval(ultraTimer);
   ultraTimer = setInterval(()=>openUltra(currentMarket, null), REFRESH_ULTRA_MS);
 }
 
-/* ===== Sniper (/sniper/point) — 바닥·천장 보정형 ===== */
-function recentHHLL(fromCandles, n=60){
-  if(!Array.isArray(fromCandles)||!fromCandles.length) return {hh:null,ll:null};
-  const L = fromCandles.slice(-n);
-  let hh=-Infinity,ll=Infinity;
-  for(const c of L){ if(c.high>hh) hh=c.high; if(c.low<ll) ll=c.low; }
-  return {hh: isFinite(hh)?hh:null, ll:isFinite(ll)?ll:null};
-}
-async function refreshSniper(showToast=true){
+/* ===== Sniper (/sniper/point) + 풀세트 강제보정 ===== */
+async function refreshSniper(showToast=true, ctx=null){
   if(!currentMarket) return;
   const d = await jget(`/sniper/point?market=${encodeURIComponent(currentMarket)}`, {retries:1});
-  if(!d?.ok){ if(showToast) console.warn('sniper_failed'); return; }
-  const s = d.sniper || {};
+  let s = (d?.sniper)||{};
+  let {price,buy1,tp1,mode,atr,atrPct,hh,ll,aVWAP,seed} = ctx || {};
 
-  // DOM에서 BUY1/TP2 읽어와 보정 한계로 사용
-  const buy1 = onlyNum($('#v_buy1').textContent);
-  const tp2  = onlyNum($('#v_tp2').textContent);
+  // Candles 기반 풀세트 계산 (API 결과와 병합)
+  if(price && atr){
+    const calc = computeSniperLevels({price,buy1,mode,atr,atrPct,hh,ll,aVWAP,seed});
+    let ai_low  = (s.ai_low  ?? calc.ai_low);
+    let ai_high = (s.ai_high ?? calc.ai_high);
 
-  // 최근 캔들 최저/최고
-  const {hh, ll} = recentHHLL(LAST_CANDLES, 60);
+    // 순서 강제
+    const fixed = calc.orderFix(
+      roundTick(ai_low),
+      roundTick(buy1 ?? price*0.997),
+      roundTick(price),
+      roundTick(tp1 ?? price*1.01),
+      roundTick(ai_high)
+    );
 
-  // 원시 값
-  let aiLow  = Number(s.ai_low);
-  let aiHigh = Number(s.ai_high);
+    s.ai_low  = fixed.low;
+    s.ai_high = fixed.high;
 
-  // 보정: LL/HH, BUY1/TP2와의 관계 강제
-  if(isFinite(ll))   aiLow  = Math.min(aiLow||Infinity, ll);
-  if(isFinite(hh))   aiHigh = Math.max(aiHigh||-Infinity, hh);
-  if(isFinite(buy1)) aiLow  = Math.min(aiLow||Infinity, buy1*0.999);   // ai_low ≤ BUY1
-  if(isFinite(tp2))  aiHigh = Math.max(aiHigh||-Infinity, tp2*1.001);  // ai_high ≥ TP2
+    // Confidence 간단 스코어 (데이터가 없는 경우 35~70 사이)
+    const baseConf = (d?.sniper?.confidence!=null) ? d.sniper.confidence
+                    : Math.round(clamp((seed?.spark||30) + (seed?.tbr||0.5)*40 + (seed?.rvol||1.0)*10, 35, 85));
+    s.confidence = baseConf;
+    s.ai_low_reason  = `aVWAP-${mode} · HH/LL · ${atrPct?(atrPct*100).toFixed(2)+'% ATR': 'ATR'}`;
+    s.ai_high_reason = `aVWAP+${mode} · HH/LL · 확장 k`;
+  }else{
+    if(showToast) console.warn('sniper_fallback_without_ctx');
+  }
 
-  // 호가틱 반올림
-  aiLow  = roundTick(aiLow);
-  aiHigh = roundTick(aiHigh);
-
-  setTxt($('#sn_low'), fmtKRW(aiLow));
-  setTxt($('#sn_high'), fmtKRW(aiHigh));
+  setTxt($('#sn_low'), fmtKRW(s.ai_low));
+  setTxt($('#sn_high'), fmtKRW(s.ai_high));
   setTxt($('#sn_conf'), (s.confidence!=null? s.confidence+'%' : '-'));
-
-  // Reason 뱃지(간단 표기)
-  setTxt($('#sn_reason_low'),  s.ai_low_reason  ? `${s.ai_low_reason} · LL/BUY1 보정` : `LL/BUY1 보정`);
-  setTxt($('#sn_reason_high'), s.ai_high_reason ? `${s.ai_high_reason} · HH/TP2 보정` : `HH/TP2 보정`);
+  setTxt($('#sn_reason_low'),  s.ai_low_reason || '-');
+  setTxt($('#sn_reason_high'), s.ai_high_reason || '-');
 }
 $('#btnSniper').addEventListener('click', ()=>refreshSniper(true));
 $('#btnCopyLevels').addEventListener('click', ()=>{
@@ -562,7 +603,7 @@ $('#btnCopyLevels').addEventListener('click', ()=>{
     `tp1: ${$('#v_tp1').textContent} / tp2: ${$('#v_tp2').textContent}`,
     `sl: ${$('#v_sl').textContent}`,
   ].join('\n');
-  navigator.clipboard.writeText(t).then(()=>{});
+  navigator.clipboard.writeText(t).then(()=>{ /* No-Motion */ });
 });
 
 /* ===== 검색/자동완성 ===== */
