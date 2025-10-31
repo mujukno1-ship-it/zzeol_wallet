@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v11.0 — Precision Overdrive · Adaptive Timeframe AI</title>
+<title>사토시의지갑 v12.1 — Satoshi Precision Set (Stable)</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -72,7 +72,6 @@
     </div>
     <div class="warn" id="apiWarn">API 연결이 원활하지 않습니다. 새로고침하거나 잠시 후 다시 시도하세요.</div>
 
-    <!-- 글로벌(미국증시·매크로) -->
     <div class="gwrap" id="globalPanel" hidden>
       <div class="gbox"><div class="ghead">NASDAQ 100<span class="gsub">NDX</span></div><div class="gnum" id="g_ndx">-</div><div class="gchg" id="gc_ndx">-</div></div>
       <div class="gbox"><div class="ghead">S&P 500<span class="gsub">SPX</span></div><div class="gnum" id="g_spx">-</div><div class="gchg" id="gc_spx">-</div></div>
@@ -118,6 +117,7 @@
         <span class="pill badge">예열강도 <b id="chip_heat">0</b></span>
         <span class="pill badge">상승확률 <b id="chip_prob">0%</b></span>
         <span class="pill badge">예상상승률 <b id="chip_gain">+0%</b></span>
+        <span class="pill badge">정확도 <b id="chip_prec">-</b></span>
         <span class="pill badge">위험도 <b id="chip_risk">-</b></span>
         <span class="pill badge">되돌림 <b id="chip_pull">-</b></span>
         <span class="pill badge">당일 고점 <b id="chip_DH">-</b></span>
@@ -134,7 +134,7 @@
     </section>
   </div>
 
-  <footer>사토시의지갑 v11.0 · Precision Overdrive · Adaptive Timeframe AI(1m~1M) · No-Motion</footer>
+  <footer>사토시의지갑 v12.1 · Satoshi Precision Set · Precision Boost Extended · No-Motion</footer>
 </div>
 
 <div id="suggest"></div>
@@ -144,15 +144,17 @@
 const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
 document.getElementById('apiBaseTxt').textContent = API_BASE;
 
-const REFRESH_SPARK_MS = 15000;   // SPARK 자동 새로고침
-const REFRESH_ULTRA_MS = 5000;    // 선택 코인 ULTRA 자동 새로고침
+const REFRESH_SPARK_MS = 15000;
+const REFRESH_ULTRA_MS = 5000;
+const USE_CANDLES = true;        // 1분봉 240개로 ATR/HH/LL 계산
+const CANDLE_LIMIT = 240;
 
 /* ===== 유틸 ===== */
 const $ = s=>document.querySelector(s);
 const setTxt=(el,v)=>{ if(el && String(el.textContent)!==String(v)) el.textContent=String(v); };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);}};
-const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
@@ -178,7 +180,8 @@ function fmtKRW(n){
 const pricePct=(base,pct)=>roundTick(Number(base)*(1+pct));
 
 /* ===== API 헬퍼 ===== */
-async function jget(path, {retries=1, timeout=9000} = {}){
+async function jget(path, {retries=2, timeout=9000} = {}){
+  let lastErr=null;
   for(let attempt=0; attempt<=retries; attempt++){
     const ctl = new AbortController();
     const to = setTimeout(()=>ctl.abort(), timeout);
@@ -186,18 +189,19 @@ async function jget(path, {retries=1, timeout=9000} = {}){
       const t0 = performance.now();
       const r = await fetch(API_BASE+path, {headers:{accept:'application/json'}, signal:ctl.signal});
       clearTimeout(to);
-      if(!r.ok) throw new Error(r.statusText);
+      if(!r.ok) throw new Error(r.status+' '+r.statusText);
       const d = await r.json();
+      if(path==='/ping') setTxt($('#latency'), Math.round(performance.now()-t0)+'ms');
       if(d && d.ok===false) throw new Error(d.error||'api');
-      // 핑일 때 지연 표시
-      if(path==='/ping'){ setTxt($('#latency'), Math.round(performance.now()-t0)+'ms'); }
       return d;
     }catch(e){
       clearTimeout(to);
-      if(attempt===retries){ console.error('API ERR',path,e); return null; }
-      await sleep(300);
+      lastErr=e;
+      await sleep(200+attempt*200);
     }
   }
+  console.error('API ERR', path, lastErr);
+  return null;
 }
 
 /* ===== API 건강 체크 ===== */
@@ -261,16 +265,28 @@ function startSparkAuto(){
   sparkTimer=setInterval(renderSpark, REFRESH_SPARK_MS);
 }
 
-/* ===== 되돌림(%) 계산 ===== */
-function computeRetracement(candles){
-  if(!Array.isArray(candles)||!candles.length) return null;
-  const L=candles.slice(-15);
-  let H=-Infinity,Lw=Infinity,C=L[L.length-1]?.close??null;
-  L.forEach(c=>{ if(c.high>H)H=c.high; if(c.low<Lw)Lw=c.low; });
-  if(C==null||H===-Infinity||Lw===Infinity||H===Lw) return null;
-  const R=((H-C)/(H-Lw))*100;
-  const band=R<35?'얕음':R<65?'보통':'깊음';
-  return {R:clamp(R,0,100), band};
+/* ===== 1m 캔들 → ATR/HH/LL ===== */
+async function loadCandles(market){
+  if(!USE_CANDLES) return null;
+  const d=await jget(`/candles?market=${encodeURIComponent(market)}&tf=1m&limit=${CANDLE_LIMIT}`, {retries:1});
+  return Array.isArray(d?.items||d)?.length ? (d.items||d) : null;
+}
+function calcATR(candles, n=14){
+  if(!Array.isArray(candles)||candles.length<n+1) return {atr:0, atrPct:0, hh:null, ll:null};
+  let TR=0, atr=0;
+  for(let i=1;i<=n;i++){
+    const c=candles[candles.length-1-i], p=candles[candles.length-2-i];
+    const h=c.high, l=c.low, pc=(p?.close ?? c.open);
+    const tr=Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
+    TR += tr;
+  }
+  atr = TR/n;
+  const recent = candles.slice(-Math.max(n*2,30));
+  let hh=-Infinity,ll=Infinity;
+  for(const c of recent){ if(c.high>hh) hh=c.high; if(c.low<ll) ll=c.low; }
+  const lastClose = candles[candles.length-1]?.close ?? (hh+ll)/2;
+  const atrPct = lastClose? (atr/lastClose) : 0;
+  return {atr, atrPct, hh, ll, lastClose};
 }
 
 /* ===== 쩔어한마디 ===== */
@@ -317,14 +333,40 @@ function calcMTFAdjust(seed){
   return { mtfScore, mode, adj, price };
 }
 
+/* ===== Precision % 산출 ===== */
+function calcPrecision(seed, mtf, atrPct){
+  const s=seed||{};
+  const force=Number(s.forceIndex||s.force||0);
+  const rvol =Number(s.rvol||0);
+  const tbr  =Number(s.tbr||0);
+  const obi  =Number(s.obi||s.order_imbalance||0);
+  const heat =clamp(Number(s.spark||0),0,100);
+  // 가중: Force 0.28, TBR 0.22, RVOL 0.18, MTF 0.18, OBI 0.08, ATR정상범위 0.06
+  const mtfNorm = (clamp(mtf.mtfScore,-100,100)+100)/200;        // 0~1
+  const forceN  = clamp(force/100,0,1);
+  const tbrN    = clamp((tbr-0.4)/0.4,0,1);                       // 0.4~0.8 범위 맵
+  const rvolN   = clamp((rvol-0.8)/2.0,0,1);                      // 0.8~2.8
+  const obiN    = clamp((obi+0.2)/0.4,0,1);                       // -0.2~+0.2
+  const atrOK   = clamp(1-Math.abs((atrPct??0)-0.012)/0.02,0,1);  // ATR% 1.2% 근방을 이상적 범위로 가정
+  let score = (forceN*0.28)+(tbrN*0.22)+(rvolN*0.18)+(mtfNorm*0.18)+(obiN*0.08)+(atrOK*0.06);
+  // 예열 보정(+): heat가 높으면 소폭 가산
+  score += clamp((heat-60)/100,0,0.08);
+  // 하한/상한
+  let prec = clamp(Math.round((0.82 + score*0.16)*1000)/10, 85, 99.5); // 85 ~ 99.5
+  return prec;
+}
+
 /* ===== ULTRA ===== */
 let currentMarket=null, ultraTimer=null;
 async function openUltra(market, seed){
   if(!market) return;
   currentMarket = market;
-  const sig=await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
-  const s=Object.assign({}, seed||{}, sig||{});
 
+  const [sig, candles] = await Promise.all([
+    jget('/ultra/signal?market='+encodeURIComponent(market))||{},
+    loadCandles(market)
+  ]);
+  const s=Object.assign({}, seed||{}, sig||{});
   const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
   setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
 
@@ -332,23 +374,55 @@ async function openUltra(market, seed){
   const buy1 = s.buy1!=null?Number(s.buy1):roundTick(price*0.997);
   const buy2 = s.buy2!=null?Number(s.buy2):roundTick(price*0.992);
 
+  // ATR/HH/LL 기반 정보
+  let atr=0, atrPct=0, hh=null, ll=null, lastClose=price;
+  if(Array.isArray(candles)){
+    const a=calcATR(candles,14);
+    atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll; lastClose=a.lastClose||price;
+  }
+  if(s.recent_high) hh = s.recent_high;
+  if(s.recent_low)  ll = s.recent_low;
+
+  // 베이스 TP/SL
   let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
   if(tp1==null||tp2==null||sl==null){
     const force=Number(s.forceIndex||s.force||0), rvol=Number(s.rvol||0), tbr=Number(s.tbr||0);
     const bull=(rvol>=2&&tbr>=0.65)||force>=80, bear=(tbr<=0.45)||force<=35;
-    if(bull){ tp1=pricePct(price,0.016); tp2=pricePct(price,0.028); sl=pricePct(price,-0.008); }
-    else if(bear){ tp1=pricePct(price,0.006); tp2=pricePct(price,0.010); sl=pricePct(price,-0.013); }
-    else { tp1=pricePct(price,0.012); tp2=pricePct(price,0.020); sl=pricePct(price,-0.010); }
+    // ATR% 가중 (1% 기준)
+    const k = clamp((atrPct||0), 0.004, 0.04); // 0.4%~4%
+    if(bull){
+      tp1=roundTick(price + Math.max(price*0.012, price*k*1.6));
+      tp2=roundTick(price + Math.max(price*0.020, price*k*2.6));
+      sl =roundTick(price - Math.max(price*0.008, price*k*0.9));
+    }else if(bear){
+      tp1=roundTick(price + Math.max(price*0.006, price*k*0.7));
+      tp2=roundTick(price + Math.max(price*0.010, price*k*1.1));
+      sl =roundTick(price - Math.max(price*0.013, price*k*1.4));
+    }else{
+      tp1=roundTick(price + Math.max(price*0.010, price*k*1.2));
+      tp2=roundTick(price + Math.max(price*0.018, price*k*2.0));
+      sl =roundTick(price - Math.max(price*0.010, price*k*1.0));
+    }
   }
 
+  // MTF 보정 → Precision Boost Extended(±0.3%)
   const mtf = calcMTFAdjust(s);
   const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
   const tpAdjPct = sign * mtf.adj;
   const slAdjPct = -sign * (mtf.adj*0.8);
-  const tp1_adj = pricePct(tp1, tpAdjPct);
-  const tp2_adj = pricePct(tp2, tpAdjPct);
-  const sl_adj  = pricePct(sl , slAdjPct);
+  let tp1_adj = pricePct(tp1, tpAdjPct);
+  let tp2_adj = pricePct(tp2, tpAdjPct);
+  let sl_adj  = pricePct(sl , slAdjPct);
 
+  // 2차 보정(±0.3% 캡) — 김프/펀딩/TBR/OBI 신호가 강하면 미세 가감(서버 값이 들어오면 s.* 사용)
+  const obi = Number(s.obi||s.order_imbalance||0);
+  const tbr = Number(s.tbr||0);
+  const adjExtra = clamp(((tbr-0.5)*0.002) + (obi*0.0015), -0.003, 0.003);
+  tp1_adj=pricePct(tp1_adj, adjExtra);
+  tp2_adj=pricePct(tp2_adj, adjExtra);
+  sl_adj =pricePct(sl_adj , -adjExtra*0.6);
+
+  // 화면 세팅
   setTxt($('#v_price'),fmtKRW(price));
   setTxt($('#v_buy1'),fmtKRW(buy1));
   setTxt($('#v_buy2'),fmtKRW(buy2));
@@ -373,26 +447,37 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  // 🔧 버그수정: 삼항 연산자 괄호 보강
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
 
+  // 되돌림 칩
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
   if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
-  const pullPrice = (s.retracement_to ?? s.pull_to ?? s.recent_low ?? buy1);
+  if(!retr && Array.isArray(candles)){
+    // 15개 샘플로 간이 계산
+    const L=candles.slice(-15);
+    let H=-Infinity,Lw=Infinity,C=L[L.length-1]?.close??lastClose;
+    L.forEach(c=>{ if(c.high>H)H=c.high; if(c.low<Lw)Lw=c.low; });
+    if(H>Lw && isFinite(C)) retr={R:clamp(((H-C)/(H-Lw))*100,0,100), band:(((H-C)/(H-Lw))*100)<35?'얕음':(((H-C)/(H-Lw))*100)<65?'보통':'깊음'};
+  }
+  const pullPrice = (s.retracement_to ?? s.pull_to ?? ll ?? buy1);
   const retrTxt = retr ? `${Number(retr.R).toFixed(0)}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)` : `(${fmtKRW(pullPrice)}까지)`;
   setTxt($('#chip_pull'), retrTxt);
 
-  if(s.recent_high) setTxt($('#chip_DH'), fmtKRW(s.recent_high));
-  if(s.recent_low)  setTxt($('#chip_DL'), fmtKRW(s.recent_low));
+  if(hh) setTxt($('#chip_DH'), fmtKRW(hh));
+  if(ll) setTxt($('#chip_DL'), fmtKRW(ll));
 
   setTxt($('#chip_mtf_mode'), mtf.mode);
   setTxt($('#chip_mtf_score'), mtf.mtfScore);
   setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
 
+  // Precision %
+  const prec = calcPrecision(s, mtf, atrPct);
+  setTxt($('#chip_prec'), `${prec.toFixed(1)}%`);
+
   setTxt($('#z_msg'), z.msg);
 
-  // 선택 코인 자동 새로고침
+  // 자동 새로고침
   if(ultraTimer) clearInterval(ultraTimer);
   ultraTimer = setInterval(()=>openUltra(currentMarket, null), REFRESH_ULTRA_MS);
 }
@@ -453,7 +538,7 @@ function ensureTempSparkCard(market){
   }
 }
 
-/* ===== 글로벌(미국증시 등): Worker 프록시 사용 + 폴백 ===== */
+/* ===== 글로벌(미국증시 등): Worker 프록시 + 폴백 ===== */
 function paintGlobal(idBase, v){
   const num = $('#g_'+idBase), chg = $('#gc_'+idBase);
   if(!num||!chg||!v) return;
@@ -469,7 +554,6 @@ async function loadGlobal(){
     const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`,{headers:{accept:'application/json'}}).then(r=>r.json());
     if(d?.ok) data = d.data;
   }catch(e){}
-  // 폴백: stooq
   if(!data){
     try{
       const url = 'https://r.jina.ai/http://stooq.com/q/l/?s=%5Endx,%5Espx,dxy,us10y&f=sd2t2ohlcv&h&e=csv';
@@ -494,7 +578,7 @@ async function loadGlobal(){
   paintGlobal('us10y',data['us10y']);
 }
 
-/* ===== 딥링크(검색 파라미터/해시) ===== */
+/* ===== 딥링크 ===== */
 function getDeepLink(){
   const u = new URL(location.href);
   return u.searchParams.get('m') || (location.hash||'').replace('#','') || null;
@@ -514,7 +598,6 @@ function setDeepLink(market){
   await renderSpark();
   startSparkAuto();
 
-  // 최초 선택: URL ?m=KRW-XXX 또는 #KRW-XXX → 해당 코인 오픈, 없으면 SPARK 1번
   const deep = getDeepLink();
   if(deep){ ensureTempSparkCard(deep); openUltra(deep,null); }
   else{
