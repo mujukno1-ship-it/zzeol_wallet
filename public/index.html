@@ -6,17 +6,16 @@
 <title>사토시의지갑 v11.0 — Precision Overdrive · Adaptive Timeframe AI</title>
 <link rel="icon" href="data:,">
 <style>
-  :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020;}
+  :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
   .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
   .badge{background:#19202a;color:#9bc3ff;border:1px solid #2a3950;border-radius:10px;padding:4px 8px;font-size:12px}
-  .api{margin-left:auto;font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center}
-  .api .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#888;vertical-align:middle}
+  .api{margin-left:auto;font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  .api .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#888}
   .api.ok .dot{background:#1ec996}
   .api.fail .dot{background:#ff5b6b}
-  .lat{padding:2px 6px;border:1px solid #2a3950;border-radius:8px}
   .search{position:sticky;top:0;background:linear-gradient(180deg,rgba(15,18,24,.95),rgba(15,18,24,.75));padding:10px 0 12px;z-index:5;backdrop-filter:saturate(1.2) blur(2px)}
   .search .row{display:flex;gap:8px;align-items:center}
   .search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none}
@@ -54,8 +53,6 @@
   .gnum{font-weight:800;margin-top:6px}
   .gchg{font-size:12px;margin-top:2px}
   .up{color:var(--up)} .down{color:var(--down)}
-  .pin{cursor:pointer;opacity:.7}
-  .pin.active{color:#ffd166;opacity:1}
 </style>
 </head>
 <body>
@@ -66,7 +63,7 @@
       <div class="api" id="apiHealth">
         <span class="dot"></span>
         <span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span>
-        <span class="lat" id="latTxt">- ms</span>
+        <span id="latency" style="opacity:.7"></span>
       </div>
     </div>
     <div class="row" style="margin-top:8px">
@@ -77,26 +74,10 @@
 
     <!-- 글로벌(미국증시·매크로) -->
     <div class="gwrap" id="globalPanel" hidden>
-      <div class="gbox">
-        <div class="ghead">NASDAQ 100<span class="gsub">NDX</span></div>
-        <div class="gnum" id="g_ndx">-</div>
-        <div class="gchg" id="gc_ndx">-</div>
-      </div>
-      <div class="gbox">
-        <div class="ghead">S&P 500<span class="gsub">SPX</span></div>
-        <div class="gnum" id="g_spx">-</div>
-        <div class="gchg" id="gc_spx">-</div>
-      </div>
-      <div class="gbox">
-        <div class="ghead">Dollar Index<span class="gsub">DXY</span></div>
-        <div class="gnum" id="g_dxy">-</div>
-        <div class="gchg" id="gc_dxy">-</div>
-      </div>
-      <div class="gbox">
-        <div class="ghead">US 10Y<span class="gsub">Yield</span></div>
-        <div class="gnum" id="g_us10y">-</div>
-        <div class="gchg" id="gc_us10y">-</div>
-      </div>
+      <div class="gbox"><div class="ghead">NASDAQ 100<span class="gsub">NDX</span></div><div class="gnum" id="g_ndx">-</div><div class="gchg" id="gc_ndx">-</div></div>
+      <div class="gbox"><div class="ghead">S&P 500<span class="gsub">SPX</span></div><div class="gnum" id="g_spx">-</div><div class="gchg" id="gc_spx">-</div></div>
+      <div class="gbox"><div class="ghead">Dollar Index<span class="gsub">DXY</span></div><div class="gnum" id="g_dxy">-</div><div class="gchg" id="gc_dxy">-</div></div>
+      <div class="gbox"><div class="ghead">US 10Y<span class="gsub">Yield</span></div><div class="gnum" id="g_us10y">-</div><div class="gchg" id="gc_us10y">-</div></div>
     </div>
   </div>
 
@@ -159,16 +140,19 @@
 <div id="suggest"></div>
 
 <script>
-/* ===== 전역 ===== */
+/* ===== 설정 ===== */
 const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
 document.getElementById('apiBaseTxt').textContent = API_BASE;
+
+const REFRESH_SPARK_MS = 15000;   // SPARK 자동 새로고침
+const REFRESH_ULTRA_MS = 5000;    // 선택 코인 ULTRA 자동 새로고침
+
+/* ===== 유틸 ===== */
 const $ = s=>document.querySelector(s);
 const setTxt=(el,v)=>{ if(el && String(el.textContent)!==String(v)) el.textContent=String(v); };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);}};
-
-let CURRENT_MARKET = localStorage.getItem('ultra_market') || null;
-let LAST_SIGNAL = null;
+const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
 /* ===== 업비트 호가틱 + KRW 포맷 ===== */
 function upbitTick(p){
@@ -193,20 +177,26 @@ function fmtKRW(n){
 }
 const pricePct=(base,pct)=>roundTick(Number(base)*(1+pct));
 
-/* ===== API 헬퍼 (지연 측정 포함) ===== */
-async function jget(path){
-  const t0 = performance.now();
-  try{
-    const r=await fetch(API_BASE+path,{headers:{accept:'application/json'}});
-    const latency = Math.max(1, Math.round(performance.now()-t0));
-    setTxt($('#latTxt'), `${latency} ms`);
-    if(!r.ok) throw new Error(r.statusText);
-    const d=await r.json();
-    if(d && d.ok===false) throw new Error(d.error||'api');
-    return d;
-  }catch(e){
-    console.error('API ERR',path,e);
-    return null;
+/* ===== API 헬퍼 ===== */
+async function jget(path, {retries=1, timeout=9000} = {}){
+  for(let attempt=0; attempt<=retries; attempt++){
+    const ctl = new AbortController();
+    const to = setTimeout(()=>ctl.abort(), timeout);
+    try{
+      const t0 = performance.now();
+      const r = await fetch(API_BASE+path, {headers:{accept:'application/json'}, signal:ctl.signal});
+      clearTimeout(to);
+      if(!r.ok) throw new Error(r.statusText);
+      const d = await r.json();
+      if(d && d.ok===false) throw new Error(d.error||'api');
+      // 핑일 때 지연 표시
+      if(path==='/ping'){ setTxt($('#latency'), Math.round(performance.now()-t0)+'ms'); }
+      return d;
+    }catch(e){
+      clearTimeout(to);
+      if(attempt===retries){ console.error('API ERR',path,e); return null; }
+      await sleep(300);
+    }
   }
 }
 
@@ -214,7 +204,7 @@ async function jget(path){
 async function ping(){
   const badge = $('#apiHealth');
   const warn  = $('#apiWarn');
-  const ok = await jget('/ping');
+  const ok = await jget('/ping',{retries:1});
   if(ok?.pong){ badge.classList.add('ok'); badge.classList.remove('fail'); warn.style.display='none'; }
   else { badge.classList.add('fail'); badge.classList.remove('ok'); warn.style.display='block'; }
 }
@@ -223,7 +213,7 @@ async function ping(){
 let MARKET_LIST=[];
 async function loadMarkets(){
   if(MARKET_LIST.length) return MARKET_LIST;
-  const d=await jget('/upbit/tickers');
+  const d=await jget('/upbit/tickers',{retries:2});
   if(Array.isArray(d?.items)) MARKET_LIST=d.items;
   return MARKET_LIST;
 }
@@ -241,48 +231,34 @@ function resolveMarket(input){
 }
 
 /* ===== SPARK TOP10 ===== */
-async function loadSpark(){
+let sparkTimer=null;
+async function renderSpark(){
   const listEl=$('#sparkList'), emptyEl=$('#sparkEmpty');
-  const d=await jget('/spark/top?limit=10');
+  const d=await jget('/spark/top?limit=10',{retries:1});
   listEl.innerHTML='';
   if(!Array.isArray(d?.list)||d.list.length===0){ emptyEl.hidden=false; return; }
   emptyEl.hidden=true;
 
   d.list.forEach(it=>{
     const row=document.createElement('div'); row.className='item'; row.dataset.m=it.market;
-    const pin=document.createElement('span'); pin.className='pin'; pin.innerHTML='★';
-    if(localStorage.getItem('pin_'+it.market)) pin.classList.add('active');
-    pin.title='즐겨찾기 고정'; pin.onclick=(ev)=>{ev.stopPropagation();togglePin(it.market,pin);};
-
     const n=document.createElement('div'); n.className='name';
     n.innerHTML=`<b>${it.korean_name||it.market}</b><small style="color:var(--muted)">${it.market}</small>`;
-    n.prepend(pin);
-
     const r=document.createElement('div');
-    const spark = clamp(it.spark||0,0,100);
-    const rvol  = (it.rvol??0);
-    const tbr   = Math.round((it.tbr||0)*100);
     r.innerHTML=`<div style="text-align:right">${fmtKRW(Number(it.price||0))}</div>
-                 <div class="bar"><span style="width:${spark}%"></span></div>
+                 <div class="bar"><span style="width:${clamp(it.spark||0,0,100)}%"></span></div>
                  <div class="pillrow" style="justify-content:flex-end">
-                   <span class="pill">SPARK ${spark}</span>
-                   <span class="pill">RVOL ${isFinite(rvol)?Number(rvol).toFixed(2):'0.00'}</span>
-                   <span class="pill">TBR ${isFinite(tbr)?tbr:0}%</span>
+                   <span class="pill">SPARK ${it.spark||0}</span>
+                   <span class="pill">RVOL ${(it.rvol??0).toFixed?.(2) ?? it.rvol}</span>
+                   <span class="pill">TBR ${Math.round((it.tbr||0)*100)}%</span>
                  </div>`;
     row.appendChild(n); row.appendChild(r);
     row.addEventListener('click',()=>openUltra(it.market,it));
     listEl.appendChild(row);
   });
-
-  // 고정코인 맨 위로 배치
-  [...listEl.children]
-    .sort((a,b)=> (localStorage.getItem('pin_'+b.dataset.m)?1:0) - (localStorage.getItem('pin_'+a.dataset.m)?1:0))
-    .forEach(el=>listEl.appendChild(el));
 }
-function togglePin(market, el){
-  const key='pin_'+market;
-  if(localStorage.getItem(key)){ localStorage.removeItem(key); el.classList.remove('active'); }
-  else { localStorage.setItem(key,'1'); el.classList.add('active'); }
+function startSparkAuto(){
+  if(sparkTimer) clearInterval(sparkTimer);
+  sparkTimer=setInterval(renderSpark, REFRESH_SPARK_MS);
 }
 
 /* ===== 되돌림(%) 계산 ===== */
@@ -342,14 +318,12 @@ function calcMTFAdjust(seed){
 }
 
 /* ===== ULTRA ===== */
+let currentMarket=null, ultraTimer=null;
 async function openUltra(market, seed){
   if(!market) return;
-  CURRENT_MARKET = market;
-  localStorage.setItem('ultra_market', market);
-
+  currentMarket = market;
   const sig=await jget('/ultra/signal?market='+encodeURIComponent(market))||{};
   const s=Object.assign({}, seed||{}, sig||{});
-  LAST_SIGNAL = s;
 
   const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
   setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
@@ -399,16 +373,14 @@ async function openUltra(market, seed){
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  // 🔧 버그수정: 삼항 연산자 괄호 누락 교정
+  // 🔧 버그수정: 삼항 연산자 괄호 보강
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
 
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracement(s.candles);
   if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
   const pullPrice = (s.retracement_to ?? s.pull_to ?? s.recent_low ?? buy1);
-  const retrTxt = retr
-    ? `${Number(retr.R).toFixed(0)}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)`
-    : `(${fmtKRW(pullPrice)}까지)`;
+  const retrTxt = retr ? `${Number(retr.R).toFixed(0)}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)` : `(${fmtKRW(pullPrice)}까지)`;
   setTxt($('#chip_pull'), retrTxt);
 
   if(s.recent_high) setTxt($('#chip_DH'), fmtKRW(s.recent_high));
@@ -419,58 +391,17 @@ async function openUltra(market, seed){
   setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
 
   setTxt($('#z_msg'), z.msg);
+
+  // 선택 코인 자동 새로고침
+  if(ultraTimer) clearInterval(ultraTimer);
+  ultraTimer = setInterval(()=>openUltra(currentMarket, null), REFRESH_ULTRA_MS);
 }
 
-/* ===== 글로벌(미국증시 등) — 워커 우선 / 실패 시 폴백 ===== */
-function paintGlobal(idBase, v){
-  const num = document.querySelector('#g_'+idBase), chg = document.querySelector('#gc_'+idBase);
-  if(!num||!chg||!v) return;
-  num.textContent = isFinite(v.close) ? v.close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
-  const sign = v.chg>0 ? 'up' : v.chg<0 ? 'down' : '';
-  chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
-  chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
-}
-async function loadGlobal(){
-  const panel = document.querySelector('#globalPanel');
-  // 1) 워커 API
-  let data = null;
-  try{
-    const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`).then(r=>r.json());
-    if(d?.ok) data = d.data;
-  }catch(_){}
-  // 2) 폴백: stooq (r.jina.ai 프록시)
-  if(!data){
-    try{
-      const url = 'https://r.jina.ai/http://stooq.com/q/l/?s=%5Endx,%5Espx,dxy,us10y&f=sd2t2ohlcv&h&e=csv';
-      const text = await fetch(url).then(r=>r.text());
-      const out={};
-      const lines=text.trim().split(/\r?\n/);
-      for(let i=1;i<lines.length;i++){
-        const c=lines[i].split(',');
-        const sym=c[0].toLowerCase(), close=parseFloat(c[6]), open=parseFloat(c[3]);
-        out[sym]={close,open,chg:(isFinite(close)&&isFinite(open))?((close-open)/open*100):0};
-      }
-      data = out;
-    }catch(e){ data=null; }
-  }
-  if(!data){ panel.hidden = true; return; }
-  panel.hidden = false;
-  paintGlobal('ndx',  data['^ndx'] || data['ndx']);
-  paintGlobal('spx',  data['^spx'] || data['spx']);
-  paintGlobal('dxy',  data['dxy']);
-  paintGlobal('us10y',data['us10y']);
-}
-
-/* ===== 검색 & 서제스트 ===== */
+/* ===== 검색/자동완성 ===== */
 const $q=$('#q'), $btn=$('#btnSearch'), $sug=$('#suggest');
-function placeSuggest(){
-  const r=$q.getBoundingClientRect();
-  $sug.style.left=(window.scrollX+r.left)+'px';
-  $sug.style.top =(window.scrollY+r.bottom+6)+'px';
-  $sug.style.width=r.width+'px';
-}
-window.addEventListener('resize',placeSuggest);
-window.addEventListener('scroll',placeSuggest);
+function placeSuggest(){ const r=$q.getBoundingClientRect(); $sug.style.left=(window.scrollX+r.left)+'px'; $sug.style.top =(window.scrollY+r.bottom+6)+'px'; $sug.style.width=r.width+'px'; }
+window.addEventListener('resize',placeSuggest); window.addEventListener('scroll',placeSuggest);
+
 function renderSuggest(q){
   if(!q){ $sug.style.display='none'; return; }
   const qq=q.trim().toLowerCase();
@@ -484,7 +415,7 @@ function renderSuggest(q){
   cand.forEach(x=>{
     const row=document.createElement('div'); row.className='row';
     row.innerHTML=`<b>${x.korean_name}</b> <span style="opacity:.7">(${x.market.replace('KRW-','')})</span>`;
-    row.onclick=()=>{ $q.value=x.korean_name; $sug.style.display='none'; ensureTempSparkCard(x.market); openUltra(x.market,null); };
+    row.onclick=()=>{ $q.value=x.korean_name; $sug.style.display='none'; ensureTempSparkCard(x.market); openUltra(x.market,null); setDeepLink(x.market); };
     $sug.appendChild(row);
   });
   placeSuggest();
@@ -492,18 +423,18 @@ function renderSuggest(q){
 }
 $q.addEventListener('input', debounce(e=>renderSuggest(e.target.value),120));
 document.addEventListener('click', e=>{ if(e.target!==$q && !$sug.contains(e.target)) $sug.style.display='none'; });
+
 async function doSearch(){
   const q=$q.value.trim(); if(!q) return;
   await loadMarkets();
   const market=resolveMarket(q);
   if(!market){ alert('코인을 찾을 수 없습니다. (한글/심볼/마켓코드로 검색)'); return; }
   ensureTempSparkCard(market);
+  setDeepLink(market);
   openUltra(market,null);
 }
 $btn.addEventListener('click', doSearch);
 $q.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
-// 키보드 숏컷: '/' 포커스
-window.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement!==$q){ e.preventDefault(); $q.focus(); } });
 
 function ensureTempSparkCard(market){
   const listEl=$('#sparkList');
@@ -517,36 +448,78 @@ function ensureTempSparkCard(market){
                  <div class="bar"><span style="width:0%"></span></div>
                  <div class="pillrow" style="justify-content:flex-end"><span class="pill">SPARK 0</span></div>`;
     row.appendChild(n); row.appendChild(r);
-    row.addEventListener('click',()=>openUltra(market,null));
+    row.addEventListener('click',()=>{ setDeepLink(market); openUltra(market,null); });
     listEl.prepend(row);
   }
 }
 
-/* ===== 주기적 자동 갱신 (No-Motion) ===== */
-let REF_TIMER=null, SPARK_TIMER=null, GLOBAL_TIMER=null;
-function startAutoRefresh(){
-  if(SPARK_TIMER) clearInterval(SPARK_TIMER);
-  if(REF_TIMER) clearInterval(REF_TIMER);
-  if(GLOBAL_TIMER) clearInterval(GLOBAL_TIMER);
+/* ===== 글로벌(미국증시 등): Worker 프록시 사용 + 폴백 ===== */
+function paintGlobal(idBase, v){
+  const num = $('#g_'+idBase), chg = $('#gc_'+idBase);
+  if(!num||!chg||!v) return;
+  num.textContent = isFinite(v.close) ? v.close.toLocaleString('en-US',{maximumFractionDigits:2}) : '-';
+  const sign = v.chg>0 ? 'up' : v.chg<0 ? 'down' : '';
+  chg.classList.remove('up','down'); if(sign) chg.classList.add(sign);
+  chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
+}
+async function loadGlobal(){
+  const panel = $('#globalPanel');
+  let data = null;
+  try{
+    const d = await fetch(`${API_BASE}/global?s=%5Endx,%5Espx,dxy,us10y`,{headers:{accept:'application/json'}}).then(r=>r.json());
+    if(d?.ok) data = d.data;
+  }catch(e){}
+  // 폴백: stooq
+  if(!data){
+    try{
+      const url = 'https://r.jina.ai/http://stooq.com/q/l/?s=%5Endx,%5Espx,dxy,us10y&f=sd2t2ohlcv&h&e=csv';
+      const text = await fetch(url).then(r=>r.text());
+      const lines = text.trim().split(/\r?\n/);
+      const out = {};
+      for(let i=1;i<lines.length;i++){
+        const c = lines[i].split(',');
+        const sym = c[0].toLowerCase();
+        const close = parseFloat(c[6]), open  = parseFloat(c[3]);
+        const chg   = (isFinite(close)&&isFinite(open)) ? ((close-open)/open*100) : 0;
+        out[sym] = { close, open, chg };
+      }
+      data = out;
+    }catch(e){}
+  }
+  if(!data){ panel.hidden=true; return; }
+  panel.hidden=false;
+  paintGlobal('ndx',  data['^ndx'] || data['ndx']);
+  paintGlobal('spx',  data['^spx'] || data['spx']);
+  paintGlobal('dxy',  data['dxy']);
+  paintGlobal('us10y',data['us10y']);
+}
 
-  SPARK_TIMER = setInterval(loadSpark, 5000);    // SPARK 5초
-  REF_TIMER   = setInterval(()=>{ if(CURRENT_MARKET) openUltra(CURRENT_MARKET, LAST_SIGNAL||null); }, 5000); // ULTRA 5초
-  GLOBAL_TIMER= setInterval(loadGlobal, 60000);  // 글로벌 60초
+/* ===== 딥링크(검색 파라미터/해시) ===== */
+function getDeepLink(){
+  const u = new URL(location.href);
+  return u.searchParams.get('m') || (location.hash||'').replace('#','') || null;
+}
+function setDeepLink(market){
+  const u = new URL(location.href);
+  u.searchParams.set('m', market);
+  history.replaceState(null,'',u.toString());
 }
 
 /* ===== 부팅 ===== */
 (async function boot(){
-  ping().catch(()=>{});
+  await ping().catch(()=>{});
   await loadGlobal().catch(()=>{});
-  await loadMarkets();
-  await loadSpark();
-  if(CURRENT_MARKET){
-    ensureTempSparkCard(CURRENT_MARKET);
-    openUltra(CURRENT_MARKET,null);
-  }else{
-    const first=document.querySelector('#sparkList .item'); if(first) first.click();
+  await loadMarkets().catch(()=>{});
+
+  await renderSpark();
+  startSparkAuto();
+
+  // 최초 선택: URL ?m=KRW-XXX 또는 #KRW-XXX → 해당 코인 오픈, 없으면 SPARK 1번
+  const deep = getDeepLink();
+  if(deep){ ensureTempSparkCard(deep); openUltra(deep,null); }
+  else{
+    const first=$('#sparkList .item'); if(first){ first.click(); }
   }
-  startAutoRefresh();
 })();
 </script>
 </body>
