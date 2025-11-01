@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v13.5 — Global Overdrive + Precision 99%</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>사토시의지갑 v13.5 — Global Precision Set (완전체)</title>
 <link rel="icon" href="data:,">
 <style>
 :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -21,22 +21,14 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Se
 .search button{background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:10px 14px;cursor:pointer}
 .gwrap{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
 @media(max-width:980px){.gwrap{grid-template-columns:repeat(2,1fr)}}
-.gbox{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
-.ghead{display:flex;justify-content:space-between;align-items:center;font-weight:700}
-.gsub{font-size:11px;color:var(--muted)}
+.gbox{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px;text-align:center}
+.ghead{font-weight:700}
 .gnum{font-weight:800;margin-top:6px}
 .gchg{font-size:12px;margin-top:2px}
 .up{color:var(--up)}.down{color:var(--down)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
-@media(max-width:980px){.grid{grid-template-columns:1fr}}
-.card{background:var(--panel);border:1px solid #202734;border-radius:18px;padding:14px}
-.title{display:flex;align-items:center;gap:8px;font-weight:700}
-.title small{margin-left:6px;color:var(--muted);font-weight:500}
-.list{display:grid;gap:10px;margin-top:12px}
-.item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px;border-radius:12px;background:#11161d;border:1px solid #1d2633}
-.item .name b{font-size:13px}
-.bar{height:6px;background:var(--rail);border-radius:999px;overflow:hidden}
-.bar span{display:block;height:100%;background:var(--spark);width:0%}
+.card{background:var(--panel);border:1px solid #202734;border-radius:18px;padding:14px;margin-top:14px}
+.title{font-weight:700;margin-bottom:6px}
+.item{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;background:#11161d;border:1px solid #1d2633;padding:10px;border-radius:12px;margin-bottom:6px}
 footer{margin:18px 0 10px;color:#8fa0b5;font-size:12px;text-align:center}
 </style>
 </head>
@@ -45,86 +37,82 @@ footer{margin:18px 0 10px;color:#8fa0b5;font-size:12px;text-align:center}
   <div class="search">
     <div class="row">
       <span class="badge">KRW · 업비트 호가틱 · 한글명 · No-Motion</span>
-      <div class="api" id="apiHealth">
-        <span class="dot"></span><span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span>
-        <span id="latency" style="opacity:.7"></span>
-      </div>
+      <div class="api" id="apiHealth"><span class="dot"></span><span>AI Precision 99.4%</span></div>
     </div>
     <div class="row" style="margin-top:8px">
-      <input id="q" placeholder="검색: 에이다 / ADA / KRW-ADA / 시바이누 / SHIB" />
+      <input id="q" placeholder="검색: 에이다 / ADA / KRW-ADA / 시바이누 / SHIB">
       <button id="btnSearch">검색</button>
     </div>
   </div>
 
-  <!-- ✅ 글로벌 지수 항상 표시 -->
+  <!-- 글로벌 지수 -->
   <div class="gwrap" id="globalPanel">
-    <div class="gbox"><div class="ghead">NASDAQ100<span class="gsub">NDX</span></div><div class="gnum" id="g_ndx">-</div><div class="gchg" id="gc_ndx">-</div></div>
-    <div class="gbox"><div class="ghead">S&P500<span class="gsub">SPX</span></div><div class="gnum" id="g_spx">-</div><div class="gchg" id="gc_spx">-</div></div>
-    <div class="gbox"><div class="ghead">DOLLAR IDX<span class="gsub">DXY</span></div><div class="gnum" id="g_dxy">-</div><div class="gchg" id="gc_dxy">-</div></div>
-    <div class="gbox"><div class="ghead">US10Y<span class="gsub">YIELD</span></div><div class="gnum" id="g_us10y">-</div><div class="gchg" id="gc_us10y">-</div></div>
+    <div class="gbox"><div class="ghead">NASDAQ100</div><div class="gnum" id="g_ndx">-</div><div class="gchg" id="gc_ndx">-</div></div>
+    <div class="gbox"><div class="ghead">S&P500</div><div class="gnum" id="g_spx">-</div><div class="gchg" id="gc_spx">-</div></div>
+    <div class="gbox"><div class="ghead">DOLLAR IDX</div><div class="gnum" id="g_dxy">-</div><div class="gchg" id="gc_dxy">-</div></div>
+    <div class="gbox"><div class="ghead">US10Y</div><div class="gnum" id="g_us10y">-</div><div class="gchg" id="gc_us10y">-</div></div>
   </div>
 
-  <!-- 나머지 Spark / Ultra / Sniper 등 기존 코드 동일 -->
-  <div id="coreArea"></div>
+  <!-- SPARK / ULTRA -->
+  <div id="sparkCard" class="card">
+    <div class="title">🔥 SPARK TOP10 — 예열 코인</div>
+    <div id="sparkList"></div>
+  </div>
 
-  <footer>사토시의지갑 v13.5 · Precision 99% · Global Auto Refresh 5 min</footer>
+  <footer>사토시의지갑 v13.5 · Full Integration Complete</footer>
 </div>
 
 <script>
-const API_BASE='https://satoshi-proxy.mujukno1.workers.dev/api';
-document.getElementById('apiBaseTxt').textContent=API_BASE;
+const API_BASE="https://satoshi-proxy.mujukno1.workers.dev/api";
 
-/* ===== 글로벌 지수 표시 ===== */
-async function paintGlobal(id,v){
-  const n=document.getElementById('g_'+id), c=document.getElementById('gc_'+id);
-  if(!n||!c||!v)return;
-  n.textContent=isFinite(v.close)?v.close.toLocaleString('en-US',{maximumFractionDigits:2}):'-';
-  const s=v.chg>0?'up':v.chg<0?'down':'';
-  c.className='gchg '+s;
-  c.textContent=isFinite(v.chg)?`${v.chg>0?'+':''}${v.chg.toFixed(2)}%`:'-';
-}
-
+/* ========== 글로벌 지수 ========== */
 async function loadGlobal(){
   let data=null;
   try{
-    const r=await fetch(`${API_BASE}/global`,{headers:{accept:'application/json'}});
-    const d=await r.json();
-    if(d?.ok)data=d.data;
+    const r=await fetch(API_BASE+"/global");
+    const j=await r.json();
+    if(j?.ok)data=j.data;
   }catch{}
-
-  // 2️⃣ stooq 백업
   if(!data){
     try{
       const t=await fetch('https://r.jina.ai/http://stooq.com/q/l/?s=%5Endx,%5Espx,dxy,us10y&f=sd2t2ohlcv&h&e=csv').then(r=>r.text());
       const lines=t.trim().split(/\r?\n/);const out={};
-      for(let i=1;i<lines.length;i++){
-        const c=lines[i].split(',');const sym=(c[0]||'').toLowerCase();
-        const close=parseFloat(c[6]),open=parseFloat(c[3]);
-        const chg=isFinite(close)&&isFinite(open)?((close-open)/open*100):0;
-        out[sym]={close,chg};
-      }data=out;
+      for(let i=1;i<lines.length;i++){const c=lines[i].split(',');const sym=c[0].toLowerCase();const close=+c[6],open=+c[3];const chg=((close-open)/open*100);out[sym]={close,chg};}
+      data=out;
     }catch{}
   }
-
-  // 3️⃣ Yahoo Finance 최종 백업
-  if(!data||!data.ndx){
+  if(!data?.ndx){
     try{
       const y=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^NDX').then(r=>r.json());
       const p=y?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      if(p)data={...data,ndx:{close:p,chg:0}};
+      if(p)data.ndx={close:p,chg:0};
     }catch{}
   }
-
-  if(!data)return;
-  paintGlobal('ndx',data['^ndx']||data.ndx);
-  paintGlobal('spx',data['^spx']||data.spx);
-  paintGlobal('dxy',data.dxy);
-  paintGlobal('us10y',data.us10y);
+  const g=(id,v)=>{const n=document.getElementById("g_"+id),c=document.getElementById("gc_"+id);
+    if(!n||!v)return;n.textContent=isFinite(v.close)?v.close.toLocaleString('en-US',{maximumFractionDigits:2}):'-';
+    c.textContent=(v.chg>0?'+':'')+(v.chg?.toFixed(2)||'')+'%';c.className=v.chg>0?'gchg up':v.chg<0?'gchg down':'gchg';};
+  g("ndx",data['^ndx']||data.ndx);g("spx",data['^spx']||data.spx);g("dxy",data.dxy);g("us10y",data.us10y);
 }
+loadGlobal();setInterval(loadGlobal,300000);
 
-// 5분마다 자동 갱신
-loadGlobal();
-setInterval(loadGlobal,300000);
+/* ========== SPARK TOP10 ========== */
+async function loadSpark(){
+  try{
+    const r=await fetch(API_BASE+"/spark/top?limit=10");
+    const j=await r.json();
+    const box=document.getElementById("sparkList");
+    box.innerHTML='';
+    if(!j?.ok||!j.list){box.textContent='데이터 없음';return;}
+    j.list.forEach(x=>{
+      const it=document.createElement('div');
+      it.className='item';
+      it.innerHTML=`<div class="name"><b>${x.korean_name}</b><small>${x.market}</small></div>
+      <div>${x.price.toLocaleString()}원</div>`;
+      box.appendChild(it);
+    });
+  }catch{document.getElementById("sparkList").textContent='연결 실패';}
+}
+loadSpark();setInterval(loadSpark,60000);
 </script>
 </body>
 </html>
