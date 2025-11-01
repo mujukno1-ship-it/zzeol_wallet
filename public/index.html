@@ -1,233 +1,170 @@
-<!-- index.html -->
 <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v13.0 — Learning Dashboard + Multi-Timeframe BuyZone</title>
+<title>사토시의지갑 — Stable API One-Shot</title>
 <link rel="icon" href="data:,">
 <style>
-/* (여기에 이전에 사용하신 스타일 그대로 붙였습니다) */
-/* 루트 스타일: 배경/폰트/컴포넌트 등 — No-Motion 규칙 포함 */
-:root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
-.wrap{max-width:1200px;margin:24px auto;padding:0 16px}
-.badge{background:#19202a;color:#9bc3ff;border:1px solid #2a3950;border-radius:10px;padding:4px 8px;font-size:12px}
-.api{margin-left:auto;font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
-.api .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#888}
-.api.ok .dot{background:#1ec996}
-.api.fail .dot{background:#ff5b6b}
-.search{position:sticky;top:0;background:linear-gradient(180deg,rgba(15,18,24,.95),rgba(15,18,24,.75));padding:10px 0 12px;z-index:5;backdrop-filter:saturate(1.2) blur(2px)}
-.search .row{display:flex;gap:8px;align-items:center}
-.search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none}
-.search button{background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:10px 14px;cursor:pointer}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
-@media (max-width:980px){.grid{grid-template-columns:1fr}}
-.card{background:var(--panel);border:1px solid #202734;border-radius:18px;padding:14px}
-.title{display:flex;align-items:center;gap:8px;font-weight:700}
-.title small{margin-left:6px;color:var(--muted);font-weight:500}
-.list{display:grid;gap:10px;margin-top:12px}
-.item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px;border-radius:12px;background:#11161d;border:1px solid #1d2633}
-.item .name{display:flex;flex-direction:column}
-.item .name b{font-size:13px}
-.bar{height:6px;background:var(--rail);border-radius:999px;overflow:hidden}
-.bar span{display:block;height:100%;background:var(--spark);width:0%}
-.pillrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.pill{padding:3px 8px;border-radius:999px;background:var(--chip);border:1px solid #273041;font-size:12px;color:#c8d3e2}
-.pill.badge{background:#121820}
-.ultra{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
-.box{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px;min-height:58px}
-.k{color:var(--muted);font-size:12px}
-.v{font-weight:700;margin-top:2px}
-.note{margin-top:10px;background:#10151c;border:1px dashed #2a3340;border-radius:12px;padding:10px;font-size:13px;color:#dbe8ff}
-footer{margin:18px 0 10px;color:#8fa0b5;font-size:12px;text-align:center}
-.reserve{min-height:320px;display:flex;align-items:center;justify-content:center;color:#6e7a8a}
-#suggest{position:absolute;z-index:9999;background:#111;border:1px solid #333;border-radius:8px;padding:6px 0;display:none}
-#suggest .row{padding:8px 12px;cursor:pointer}
-#suggest .row:hover{background:#1f2937}
-.warn{margin-top:8px;color:#ffb8c0;font-size:12px;display:none}
-.gwrap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
-@media (max-width:980px){.gwrap{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.gbox{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
-.ghead{display:flex;justify-content:space-between;align-items:center;font-weight:700}
-.gsub{font-size:11px;color:var(--muted)}
-.gnum{font-weight:800;margin-top:6px}
-.gchg{font-size:12px;margin-top:2px}
-.up{color:var(--up)} .down{color:var(--down)}
-.sniperGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
-@media (max-width:980px){.sniperGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.snline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.btn{cursor:pointer;background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:8px 10px}
-.buyzones{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.bz{padding:8px 12px;border-radius:999px;background:#0e1620;border:1px solid #243043;color:#cfeeff;font-weight:700;cursor:pointer}
-.bz .sub{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:4px}
-.bz.good{background:linear-gradient(90deg,#062b1f,#093430);border-color:#1ec996}
-.bz.warn{background:linear-gradient(90deg,#2b0a0a,#3a0f0f);border-color:#ff5b6b}
-.popup{position:fixed;right:20px;bottom:20px;background:#0f1317;border:1px solid #222c36;padding:12px;border-radius:12px;min-width:260px;box-shadow:0 6px 24px rgba(0,0,0,0.6);display:none;z-index:9999}
-.popup h4{margin:0 0 6px 0;font-size:14px}
-.popup p{margin:0;font-size:13px;color:var(--muted)}
-.learn{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
-@media (max-width:980px){.learn{grid-template-columns:1fr}}
-.gauge{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px;display:flex;gap:12px;align-items:center}
-.gauge svg{width:80px;height:80px}
-.gauge .meta{display:flex;flex-direction:column}
-.gauge .meta .h{font-weight:800}
-.gauge .meta .s{font-size:12px;color:var(--muted)}
-.sparkline{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
-.sparkline svg{width:100%;height:80px}
+  :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;
+        --up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
+  *{box-sizing:border-box} html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
+  .wrap{max-width:1180px;margin:24px auto;padding:0 16px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .panel{background:var(--panel);border:1px solid #1f2530;border-radius:14px;padding:12px 14px}
+  .title{font-weight:700;margin:0 0 8px}
+  .muted{color:var(--muted)}
+  .api{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-bottom:8px}
+  .api .dot{width:8px;height:8px;border-radius:50%;background:#888}
+  .api.ok .dot{background:var(--up)} .api.fail .dot{background:var(--down)}
+  .chip{display:inline-flex;gap:6px;background:var(--chip);border-radius:999px;padding:4px 10px;font-size:12px;color:#b9c2d0}
+  code{background:#0b0e13;border:1px solid #222939;border-radius:8px;padding:2px 6px}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .item{display:flex;align-items:center;justify-content:space-between;background:#121722;border:1px solid #1e2634;border-radius:10px;padding:10px}
+  .item b{font-weight:700}
+  .err{white-space:pre-wrap;color:#ffd5d8}
+  input,button{background:#0e141d;border:1px solid #263244;border-radius:10px;color:var(--text);padding:10px 12px}
+  button{cursor:pointer}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="search">
-    <div class="row">
-      <span class="badge">KRW · 업비트 호가틱 · 한글명 · No-Motion</span>
-      <div class="api" id="apiHealth">
-        <span class="dot"></span>
-        <span id="apiBaseTxt">/api</span>
-        <span id="latency" style="opacity:.7"></span>
+  <div class="api" id="apiStat"><span class="chip">API <span id="apiBaseTxt"></span></span><span class="dot"></span></div>
+  <h1 style="margin:6px 0 18px">사토시의지갑 — 연결 확인판</h1>
+
+  <div class="panel">
+    <div class="grid2">
+      <div>
+        <div class="title">API 주소</div>
+        <div class="list">
+          <label>API_BASE
+            <input id="apiBase" placeholder="예: https://satoshi-proxy.mujukno1.workers.dev" />
+          </label>
+          <div>
+            <button id="btnSave">저장</button>
+            <button id="btnPing">헬스체크</button>
+            <span class="muted">저장하면 localStorage에 보관</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="title">빠른 테스트</div>
+        <div class="list">
+          <div class="item"><span>UPBIT/마켓</span><button id="btnMk">/api/upbit/markets</button></div>
+          <div class="item"><span>캔들 KRW-SOL (m1)</span><button id="btnC">/api/upbit/candles</button></div>
+          <div class="item"><span>티커 KRW-SOL</span><button id="btnT">/api/ticker</button></div>
+          <div class="item"><span>SPARK TOP10</span><button id="btnS">/api/spark</button></div>
+          <div class="item"><span>ULTRA KRW-SOL</span><button id="btnU">/api/ultra</button></div>
+        </div>
       </div>
     </div>
-    <div class="row" style="margin-top:8px">
-      <input id="q" placeholder="검색: 한글명 / 심볼 / 마켓코드 (예: 에이다, ADA, KRW-ADA, 시바이누, SHIB, KRW-SHIB)" />
-      <button id="btnSearch">검색</button>
-    </div>
-    <div class="warn" id="apiWarn">API 연결이 원활하지 않습니다. 새로고침하거나 잠시 후 다시 시도하세요.</div>
-
-    <div class="gwrap" id="globalPanel" hidden>
-      <div class="gbox"><div class="ghead">NASDAQ 100<span class="gsub">NDX</span></div><div class="gnum" id="g_ndx">-</div><div class="gchg" id="gc_ndx">-</div></div>
-      <div class="gbox"><div class="ghead">S&P 500<span class="gsub">SPX</span></div><div class="gnum" id="g_spx">-</div><div class="gchg" id="gc_spx">-</div></div>
-      <div class="gbox"><div class="ghead">Dollar Index<span class="gsub">DXY</span></div><div class="gnum" id="g_dxy">-</div><div class="gchg" id="gc_dxy">-</div></div>
-      <div class="gbox"><div class="ghead">US 10Y<span class="gsub">Yield</span></div><div class="gnum" id="g_us10y">-</div><div class="gchg" id="gc_us10y">-</div></div>
+    <div style="margin-top:12px">
+      <div class="title">응답</div>
+      <pre id="out" class="panel err" style="overflow:auto;max-height:320px"></pre>
     </div>
   </div>
 
-  <div class="grid">
-    <!-- SPARK -->
-    <section class="card" id="sparkCard">
-      <div class="title">SPARK TOP10 — 급등 전 예열코인 🔥 <small>(고정)</small></div>
-      <div class="pillrow" style="margin-top:8px">
-        <span class="pill badge">예열 조건: RVOL≥1.8 · TBR≥0.60 · OBI≥+0.15 · 최근5분 변동률≥+1.5% (4개 이상 충족 시 확정)</span>
-      </div>
-      <div id="sparkList" class="list"></div>
-      <div id="sparkEmpty" class="reserve" hidden>예열 코인을 탐색중…</div>
-    </section>
-
-    <!-- ULTRA -->
-    <section class="card">
-      <div class="title" id="ultraTitle">ULTRA 시그널 — 선택된 코인</div>
-
-      <div class="ultra">
-        <div class="box"><div class="k">현재가</div><div class="v" id="v_price">-</div></div>
-        <div class="box"><div class="k">매수 (BUY1)</div><div class="v" id="v_buy1">-</div></div>
-        <div class="box"><div class="k">추가매수 (BUY2)</div><div class="v" id="v_buy2">-</div></div>
-        <div class="box"><div class="k">익절 1 (TP1)</div><div class="v" id="v_tp1">-</div></div>
-        <div class="box"><div class="k">익절 2 (TP2)</div><div class="v" id="v_tp2">-</div></div>
-        <div class="box"><div class="k">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
-      </div>
-
-      <div class="ultra" style="margin-top:6px">
-        <div class="box"><div class="k">예상 고점 1</div><div class="v" id="v_hi1">-</div></div>
-        <div class="box"><div class="k">예상 고점 2</div><div class="v" id="v_hi2">-</div></div>
-        <div class="box"><div class="k">예상 저점 1</div><div class="v" id="v_lo1">-</div></div>
-        <div class="box"><div class="k">되돌림 목표</div><div class="v" id="v_retr">-</div></div>
-        <div class="box"><div class="k">되돌림 후 매도 1</div><div class="v" id="v_rs1">-</div></div>
-        <div class="box"><div class="k">되돌림 후 매도 2</div><div class="v" id="v_rs2">-</div></div>
-      </div>
-
-      <!-- Learning Dashboard -->
-      <div class="title" style="margin-top:12px">AI 학습 대시보드</div>
-      <div class="learn">
-        <div class="gauge">
-          <svg viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="50" stroke="#243043" stroke-width="14" fill="none"/>
-            <circle id="gPrec" cx="60" cy="60" r="50" stroke="#1ec996" stroke-width="14" fill="none" stroke-linecap="round" transform="rotate(-90 60 60)" stroke-dasharray="314" stroke-dashoffset="314"/>
-            <text id="tPrec" x="60" y="66" text-anchor="middle" font-size="20" fill="#e7eef8">-</text>
-          </svg>
-          <div class="meta">
-            <div class="h">정확도(Precision)</div>
-            <div class="s">실시간 ±0.3% 보정 · 학습 반영</div>
-          </div>
-        </div>
-        <div class="gauge">
-          <svg viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="50" stroke="#243043" stroke-width="14" fill="none"/>
-            <circle id="gConf" cx="60" cy="60" r="50" stroke="#5ac8fa" stroke-width="14" fill="none" stroke-linecap="round" transform="rotate(-90 60 60)" stroke-dasharray="314" stroke-dashoffset="314"/>
-            <text id="tConf" x="60" y="66" text-anchor="middle" font-size="20" fill="#e7eef8">-</text>
-          </svg>
-          <div class="meta">
-            <div class="h">신뢰도(Confidence)</div>
-            <div class="s">Sniper / 변동성 / 체결강도 종합</div>
-          </div>
-        </div>
-        <div class="sparkline">
-          <div class="k" style="margin-bottom:6px">정확도 추세(최근)</div>
-          <svg id="precSpark" viewBox="0 0 300 80" preserveAspectRatio="none">
-            <polyline id="precLine" fill="none" stroke="#1ec996" stroke-width="2" points=""/>
-          </svg>
-          <div class="pillrow" style="margin-top:6px">
-            <span class="pill badge">샘플 <b id="precCount">0</b></span>
-            <span class="pill badge">최근평균 <b id="precAvg">-</b></span>
-            <span class="pill badge">학습률 η=<b id="precEta">0.85</b></span>
-          </div>
-        </div>
-      </div>
-
-      <!-- buyzone -->
-      <div id="buyZoneArea" style="margin-top:12px">
-        <div class="k">매수타점 (Multi-Timeframe)</div>
-        <div class="buyzones" id="buyzones"></div>
-      </div>
-
-      <div class="pillrow" style="margin-top:10px">
-        <span class="pill badge">예열강도 <b id="chip_heat">0</b></span>
-        <span class="pill badge">상승확률 <b id="chip_prob">0%</b></span>
-        <span class="pill badge">예상상승률 <b id="chip_gain">+0%</b></span>
-        <span class="pill badge">정확도 <b id="chip_prec">-</b></span>
-        <span class="pill badge">위험도 <b id="chip_risk">-</b></span>
-        <span class="pill badge">되돌림 <b id="chip_pull">-</b></span>
-        <span class="pill badge">당일 고점 <b id="chip_DH">-</b></span>
-        <span class="pill badge">당일 저점 <b id="chip_DL">-</b></span>
-      </div>
-
-      <div class="pillrow" style="margin-top:6px">
-        <span class="pill badge">MTF 모드 <b id="chip_mtf_mode">-</b></span>
-        <span class="pill badge">MTF 점수 <b id="chip_mtf_score">0</b></span>
-        <span class="pill badge">보정량 <b id="chip_adj">±0.0%</b></span>
-      </div>
-
-      <div class="note" id="z_msg">코인을 선택하면 쩔어한마디가 표시됩니다.</div>
-
-      <!-- Sniper -->
-      <div class="title" style="margin-top:12px">Sniper 바닥·천장 포착 (AI)</div>
-      <div class="sniperGrid">
-        <div class="box"><div class="k">AI 예상 바닥 (ai_low)</div><div class="v" id="sn_low">-</div></div>
-        <div class="box"><div class="k">AI 예상 천장 (ai_high)</div><div class="v" id="sn_high">-</div></div>
-        <div class="box"><div class="k">신뢰도 (Confidence)</div><div class="v" id="sn_conf">-</div></div>
-      </div>
-      <div class="snline" style="margin-top:8px">
-        <button class="btn" id="btnSniper">/sniper/point 갱신</button>
-        <button class="btn" id="btnCopyLevels">레벨 복사</button>
-        <span class="pill badge" id="sn_reason_low">-</span>
-        <span class="pill badge" id="sn_reason_high">-</span>
-      </div>
-    </section>
+  <div class="row" style="margin-top:16px">
+    <div class="panel">
+      <div class="title">SPARK 예열 TOP (샘플)</div>
+      <div id="sparkBox" class="list"></div>
+    </div>
+    <div class="panel">
+      <div class="title">ULTRA 시그널 (샘플)</div>
+      <div id="ultraBox" class="list"></div>
+    </div>
   </div>
-
-  <footer>사토시의지갑 v13.0 · Learning Dashboard · Multi-Timeframe BuyZone · Precision Boost Extended · No-Motion</footer>
 </div>
 
-<div id="suggest"></div>
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  const out = $("#out");
+  const apiStat = $("#apiStat");
+  const apiBaseTxt = $("#apiBaseTxt");
 
-<!-- 팝업 -->
-<div class="popup" id="bzPopup">
-  <h4 id="bzTitle">-</h4>
-  <p id="bzText">-</p>
-</div>
+  let API_BASE = localStorage.getItem("API_BASE") || autodetect();
+  $("#apiBase").value = API_BASE;
+  apiBaseTxt.textContent = API_BASE;
 
-<!-- 외부 스크립트 분리: main.js -->
-<script src="./main.js" type="module"></script>
+  function autodetect(){
+    // 데모/로컬에서 바로 열면 상대경로 방지용
+    // 실제 배포 시 명시 저장 권장
+    return "https://satoshi-proxy.mujukno1.workers.dev";
+  }
+  function setOk(ok){
+    apiStat.classList.toggle("ok", ok);
+    apiStat.classList.toggle("fail", !ok);
+  }
+  function print(o){ out.textContent = typeof o==="string" ? o : JSON.stringify(o, null, 2); }
+
+  async function jget(path){
+    const u = API_BASE.replace(/\/+$/,'') + path + (path.includes("?")?"&":"?") + "_t=" + Date.now();
+    const r = await fetch(u, { headers:{ "Accept":"application/json" } });
+    const txt = await r.text().catch(()=> "");
+    let data = null;
+    try{ data = JSON.parse(txt); }catch{ data = { raw: txt }; }
+    if (!r.ok) throw { status:r.status, data };
+    return data;
+  }
+
+  // 저장/헬스체크
+  $("#btnSave").onclick = () => {
+    const v = $("#apiBase").value.trim();
+    if (v) { API_BASE = v; localStorage.setItem("API_BASE", v); apiBaseTxt.textContent = v; print("저장됨: "+v); }
+  };
+  $("#btnPing").onclick = async () => {
+    try{
+      const a = await jget("/");
+      setOk(!!a.ok);
+      print(a);
+    }catch(e){ setOk(false); print(e); }
+  };
+
+  // Quick buttons
+  $("#btnMk").onclick = async()=>{ try{ print(await jget("/api/upbit/markets")); }catch(e){ print(e); } };
+  $("#btnC").onclick = async()=>{ try{ print(await jget("/api/upbit/candles?market=KRW-SOL&tf=m1&limit=120")); }catch(e){ print(e); } };
+  $("#btnT").onclick = async()=>{ try{ print(await jget("/api/ticker?market=KRW-SOL")); }catch(e){ print(e); } };
+  $("#btnS").onclick = async()=>{ try{ const r=await jget("/api/spark?limit=10"); print(r); drawSpark(r.items||[]);}catch(e){ print(e);} };
+  $("#btnU").onclick = async()=>{ try{ const r=await jget("/api/ultra?market=KRW-SOL&limit=180"); print(r); drawUltra(r);}catch(e){ print(e);} };
+
+  function drawSpark(items){
+    const box = $("#sparkBox"); box.innerHTML="";
+    (items||[]).forEach(x=>{
+      const el = document.createElement("div"); el.className="item";
+      el.innerHTML = `<b>${x.korean_name || x.market}</b>
+        <span class="chip">변동률 ${x.changePct}%</span>
+        <span class="chip">RVOL ${x.rvol}</span>
+        <span class="chip">Score ${x.score}</span>`;
+      box.appendChild(el);
+    });
+  }
+  function drawUltra(r){
+    const box = $("#ultraBox"); box.innerHTML="";
+    if (!r || !r.ok) { box.textContent="데이터 없음"; return; }
+    const {market, price, confidence, rvol, tbr, atrPct, levels} = r;
+    const el = document.createElement("div"); el.className="item";
+    el.innerHTML = `<div>
+      <b>${market}</b>
+      <div class="muted">가격 ${fmt(price)} · Conf ${confidence} · RVOL ${rvol} · TBR ${tbr} · ATR% ${(atrPct*100).toFixed(2)}%</div>
+    </div>
+    <div>
+      <span class="chip">BUY1 ${fmt(levels.BUY1)}</span>
+      <span class="chip">TP1 ${fmt(levels.TP1)}</span>
+      <span class="chip">TP2 ${fmt(levels.TP2)}</span>
+      <span class="chip">SL ${fmt(levels.SL)}</span>
+    </div>`;
+    box.appendChild(el);
+  }
+  function fmt(n){ return (n==null ? "-" : new Intl.NumberFormat("ko-KR").format(n)); }
+
+  // 첫 로드에 ping
+  (async () => {
+    try{ const a = await jget("/"); setOk(!!a.ok); }catch{ setOk(false); }
+  })();
+})();
+</script>
 </body>
 </html>
