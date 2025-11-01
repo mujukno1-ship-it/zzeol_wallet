@@ -1,214 +1,170 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<title>사토시의지갑 — 대시보드 v12.2</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  :root { --bg:#0f1115; --panel:#171a21; --muted:#9aa4b2; --text:#e6edf3; --acc:#01d1a2; --chip:#222735; }
-  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto}
-  .wrap{max-width:1180px;margin:24px auto;padding:0 16px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .card{background:var(--panel);border-radius:12px;padding:16px;box-shadow:0 0 0 1px #101318 inset}
-  h2{margin:0 0 12px 0;font-size:16px}
-  .muted{color:var(--muted)}
-  .topbar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-  input,button{background:#0d1016;border:1px solid #202636;color:var(--text);padding:10px 12px;border-radius:10px}
-  button{cursor:pointer}
-  .list{display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto;padding-right:4px}
-  .item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;background:#10141c;cursor:pointer;border:1px solid #151a25}
-  .item:hover{background:#121824}
-  .col{display:flex;flex-direction:column}
-  .name{font-weight:600}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .chip{background:var(--chip);color:#cbd5e1;padding:4px 8px;border-radius:999px;font-size:12px}
-  .ok{color:#16c784} .bad{color:#ff5252}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .kv{background:#10141c;padding:10px;border:1px solid #151a25;border-radius:10px;min-height:52px}
-  .kv .k{font-size:12px;color:#9aa4b2}
-  .kv .v{font-size:16px;margin-top:2px}
-  .small{font-size:12px}
-  .foot{margin-top:10px;color:#9aa4b2}
-  .api{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-  .pill{background:#0e1320;border:1px solid #1b2232;border-radius:999px;padding:4px 8px;font-size:12px}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>사토시의지갑 — 대시보드 (한방버전)</title>
+  <style>
+    :root{
+      --bg:#0c0f14; --panel:#12161d; --card:#161b24; --muted:#778; --txt:#e8ecf1; --ok:#2bd576; --bad:#ff5d6c; --chip:#1f2531;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto}
+    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
+    h1{font-size:18px;margin:0 0 16px}
+    .bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+    input[type=text]{background:var(--panel);border:1px solid #222a36;border-radius:10px;color:var(--txt);padding:10px 12px;width:100%}
+    .btn{background:#1e293b;border:0;color:#dbe4ee;padding:10px 14px;border-radius:10px;cursor:pointer}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:var(--card);border:1px solid #1c2330;border-radius:14px;padding:12px}
+    .title{display:flex;justify-content:space-between;font-weight:600;margin-bottom:10px}
+    .muted{color:var(--muted);font-size:12px}
+    .list{display:flex;flex-direction:column;gap:8px;max-height:540px;overflow:auto}
+    .row{display:flex;justify-content:space-between;gap:8px;background:var(--chip);border:1px solid #263044;border-radius:10px;padding:10px;cursor:pointer}
+    .row:hover{outline:1px solid #2a3a55}
+    .ok{color:var(--ok)} .bad{color:var(--bad)}
+    .kv{display:grid;grid-template-columns:140px 1fr;gap:6px;margin-top:6px}
+    .chip{background:#0e1320;border:1px solid #2a3550;border-radius:10px;padding:8px 10px;margin-top:6px;display:inline-block}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="api">
-    <span class="pill">API</span>
-    <input id="apiBase" placeholder="https://satoshi-proxy.mujukno1.workers.dev/api" style="min-width:380px">
-    <button id="save">저장</button>
-    <span id="apiDot" class="pill" style="color:#aaa">•</span>
-    <input id="search" placeholder="KRW-SHIB, 에이다, 시바이누…" style="flex:1">
-    <button id="btnFind">검색</button>
-  </div>
+  <div class="wrap">
+    <h1>사토시의지갑 — 대시보드</h1>
 
-  <div class="row">
-    <div class="card">
-      <h2>🔥 SPARK TOP10 — 급등 전 예열코인 <span class="muted small">(자동 30초 새로고침)</span></h2>
-      <div id="spark" class="list"></div>
+    <div class="bar">
+      <input id="api" type="text" placeholder="API 베이스 (예: https://satoshi-proxy.xxx.workers.dev/api)" />
+      <button id="save" class="btn">저장</button>
+      <input id="q" type="text" placeholder="KRW-SHIB, 에이다, 시바이누…" />
+      <button id="find" class="btn">검색</button>
     </div>
 
-    <div class="card">
-      <h2>⚡ ULTRA 시그널 — 선택된 코인</h2>
-      <div class="chips" id="metaChips"></div>
-      <div class="grid2" style="margin-top:8px">
-        <div class="kv"><div class="k">현재가</div><div class="v" id="price">-</div></div>
-        <div class="kv"><div class="k">변동률</div><div class="v" id="chg">-</div></div>
-        <div class="kv"><div class="k">매수(BUY1)</div><div class="v" id="buy1">-</div></div>
-        <div class="kv"><div class="k">익절 1 (TP1)</div><div class="v" id="tp1">-</div></div>
-        <div class="kv"><div class="k">익절 2 (TP2)</div><div class="v" id="tp2">-</div></div>
-        <div class="kv"><div class="k">손절 (SL)</div><div class="v" id="sl">-</div></div>
-        <div class="kv"><div class="k">예상 저점 1</div><div class="v" id="low1">-</div></div>
-        <div class="kv"><div class="k">예상 고점 1</div><div class="v" id="high1">-</div></div>
+    <div class="grid">
+      <div class="card">
+        <div class="title"><div>🔥 SPARK TOP10 — 급등 전 예열코인</div><div class="muted">자동 30초 새로고침</div></div>
+        <div id="sparkErr" class="muted" style="display:none"></div>
+        <div id="spark" class="list"></div>
       </div>
-      <div class="foot small" id="foot">코인을 선택하거나 검색하면 쩔어한마디가 표시됩니다.</div>
-    </div>
-  </div>
-</div>
 
-<script>
-const ls = localStorage;
-const $ = (q) => document.querySelector(q);
-const apiInput = $('#apiBase');
-const apiDot = $('#apiDot');
-const sparkEl = $('#spark');
-const searchEl = $('#search');
-
-// --- 업비트 KRW 틱 반올림 (저가코인 완벽 대응) ---
-function tickRoundKRW(p){
-  p = Number(p||0);
-  if (p >= 2000000) return Math.round(p/1000)*1000;
-  if (p >= 1000000) return Math.round(p/500)*500;
-  if (p >= 500000)  return Math.round(p/100)*100;
-  if (p >= 100000)  return Math.round(p/50)*50;
-  if (p >= 10000)   return Math.round(p/10)*10;
-  if (p >= 1000)    return Math.round(p/5)*5;
-  if (p >= 100)     return Math.round(p/1)*1;
-  if (p >= 10)      return Math.round(p/0.1)*0.1;
-  if (p >= 1)       return Math.round(p/0.01)*0.01;
-  if (p >= 0.1)     return Math.round(p/0.001)*0.001; // SHIB 등
-  return Math.round(p/0.0001)*0.0001;
-}
-const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR') : n);
-
-// --- API BASE ---
-function base() {
-  return (ls.getItem('API_BASE') || apiInput.placeholder).replace(/\/+$/,'');
-}
-function setDot(ok){ apiDot.textContent = ok ? '●' : '●'; apiDot.style.color = ok ? '#19c37d' : '#ff6a6a'; }
-
-$('#save').onclick = async () => {
-  ls.setItem('API_BASE', apiInput.value.trim());
-  await ping();
-};
-async function ping(){
-  try{
-    const r = await fetch(base().replace(/\/api$/,'/api') || base()+"/api");
-    setDot(r.ok);
-  }catch(e){ setDot(false); }
-}
-(function init(){
-  apiInput.value = ls.getItem('API_BASE') || apiInput.placeholder;
-  ping();
-})();
-
-// --- SPARK ---
-async function fetchSpark(){
-  try{
-    const r = await fetch(`${base()}/spark?limit=10`, { cache: 'no-store' });
-    const j = await r.json();
-    if (!j.ok) throw 0;
-    renderSpark(j.items || []);
-  }catch(e){
-    sparkEl.innerHTML = `<div class="muted">SPARK 불러오기 실패</div>`;
-  }
-}
-function renderSpark(items){
-  sparkEl.innerHTML = '';
-  items.forEach(it=>{
-    const el = document.createElement('div');
-    el.className = 'item';
-    el.innerHTML = `
-      <div class="col">
-        <div class="name">${it.korean_name || it.market.replace('KRW-','')}</div>
-        <div class="muted small">${it.market}</div>
-      </div>
-      <div class="col" style="align-items:end">
-        <div class="${it.changePct>=0?'ok':'bad'}">${(it.changePct>=0?'+':'')+it.changePct.toFixed(2)}%</div>
-        <div class="chips">
-          <span class="chip">RVOL ${fmt(it.rvol)}</span>
-          <span class="chip">SCORE ${fmt(it.score.toFixed(2))}</span>
+      <div class="card">
+        <div class="title"><div>⚡ ULTRA 시그널 — 선택된 코인</div><div class="muted" id="sel"></div></div>
+        <div id="ultraErr" class="muted" style="display:none"></div>
+        <div class="kv">
+          <div class="muted">현재가</div><div id="price" class="mono">-</div>
+          <div class="muted">변동률</div><div id="chg" class="mono">-</div>
+          <div class="muted">매수(BUY1)</div><div id="buy1" class="mono">-</div>
+          <div class="muted">익절1 (TP1)</div><div id="tp1" class="mono">-</div>
+          <div class="muted">익절2 (TP2)</div><div id="tp2" class="mono">-</div>
+          <div class="muted">손절 (SL)</div><div id="sl" class="mono">-</div>
+          <div class="muted">ATR / ATR%</div><div id="atr" class="mono">-</div>
         </div>
-      </div>`;
-    el.onclick = ()=> loadUltra(it.market);
-    sparkEl.appendChild(el);
-  });
-}
+        <div id="mode" class="chip mono">mode: -</div>
+      </div>
+    </div>
+  </div>
 
-// --- 검색 ---
-$('#btnFind').onclick = doFind;
-searchEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doFind(); });
-async function doFind(){
-  let q = searchEl.value.trim();
-  if (!q) return;
-  // KRW-XXX 형태가 아니면 KRW- 접두 자동 보정 (영/한 모두 허용)
-  if (!/^KRW-[A-Z0-9]+$/i.test(q)) {
-    // 이미 KRW-한글은 업비트에 없음 → 단순히 KRW- 대문자 영문 심볼만 빠르게 처리
-    q = q.toUpperCase().startsWith('KRW-') ? q.toUpperCase() : ('KRW-' + q.toUpperCase());
-  }
-  await loadUltra(q);
-}
+  <script>
+    const $ = (id)=>document.getElementById(id);
+    const state = { base:"", sel:null, timer:null };
 
-// --- ULTRA 표시 ---
-async function loadUltra(market){
-  setFoot('분석 중…');
-  try{
-    const r = await fetch(`${base()}/ultra?market=${encodeURIComponent(market)}&limit=120`, { cache:'no-store' });
-    const j = await r.json();
-    if (!j.ok) throw 0;
+    function loadBase(){
+      const v = localStorage.getItem("API_BASE") || "";
+      $("api").value = v;
+      state.base = v;
+    }
+    function saveBase(){
+      const v = $("api").value.trim().replace(/\/+$/,""); // 끝 슬래시 제거
+      localStorage.setItem("API_BASE", v);
+      state.base = v;
+    }
+    $("save").onclick = ()=>{ saveBase(); boot(); };
 
-    $('#price').textContent = fmt(j.priceTick ?? tickRoundKRW(j.price));
-    // 변화율은 ticker로 보강
-    const t = await (await fetch(`${base()}/ticker?market=${encodeURIComponent(market)}`, { cache:'no-store' })).json();
-    const cp = t?.changePct ?? 0;
-    $('#chg').innerHTML = `<span class="${cp>=0?'ok':'bad'}">${(cp>=0?'+':'')+cp.toFixed(2)}%</span>`;
+    function fmtKRW(n){
+      if(n==null || isNaN(n)) return "-";
+      return Number(n).toLocaleString("ko-KR",{maximumFractionDigits:4});
+    }
+    function pct(n){ return (n>0? "+" : "") + n.toFixed(2) + "%"; }
 
-    $('#buy1').textContent = fmt(j.buy1);
-    $('#tp1').textContent = fmt(j.tp1);
-    $('#tp2').textContent = fmt(j.tp2);
-    $('#sl').textContent  = fmt(j.sl);
+    async function api(path){
+      if(!state.base){ throw new Error("API_BASE 미설정"); }
+      const url = state.base + (path.startsWith("/")?"":"/") + path;
+      const res = await fetch(url, {mode:"cors"});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const j = await res.json();
+      if(!j.ok) throw new Error(j.msg || "API 오류");
+      return j;
+    }
 
-    // 보조 표기
-    $('#high1').textContent = fmt(tickRoundKRW((j.price||0) * 1.03));
-    $('#low1').textContent  = fmt(tickRoundKRW((j.price||0) * 0.97));
+    async function drawSpark(){
+      try{
+        $("sparkErr").style.display="none";
+        const j = await api("/spark?limit=10");
+        const box = $("spark");
+        box.innerHTML = "";
+        j.items.forEach((it)=>{
+          const row = document.createElement("div");
+          row.className = "row";
+          row.innerHTML = `
+            <div><b>${it.korean_name}</b> <span class="muted mono">${it.market}</span></div>
+            <div class="mono">${it.score.toFixed(2)} · <span class="${it.changePct>=0?"ok":"bad"}">${pct(it.changePct)}</span> · RVOL ${it.rvol.toFixed(2)}</div>
+          `;
+          row.onclick = ()=>loadUltra(it.market);
+          box.appendChild(row);
+        });
+      }catch(e){
+        $("sparkErr").textContent = "SPARK 불러오기 실패: " + e.message;
+        $("sparkErr").style.display="block";
+      }
+    }
 
-    renderMeta(market, j.mode, j.atr, j.atrPct);
-    setFoot(`쩔어한마디: 모드=${j.mode} · ATR=${j.atr?.toFixed?.(0)} · 정밀틱 적용`);
-  }catch(e){
-    setFoot('ULTRA 로딩 실패');
-  }
-}
-function renderMeta(market, mode, atr, atrPct){
-  const m = $('#metaChips'); m.innerHTML = '';
-  [['마켓', market], ['mode', mode||'neutral'], ['ATR', (atr||0).toFixed(0)], ['ATR%', (atrPct||0).toFixed(2)]]
-    .forEach(([k,v])=>{
-      const s = document.createElement('span'); s.className='chip'; s.textContent=`${k}: ${v}`; m.appendChild(s);
-    });
-}
-function setFoot(txt){ $('#foot').textContent = txt; }
+    async function loadUltra(market){
+      try{
+        $("ultraErr").style.display="none";
+        state.sel = market;
+        $("sel").textContent = market;
+        const t = await api("/ticker?market="+encodeURIComponent(market));
+        const u = await api("/ultra?market="+encodeURIComponent(market)+"&limit=120");
+        $("price").textContent = fmtKRW(t.priceTick) + "원";
+        $("chg").innerHTML = `<span class="${t.changePct>=0?"ok":"bad"}">${pct(t.changePct)}</span>`;
+        $("buy1").textContent = fmtKRW(u.buy1) + "원";
+        $("tp1").textContent = fmtKRW(u.tp1) + "원";
+        $("tp2").textContent = fmtKRW(u.tp2) + "원";
+        $("sl").textContent  = fmtKRW(u.sl)  + "원";
+        $("atr").textContent = `${fmtKRW(u.atr)} / ${(u.atrPct||0).toFixed(2)}%`;
+        $("mode").textContent = `mode: ${u.mode}`;
+      }catch(e){
+        $("ultraErr").textContent = "ULTRA 로딩 실패: " + e.message;
+        $("ultraErr").style.display="block";
+      }
+    }
 
-// --- 주기 갱신 ---
-fetchSpark();
-setInterval(fetchSpark, 30000);
+    $("find").onclick = ()=>{
+      const q = $("q").value.trim().toUpperCase();
+      if(!q) return;
+      const market = q.startsWith("KRW-") ? q : ("KRW-" + q.replace(/^KRW-/,""));
+      loadUltra(market);
+    };
 
-// 초기가능: 쿼리 ?m=KRW-XXX
-(function initQuery(){
-  const u = new URL(location.href);
-  const m = u.searchParams.get('m');
-  if (m) loadUltra(m);
-})();
-</script>
+    function boot(){
+      if(!state.base) return;
+      drawSpark();
+      if(state.timer) clearInterval(state.timer);
+      state.timer = setInterval(drawSpark, 30000);
+    }
+
+    // 처음 로드
+    loadBase();
+    if(!state.base){
+      // 샘플: 워커 도메인만 적으면 뒤에 /api 자동
+      // 사용자가 API 입력시 끝에 /api를 붙이지 않았다면 자동 추가
+      $("api").value = (location.protocol + "//" + location.host + "/api");
+      saveBase();
+    }else if(!/\/api$/.test(state.base)){
+      $("api").value = state.base + "/api";
+      saveBase();
+    }
+    boot();
+  </script>
 </body>
 </html>
