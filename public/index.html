@@ -16,7 +16,7 @@
   .api .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#888}
   .api.ok .dot{background:#1ec996}
   .api.fail .dot{background:#ff5b6b}
-  .search{position:sticky;top:0;background:linear-gradient(180deg,rgba(15,18,24,.95),rgba(15,18,24,.75));padding:10px 0 12px;z-index:5;backdrop-filter:saturate(1.2) blur(2px)}
+  .search{position:sticky;top:0;background:linear-gradient(180deg,rgba(15,18,24,.95),rgba(15,18,24,.75));padding:10px 0 12px;z-index:6;backdrop-filter:saturate(1.2) blur(2px)}
   .search .row{display:flex;gap:8px;align-items:center}
   .search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none}
   .search button{background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:10px 14px;cursor:pointer}
@@ -76,13 +76,34 @@
   .gauge .meta .s{font-size:12px;color:var(--muted)}
   .sparkline{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px}
   .sparkline svg{width:100%;height:80px}
+
+  /* ===== RISK_OFF 배너/칩 ===== */
+  .risk-banner{
+    position:sticky; top:0; z-index:9999;
+    background:#2a0b0b; color:#ffd7d7;
+    border:1px solid #ff5b6b; border-left:0; border-right:0;
+    font-weight:700; letter-spacing:.2px;
+    padding:10px 14px; text-align:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  .chip-risk {
+    display:inline-block; padding:4px 8px; margin-left:8px;
+    background:#3a0f10; color:#ffb3b8; border:1px solid #ff5b6b; border-radius:12px;
+    font-size:12px; font-weight:700;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <!-- 매수금지/시장위험 칩 (상단 고정) -->
+  <div id="risk-banner" class="risk-banner" style="display:none;">
+    ⚠️ 비트코인 하락감지 — 매수금지 구간 (시장 위험도 ↑)
+  </div>
+
   <div class="search">
     <div class="row">
       <span class="badge">KRW · 업비트 호가틱 · 한글명 · No-Motion</span>
+      <span id="risk-chip" class="chip-risk" style="display:none;">매수금지</span>
       <div class="api" id="apiHealth" title="API 헬스">
         <span class="dot"></span>
         <span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span>
@@ -685,7 +706,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       `AI_LOW  : ${$('#sn_low').textContent}`,
       `AI_HIGH : ${$('#sn_high').textContent}`,
       `CONF    : ${$('#sn_conf').textContent}`
-    ].join('\\n');
+    ].join('\n');
     navigator.clipboard.writeText(txt).then(()=>{
       toast('레벨이 클립보드로 복사되었습니다.');
     }).catch(()=>toast('복사 실패. 브라우저 권한을 확인하세요.'));
@@ -842,6 +863,115 @@ async function loadGlobal(){
   paintGlobal('us10y',pick(data,['us10y']));
 }
 
+/* ===== RISK_OFF: BTC 하락 감지 → 매수 금지 ===== */
+window.RiskGuard = (function(){
+  let RISK_OFF = false;
+  let lastState = null;
+  let listeners = new Set();
+
+  // UI 업데이트
+  function setBanner(show){
+    const el = document.getElementById('risk-banner');
+    if (!el) return;
+    el.style.display = show ? 'block' : 'none';
+  }
+  function setChip(show){
+    const el = document.getElementById('risk-chip');
+    if (!el) return;
+    el.style.display = show ? 'inline-block' : 'none';
+  }
+  function emit(){
+    const snapshot = { RISK_OFF };
+    if (JSON.stringify(snapshot) === lastState) return;
+    lastState = JSON.stringify(snapshot);
+    listeners.forEach(fn=>{ try{ fn(snapshot); }catch(e){} });
+  }
+
+  // BTC 상태 계산 (24h 변동률 / 30m 변동률 / ForceIndex_AI)
+  async function fetchBTC(){
+    const market = 'KRW-BTC';
+    const [sig, candles] = await Promise.all([
+      jget('/ultra/signal?market=' + encodeURIComponent(market)).catch(()=>null),
+      loadCandles(market).catch(()=>null)
+    ]);
+
+    let price=null, ref24=null, change24=null, force=null, drop30m=null;
+
+    if(sig){
+      price = Number(sig.price ?? sig.last ?? sig.close ?? null);
+      force = (typeof sig.ForceIndex_AI==='number')? sig.ForceIndex_AI
+            : (typeof sig.forceIndex==='number')? sig.forceIndex : null;
+      if(typeof sig.change_24h==='number') change24 = sig.change_24h;
+      if(typeof sig.changePct==='number')  change24 = change24 ?? sig.changePct;
+      if(typeof sig.refPrice==='number')   ref24    = sig.refPrice;
+    }
+
+    if((change24==null || !isFinite(change24)) && ref24 && price){
+      change24 = ((price/ref24)-1)*100;
+    }
+
+    if(Array.isArray(candles) && candles.length>35){
+      const last = candles[candles.length-1]?.close;
+      const idx = Math.max(0, candles.length-31);
+      const past = candles[idx]?.close;
+      if(isFinite(last) && isFinite(past) && past>0){
+        drop30m = ((last/past)-1)*100; // 30분 수익률(음수면 하락)
+      }
+      if(price==null && isFinite(last)) price = last;
+    }
+
+    return { price, change24, force, drop30m };
+  }
+
+  async function evaluate(){
+    try{
+      const btc = await fetchBTC();
+      const chg = btc.change24;        // 24h %
+      const fi  = btc.force;           // ForceIndex_AI (optional)
+      const d30 = btc.drop30m;         // 30m %
+
+      // 트리거:
+      // A) 24h ≤ -1.5%  OR  B) 30m ≤ -0.8%
+      // AND C) ForceIndex_AI < 45 (지표 없으면 C 생략)
+      const condA = (typeof chg === 'number' && chg <= -1.5);
+      const condB = (typeof d30 === 'number' && d30 <= -0.8);
+      const condC = (typeof fi  === 'number' ? fi < 45 : true);
+
+      const next = !!((condA || condB) && condC);
+
+      if (next !== RISK_OFF){
+        RISK_OFF = next;
+        setBanner(RISK_OFF);
+        setChip(RISK_OFF);
+        emit();
+        console.log(`[RiskGuard] RISK_OFF → ${RISK_OFF} (24h=${isFinite(chg)?chg.toFixed(2):'-'}%, 30m=${isFinite(d30)?d30.toFixed(2):'-'}%, FI=${fi})`);
+        if(RISK_OFF){
+          toast('⚠️ 비트코인 하락감지 — 매수금지 구간 진입');
+        }else{
+          toast('✅ 위험 해제 — 매수 가능 구간으로 복귀');
+        }
+      }
+    }catch(e){
+      // 조용히 무시(네트워크 일시 오류)
+    }
+  }
+
+  // 10초 간격 평가
+  setInterval(evaluate, 10000);
+  // 부팅 직후 한 번
+  evaluate();
+
+  function canBuy(){ return !RISK_OFF; }
+  function blockBuyIfNeeded(){
+    if(!RISK_OFF) return true;
+    toast('⚠️ 비트코인 하락감지 — 현재 매수금지 구간입니다.');
+    return false;
+  }
+  function onChange(cb){ listeners.add(cb); return ()=>listeners.delete(cb); }
+
+  return { get RISK_OFF(){ return RISK_OFF; }, canBuy, blockBuyIfNeeded, onChange };
+})();
+
 /* ===== 딥링크 ===== */
 function getDeepLink(){ const u = new URL(location.href); return u.searchParams.get('m') || (location.hash||'').replace('#','') || null; }
 function setDeepLink(market){ const u = new URL(location.href); u.searchParams.set('m', market); history.replaceState(null,'',u.toString()); }
@@ -863,8 +993,4 @@ function setDeepLink(market){ const u = new URL(location.href); u.searchParams.s
 })();
 </script>
 </body>
- <!-- 매수금지/시장위험 칩 -->
-<div id="risk-banner" class="risk-banner" style="display:none;">
-  ⚠️ 비트코인 하락감지 — 매수금지 구간 (시장 위험도 ↑)
-</div> 
 </html>
