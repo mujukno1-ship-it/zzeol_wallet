@@ -252,9 +252,10 @@
 /* ===== 설정 ===== */
 const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
 document.getElementById('apiBaseTxt').textContent = API_BASE;
-
+const INDICES_URL = 'https://satoshi-proxy.mujukno1.workers.dev/api/indices';
 /* ▼▼▼ (선택) NASDAQ/지수 API — Render 배포 URL로 교체하세요 ▼▼▼ */
-const INDICES_URL = 'https://nasdaq-api.onrender.com/api/indices'; // ← 네 Render 서비스 URL로 변경 권장
+ GET https://satoshi-proxy.mujukno1.workers.dev/api/indices 200 OK
+// ← 네 Render 서비스 URL로 변경 권장
 /* ▲▲▲ 실패 시 자동 폴백(stooq) 사용 ▲▲▲ */
 
 const REFRESH_SPARK_MS = 15000;
