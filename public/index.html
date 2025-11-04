@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v13.1 — Learning Dashboard + BuyZone + RiskGuard</title>
+<title>사토시의지갑 v13.2 — Learning Dashboard + BuyZone + RiskGuard + ProTargets</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -18,8 +18,8 @@
   .api.fail .dot{background:#ff5b6b}
 
   .search{position:sticky;top:0;background:linear-gradient(180deg,rgba(15,18,24,.95),rgba(15,18,24,.75));padding:10px 0 12px;z-index:6;backdrop-filter:saturate(1.2) blur(2px)}
-  .search .row{display:flex;gap:8px;align-items:center}
-  .search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none}
+  .search .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none;min-width:260px}
   .search button{background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:10px 14px;cursor:pointer}
 
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
@@ -75,7 +75,7 @@
   .bz.good{background:linear-gradient(90deg,#062b1f,#093430);border-color:#1ec996}
   .bz.warn{background:linear-gradient(90deg,#2b0a0a,#3a0f0f);border-color:#ff5b6b}
 
-  /* ===== Learning Dashboard (컴팩트) ===== */
+  /* Learning Dashboard */
   .learn{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
   @media (max-width:820px){.learn{grid-template-columns:1fr}}
   .gauge{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:8px;display:flex;gap:8px;align-items:center}
@@ -86,11 +86,14 @@
   .sparkline{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:8px}
   .sparkline svg{width:100%;height:70px}
 
-  /* ===== RISK_OFF 배너/칩 & 알림음칩 ===== */
+  /* RISK_OFF & sound */
   .risk-banner{position:sticky; top:0; z-index:9999; background:#2a0b0b; color:#ffd7d7; border:1px solid #ff5b6b; border-left:0; border-right:0; font-weight:700; letter-spacing:.2px; padding:10px 14px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.25);}
   .chip-risk{display:inline-block; padding:4px 8px; margin-left:8px; background:#3a0f10; color:#ffb3b8; border:1px solid #ff5b6b; border-radius:12px; font-size:12px; font-weight:700;}
-  .chip-sound{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;margin-left:8px;border:1px solid #2b3a52;border-radius:12px;background:#1b2533;color:#cfeeff;font-weight:700;cursor:pointer;user-select:none}
-  .chip-sound.muted{opacity:.6}
+  .chip-sound,.chip-pro{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;margin-left:8px;border:1px solid #2b3a52;border-radius:12px;background:#1b2533;color:#cfeeff;font-weight:700;cursor:pointer;user-select:none}
+  .chip-sound.muted,.chip-pro.off{opacity:.6}
+
+  /* Pro targets wrap (show/hide) */
+  .pro-wrap[hidden]{display:none !important}
 </style>
 </head>
 <body>
@@ -104,6 +107,7 @@
       <span class="badge">KRW · 업비트 호가틱 · 한글명 · No-Motion</span>
       <span id="risk-chip" class="chip-risk" style="display:none;">매수금지</span>
       <span id="chipSound" class="chip-sound">🔔 소리 ON</span>
+      <span id="chipPro" class="chip-pro off" title="고급 타점 ON/OFF">⚙️ 고급 타점 OFF</span>
       <div class="api" id="apiHealth" title="API 헬스">
         <span class="dot"></span>
         <span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span>
@@ -138,6 +142,8 @@
     <!-- ULTRA -->
     <section class="card">
       <div class="title" id="ultraTitle">ULTRA 시그널 — 선택된 코인</div>
+
+      <!-- 기본 타점 -->
       <div class="ultra">
         <div class="box"><div class="k">현재가</div><div class="v" id="v_price">-</div></div>
         <div class="box"><div class="k">매수 (BUY1)</div><div class="v" id="v_buy1">-</div></div>
@@ -145,6 +151,14 @@
         <div class="box"><div class="k">익절 1 (TP1)</div><div class="v" id="v_tp1">-</div></div>
         <div class="box"><div class="k">익절 2 (TP2)</div><div class="v" id="v_tp2">-</div></div>
         <div class="box"><div class="k">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
+      </div>
+
+      <!-- 확장 타점(Pro) -->
+      <div id="proWrap" class="ultra pro-wrap" hidden>
+        <div class="box"><div class="k">익절 3 (TP3)</div><div class="v" id="v_tp3">-</div></div>
+        <div class="box"><div class="k">트레일링 SL 1</div><div class="v" id="v_tsl1">-</div></div>
+        <div class="box"><div class="k">트레일링 SL 2</div><div class="v" id="v_tsl2">-</div></div>
+        <div class="box"><div class="k">분할 익절 레더</div><div class="v" id="v_ladder">TP1 33% · TP2 33% · TP3 34%</div></div>
       </div>
 
       <div class="ultra" style="margin-top:6px">
@@ -156,7 +170,7 @@
         <div class="box"><div class="k">되돌림 후 매도 2</div><div class="v" id="v_rs2">-</div></div>
       </div>
 
-      <!-- ===== Learning Dashboard (컴팩트) ===== -->
+      <!-- Learning Dashboard -->
       <div class="title" style="margin-top:12px">AI 학습 대시보드</div>
       <div class="learn">
         <div class="gauge">
@@ -193,7 +207,6 @@
           </div>
         </div>
       </div>
-      <!-- ===== /Learning Dashboard ===== -->
 
       <div id="buyZoneArea" style="margin-top:12px">
         <div class="k">매수타점 (Multi-Timeframe)</div>
@@ -234,7 +247,7 @@
     </section>
   </div>
 
-  <footer>사토시의지갑 v13.1 · RiskGuard 알림음 · Precision 서버저장(옵션) · No-Motion</footer>
+  <footer>사토시의지갑 v13.2 · ProTargets(TP3/TSL/Ladder) · RiskGuard · Precision 서버저장</footer>
 </div>
 
 <div id="suggest"></div>
@@ -245,9 +258,9 @@
 const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
 document.getElementById('apiBaseTxt').textContent = API_BASE;
 
-/* 인덱스(지수) API: Render 배포가 없으면 false 유지 → 404 콘솔 스팸 방지 */
+/* 지수 API 스위치 (콘솔 404 방지) */
 const USE_RENDER_INDICES = false;
-const INDICES_URL = API_BASE + '/indices'; // true일 때만 사용
+const INDICES_URL = API_BASE + '/indices';
 
 const REFRESH_SPARK_MS = 15000;
 const REFRESH_ULTRA_MS = 5000;
@@ -262,13 +275,12 @@ const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeou
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const avg = a => a.length? a.reduce((x,y)=>x+y,0)/a.length : 0;
 
-/* ===== 알림음 (WebAudio) ===== */
+/* ===== 알림음 ===== */
 let SND_MUTED = localStorage.getItem('SND_MUTED')==='1';
 const chipSound = $('#chipSound');
 function setSoundChip(){ chipSound.classList.toggle('muted', SND_MUTED); chipSound.textContent = SND_MUTED ? '🔕 소리 OFF' : '🔔 소리 ON'; }
 chipSound.addEventListener('click', ()=>{ SND_MUTED=!SND_MUTED; localStorage.setItem('SND_MUTED', SND_MUTED?'1':'0'); setSoundChip(); });
 setSoundChip();
-
 let audioCtx=null;
 function beep(freq=660, ms=180, type='sine', vol=0.08){
   if(SND_MUTED) return;
@@ -311,7 +323,7 @@ async function jget(path, {retries=2, timeout=9000} = {}){
   return null;
 }
 
-/* ===== API 헬스 체크 ===== */
+/* ===== API 헬스 ===== */
 async function ping(){
   const badge = $('#apiHealth');
   const warn  = $('#apiWarn');
@@ -319,6 +331,17 @@ async function ping(){
   if(ok?.pong){ badge.classList.add('ok'); badge.classList.remove('fail'); warn.style.display='none'; }
   else { badge.classList.add('fail'); badge.classList.remove('ok'); warn.style.display='block'; }
 }
+
+/* ===== Pro Targets 토글 ===== */
+let ADV_ON = localStorage.getItem('ADV_ON')==='1';
+const chipPro = $('#chipPro'), proWrap = $('#proWrap');
+function paintProToggle(){
+  chipPro.classList.toggle('off', !ADV_ON);
+  chipPro.textContent = ADV_ON ? '⚙️ 고급 타점 ON' : '⚙️ 고급 타점 OFF';
+  proWrap.hidden = !ADV_ON;
+}
+chipPro.addEventListener('click', ()=>{ ADV_ON=!ADV_ON; localStorage.setItem('ADV_ON', ADV_ON?'1':'0'); paintProToggle(); if(currentMarket) openUltra(currentMarket,null); });
+paintProToggle();
 
 /* ===== 마켓 목록 & 검색 ===== */
 let MARKET_LIST=[];
@@ -416,7 +439,7 @@ function makeZMsg(s){
   return {mode,msg:text,heat,prob,gain};
 }
 function calcMTFAdjust(seed){
-  const s=seed||{}; const price=Number(s.price||0)||0; const heat=clamp(Number(s.spark||0),0,100);
+  const s=seed||{}; const heat=clamp(Number(s.spark||0),0,100);
   const rvol=Number(s.rvol||0); const tbr=Number(s.tbr||0); const retrP=Number(s.retracement_percent||0);
   const volRank=clamp(rvol/3,0,1);
   const w={m1:0.18*volRank,m5:0.16*volRank,m30:0.12*volRank+0.04,h1:0.12*(0.6+volRank*0.4),h4:0.12*(0.5+(1-volRank)*0.5),h6:0.08*(0.5+(1-volRank)*0.5),d1:0.10*(0.4+(1-volRank)*0.6),w1:0.07*(0.3+(1-volRank)*0.7),m1x:0.05*(0.3+(1-volRank)*0.7)};
@@ -429,7 +452,7 @@ function calcMTFAdjust(seed){
   mtfScore=clamp(Math.round(mtfScore),-100,100);
   const mode = mtfScore>=35 ? '불장' : mtfScore<=-35 ? '하락장' : '조정';
   let adj = Math.min(0.003, Math.max(0.0015, Math.abs(mtfScore)/4000)); if(mode!=='조정') adj = Math.min(0.003, adj*1.2);
-  return { mtfScore, mode, adj, price };
+  return { mtfScore, mode, adj };
 }
 function calcPrecision(s, mtf, atrPct){
   const force=Number(s.forceIndex||s.force||0), rvol=Number(s.rvol||0), tbr=Number(s.tbr||0), obi=Number(s.obi||s.order_imbalance||0), heat=clamp(Number(s.spark||0),0,100);
@@ -438,7 +461,7 @@ function calcPrecision(s, mtf, atrPct){
   return clamp(Math.round((0.82 + score*0.16)*1000)/10, 85, 99.9);
 }
 
-/* ===== Precision History (로컬 + 서버 저장) ===== */
+/* ===== Precision History ===== */
 const PREC_KEY='satoshi_prec_history';
 function pushPrecisionHistory(v){
   try{
@@ -451,9 +474,7 @@ function pushPrecisionHistory(v){
 }
 function readPrecisionHistory(){ try{ return JSON.parse(localStorage.getItem(PREC_KEY)||'[]'); }catch{ return []; } }
 async function savePrecisionHistory(arr, market='ALL'){
-  try{
-    await fetch(API_BASE+'/prec/save',{ method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({values:arr, market}) });
-  }catch(e){}
+  try{ await fetch(API_BASE+'/prec/save',{ method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({values:arr, market}) }); }catch(e){}
 }
 async function loadPrecisionHistory(market='ALL'){
   try{
@@ -466,10 +487,8 @@ async function loadPrecisionHistory(market='ALL'){
   return readPrecisionHistory();
 }
 function drawSparkline(values){
-  const svg = $('#precSpark'), line = $('#precLine');
-  if(!svg||!line) return;
-  const w = 300, h = 80, pad=6;
-  const n = values.length || 1;
+  const svg = $('#precSpark'), line = $('#precLine'); if(!svg||!line) return;
+  const w = 300, h = 80, pad=6, n = values.length || 1;
   const min = Math.min(...values, 80), max = Math.max(...values, 100);
   const xs = i => pad + (w-2*pad)* (n<=1?0.5: i/(n-1));
   const ys = v => h - pad - (h-2*pad) * ((v-min)/Math.max(1,(max-min)||1));
@@ -500,12 +519,13 @@ async function openUltra(market, seed){
   const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
   setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
 
-  const price = roundTick(Number(s.price||s.last||s.close|| (candles?.[candles.length-1]?.close||0))||0);
+  const lastCandleClose = candles?.[candles.length-1]?.close || 0;
+  const price = roundTick(Number(s.price||s.last||s.close|| lastCandleClose)||0);
   const buy1 = s.buy1!=null?roundTick(Number(s.buy1)):roundTick(price*0.997);
   const buy2 = s.buy2!=null?roundTick(Number(s.buy2)):roundTick(price*0.992);
 
-  let atr=0, atrPct=0, hh=null, ll=null, lastClose=price;
-  if(Array.isArray(candles)){ const a=calcATR(candles,14); atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll; lastClose=a.lastClose||price; }
+  let atr=0, atrPct=0, hh=null, ll=null;
+  if(Array.isArray(candles)){ const a=calcATR(candles,14); atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll; }
   if(s.recent_high) hh = s.recent_high;
   if(s.recent_low)  ll = s.recent_low;
 
@@ -513,7 +533,7 @@ async function openUltra(market, seed){
   const tbr  = Number(s.tbr ?? 0.5);
   const bull = (rvol>=2&&tbr>=0.65) || rvol>=3;
   const bear = tbr<=0.45 || rvol<=0.8;
-  const k = clamp(atrPct || 0, 0.004, 0.04);
+  const k = clamp(atrPct || 0, 0.004, 0.04); // 변동성 계수
 
   let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
   if(tp1==null||tp2==null||sl==null){
@@ -542,12 +562,39 @@ async function openUltra(market, seed){
   tp2_adj=pricePct(tp2_adj, adjExtra);
   sl_adj =pricePct(sl_adj , -adjExtra*0.6);
 
+  // === Pro Targets 계산 ===
+  let tp3_adj='-', tsl1='-', tsl2='-';
+  if(ADV_ON){
+    // TP3: 장세별 한 스텝 더
+    let tp3;
+    if(bull)      tp3 = roundTick(price + Math.max(price*0.028, price*k*3.6));
+    else if(bear) tp3 = roundTick(price + Math.max(price*0.015, price*k*1.6));
+    else          tp3 = roundTick(price + Math.max(price*0.022, price*k*2.8));
+    tp3 = pricePct(tp3, tpAdjPct + adjExtra);
+    tp3_adj = fmtKRW(tp3);
+
+    // Trailing SL 가이드 (TP1/TP2 도달 시 상향 기준가)
+    // - TSL1: BEP 또는 SL 대비 상향(≈ +0.30*ATR)
+    // - TSL2: TP1 이상 구간에서 더 타이트(≈ +0.60*ATR)
+    const atrAdd1 = Math.max(upbitTick(price), roundTick(atr*0.30));
+    const atrAdd2 = Math.max(upbitTick(price), roundTick(atr*0.60));
+    const breakeven = buy1 ? roundTick(buy1) : price;
+    tsl1 = fmtKRW(Math.max(breakeven, sl_adj + atrAdd1));
+    tsl2 = fmtKRW(Math.max(breakeven, sl_adj + atrAdd2));
+  }
+
+  // === 화면 반영 ===
   setTxt($('#v_price'),fmtKRW(price));
   setTxt($('#v_buy1'),fmtKRW(buy1));
   setTxt($('#v_buy2'),fmtKRW(buy2));
   setTxt($('#v_tp1'),fmtKRW(tp1_adj));
   setTxt($('#v_tp2'),fmtKRW(tp2_adj));
   setTxt($('#v_sl'), fmtKRW(sl_adj));
+  if(ADV_ON){
+    setTxt($('#v_tp3'), tp3_adj);
+    setTxt($('#v_tsl1'), tsl1);
+    setTxt($('#v_tsl2'), tsl2);
+  }
 
   const hi1 = s.target_high1 ?? tp1_adj;
   const hi2 = s.target_high2 ?? tp2_adj;
@@ -579,13 +626,14 @@ async function openUltra(market, seed){
   setTxt($('#chip_mtf_score'), mtf.mtfScore);
   setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
 
-  // ===== 정확도 계산 & 반영 + 서버 저장 스케줄 =====
+  // 정확도
   const prec = calcPrecision(s, mtf, atrPct);
   setTxt($('#chip_prec'), `${prec.toFixed(1)}%`);
   const hist = pushPrecisionHistory(prec);
   drawSparkline(hist);
   setGauge($('#gPrec'), $('#tPrec'), prec);
 
+  // 서버 동기화(옵션)
   if(!window.__precSyncTimer){
     window.__precSyncTimer = setInterval(()=> {
       const arr = readPrecisionHistory();
@@ -679,12 +727,9 @@ function paintGlobal(idBase, v){
   chg.textContent = isFinite(v.chg) ? `${v.chg>0?'+':''}${v.chg.toFixed(2)}%` : '-';
 }
 function pick(map, keys){ for(const k of keys){ if(map?.[k]) return map[k]; } return null; }
-
 async function loadGlobal(){
   const panel = $('#globalPanel');
   let data = null;
-
-  // 1) 선택적 Render 지수 API
   if (USE_RENDER_INDICES){
     try{
       const res = await fetch(INDICES_URL, {headers:{accept:'application/json'}});
@@ -706,14 +751,11 @@ async function loadGlobal(){
       }
     }catch(e){}
   }
-
-  // 2) 폴백: stooq CSV
   if(!data){
     try{
       const url = 'https://r.jina.ai/http://stooq.com/q/l/?s=%5Endx,%5Espx,dxy,us10y&f=sd2t2ohlcv&h&e=csv';
       const text = await fetch(url).then(r=>r.text());
-      const lines = text.trim().split(/\r?\n/);
-      const out = {};
+      const lines = text.trim().split(/\r?\n/); const out = {};
       for(let i=1;i<lines.length;i++){
         const c = lines[i].split(',');
         const sym = (c[0]||'').toLowerCase();
@@ -724,7 +766,6 @@ async function loadGlobal(){
       data = out;
     }catch(e){}
   }
-
   if(!data || (!pick(data,['^ndx','ndx']) && !pick(data,['^spx','spx']))){ panel.hidden=true; return; }
   panel.hidden=false;
   paintGlobal('ndx',  pick(data,['^ndx','ndx']));
@@ -802,7 +843,7 @@ window.RiskGuard = (function(){
   return { get RISK_OFF(){ return RISK_OFF; }, canBuy, blockBuyIfNeeded, onChange };
 })();
 
-/* ===== 검색/오토완성 ===== */
+/* ===== 검색/오토완성 + 딥링크/토스트 ===== */
 const $q=$('#q'), $btn=$('#btnSearch'), $sug=$('#suggest');
 function placeSuggest(){ const r=$q.getBoundingClientRect(); $sug.style.left=(window.scrollX+r.left)+'px'; $sug.style.top =(window.scrollY+r.bottom+6)+'px'; $sug.style.width=r.width+'px'; }
 window.addEventListener('resize',placeSuggest); window.addEventListener('scroll',placeSuggest);
@@ -856,8 +897,6 @@ function ensureTempSparkCard(market){
     listEl.prepend(row);
   }
 }
-
-/* ===== 딥링크 & 토스트 ===== */
 function getDeepLink(){ const u = new URL(location.href); return u.searchParams.get('m') || (location.hash||'').replace('#','') || null; }
 function setDeepLink(market){ const u = new URL(location.href); u.searchParams.set('m', market); history.replaceState(null,'',u.toString()); }
 function toast(msg){ const p = $('#bzPopup'); setTxt($('#bzTitle'),'알림'); setTxt($('#bzText'), msg); p.style.display='block'; setTimeout(()=>{ p.style.display='none'; }, 3000); }
