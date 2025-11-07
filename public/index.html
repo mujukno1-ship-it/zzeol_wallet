@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v13.2 — Learning Dashboard + BuyZone + RiskGuard + ProTargets</title>
+<title>사토시의지갑 v14.0-beta — Learning Dashboard + BuyZone + SmartRisk + Z-Ment+</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -82,7 +82,7 @@
   .gauge svg{width:64px;height:64px}
   .gauge .meta{display:flex;flex-direction:column}
   .gauge .meta .h{font-weight:800;font-size:13px}
-  .gauge .meta .s{font-size:11px;color:var(--muted)}
+  .gauge .meta .s{font-size:11px;color:#muted}
   .sparkline{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:8px}
   .sparkline svg{width:100%;height:70px}
 
@@ -108,6 +108,8 @@
       <span id="risk-chip" class="chip-risk" style="display:none;">매수금지</span>
       <span id="chipSound" class="chip-sound">🔔 소리 ON</span>
       <span id="chipPro" class="chip-pro off" title="고급 타점 ON/OFF">⚙️ 고급 타점 OFF</span>
+      <!-- v14: Sentiment 칩 -->
+      <span id="chipSent" class="pill badge" title="시장 심리/자금 흐름">Sentiment: -</span>
       <div class="api" id="apiHealth" title="API 헬스">
         <span class="dot"></span>
         <span id="apiBaseTxt">https://satoshi-proxy.mujukno1.workers.dev/api</span>
@@ -247,7 +249,7 @@
     </section>
   </div>
 
-  <footer>사토시의지갑 v13.2 · ProTargets(TP3/TSL/Ladder) · RiskGuard · Precision 서버저장</footer>
+  <footer>사토시의지갑 v14.0-beta · Z-Ment+ · SmartRiskGuard · ProTargets(TP3/TSL/Ladder) · Precision 서버저장</footer>
 </div>
 
 <div id="suggest"></div>
@@ -257,6 +259,11 @@
 /* ===== 설정 ===== */
 const API_BASE = 'https://satoshi-proxy.mujukno1.workers.dev/api';
 document.getElementById('apiBaseTxt').textContent = API_BASE;
+
+/* v14: Sentiment & SmartRisk 설정 */
+const USE_SENTIMENT = true;                 // 워커에 /sentiment 없으면 자동 폴백
+const SENTI_URL     = API_BASE + '/sentiment';
+const BTC_RISK_URL  = API_BASE + '/risk/btc'; // 워커에 없으면 폴백
 
 /* 지수 API 스위치 (콘솔 404 방지) */
 const USE_RENDER_INDICES = false;
@@ -452,22 +459,42 @@ function calcRVOL(candles, look=20){
   return vMean? vLast/vMean : 0;
 }
 
-/* ===== 쩔어한마디 / MTF / Precision ===== */
-function makeZMsg(s){
-  const force=Number(s.force||s.forceIndex||0), rvol=Number(s.rvol||0), tbr=Number(s.tbr||0);
-  const heat=clamp(Math.round(Number(s.spark||s.heat||0)),0,100);
-  const prob=clamp(Math.round(Number(s.prob_up ?? (heat/1.6))),0,100);
-  const gain=Number(s.expected_gain ?? (heat>=90?20:heat>=80?10:heat>=70?5:2));
-  let mode='조정';
-  if((rvol>=2&&tbr>=0.65)||force>=80) mode='불장';
-  else if(tbr<=0.45||force<=35 || s.vwapBelow) mode='하락장';
-  const text= mode==='불장'
-    ? `🔥 세력 분출 직전 — 예열강도 ${heat} / 상승확률 ${prob}% / 예상상승률 +${(+gain).toFixed(1)}%`
-    : mode==='하락장'
-    ? `🧊 세력 이탈 감지 — 빠른 청산 필요 / 예열강도 ${heat} / 방어모드`
-    : `🔵 되돌림 신호 — 분할매수 1차 확인 / 예열강도 ${heat} / 중립`;
-  return {mode,msg:text,heat,prob,gain};
+/* ===== Z-Ment+ / MTF / Precision ===== */
+// v14: 심리/세력/MTF 합성 멘트
+function makeZMsgPlus(s, mtf, ctx = {}) {
+  const force = Number(s.forceIndex ?? s.force ?? 0);
+  const rvol  = Number(s.rvol ?? 0);
+  const tbr   = Number(s.tbr  ?? 0);
+  const heat  = clamp(Math.round(Number(s.spark ?? s.heat ?? 0)), 0, 100);
+
+  const sent = ctx.sent || {};
+  const senti = Number(sent.score ?? 50);       // 0~100
+  const flow  = String(sent.flow   ?? '중립');   // 유입/유출/중립
+
+  let mode = '조정';
+  if ((rvol>=2 && tbr>=0.65) || force>=80 || senti>=65) mode='불장';
+  else if (tbr<=0.45 || force<=35 || senti<=40 || s.vwapBelow) mode='하락장';
+
+  const prob = clamp(Math.round(
+    (heat/1.6) * 0.5 +
+    (clamp((tbr-0.5)/0.5,0,1)*100)*0.2 +
+    (clamp(force/100,0,1)*100)*0.2 +
+    (senti)*0.1
+  ), 0, 100);
+
+  const gain = (heat>=90?20:heat>=80?10:heat>=70?5:2) * (1 + (senti-50)/200);
+
+  let msg;
+  if (mode==='불장') {
+    msg = `🔥 분출 대기 — 예열 ${heat} / 상승확률 ${prob}% / 예상상승률 +${gain.toFixed(1)}%` + (flow==='유입' ? ' · 자금 유입 감지' : '');
+  } else if (mode==='하락장') {
+    msg = `🧊 세력 이탈 감지 — 방어모드 권장 · 예열 ${heat}` + (flow==='유출' ? ' · 자금 유출' : '');
+  } else {
+    msg = `🔵 되돌림 구간 — 분할매수 체크 · 예열 ${heat} · 심리 ${senti}`;
+  }
+  return { mode, msg, heat, prob, gain, senti, flow };
 }
+
 function calcMTFAdjust(seed){
   const s=seed||{}; const heat=clamp(Number(s.spark||0),0,100);
   const rvol=Number(s.rvol||0); const tbr=Number(s.tbr||0); const retrP=Number(s.retracement_percent||0);
@@ -595,7 +622,6 @@ async function openUltra(market, seed){
   // === Pro Targets 계산 ===
   let tp3_adj='-', tsl1='-', tsl2='-';
   if(ADV_ON){
-    // TP3: 장세별 한 스텝 더
     let tp3;
     if(bull)      tp3 = roundTick(price + Math.max(price*0.028, price*k*3.6));
     else if(bear) tp3 = roundTick(price + Math.max(price*0.015, price*k*1.6));
@@ -603,7 +629,6 @@ async function openUltra(market, seed){
     tp3 = pricePct(tp3, tpAdjPct + adjExtra);
     tp3_adj = fmtKRW(tp3);
 
-    // Trailing SL 가이드
     const atrAdd1 = Math.max(upbitTick(price), roundTick(atr*0.30));
     const atrAdd2 = Math.max(upbitTick(price), roundTick(atr*0.60));
     const breakeven = buy1 ? roundTick(buy1) : price;
@@ -634,11 +659,13 @@ async function openUltra(market, seed){
   setTxt($('#v_lo1'), fmtKRW(lo1)); setTxt($('#v_retr'), fmtKRW(retrTo));
   setTxt($('#v_rs1'), fmtKRW(rs1)); setTxt($('#v_rs2'), fmtKRW(rs2));
 
-  const z=makeZMsg(s);
+  // v14: Z-Ment+ 적용 (Sentiment 포함)
+  const z = makeZMsgPlus(s, mtf, { sent: window.__SENTI__ });
   setTxt($('#chip_heat'),z.heat);
   setTxt($('#chip_prob'),`${z.prob}%`);
   setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
   setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
+  setTxt($('#z_msg'), z.msg);
 
   let retr=null;
   if(Array.isArray(s.candles)) retr=computeRetracementFromCandles(s.candles);
@@ -669,8 +696,6 @@ async function openUltra(market, seed){
       savePrecisionHistory(arr, 'ALL').catch(()=>{});
     }, 30000);
   }
-
-  setTxt($('#z_msg'), z.msg);
 
   // === 3단계 매수 타점 ===
   const recent_high = hh || price, recent_low = ll || price;
@@ -837,7 +862,7 @@ async function loadGlobal(){
   paintGlobal('us10y',pick(data,['us10y']));
 }
 
-/* ===== RISK_OFF: BTC 하락 감지 + 알림음 ===== */
+/* ===== Smart RiskGuard (v14) ===== */
 window.RiskGuard = (function(){
   let RISK_OFF = false;
   let lastState = null;
@@ -845,46 +870,55 @@ window.RiskGuard = (function(){
 
   function setBanner(show){ const el = document.getElementById('risk-banner'); if (!el) return; el.style.display = show ? 'block' : 'none'; }
   function setChip(show){ const el = document.getElementById('risk-chip'); if (!el) return; el.style.display = show ? 'inline-block' : 'none'; }
-  function emit(){ const snapshot = { RISK_OFF }; const s = JSON.stringify(snapshot); if (s === lastState) return; lastState = s; listeners.forEach(fn=>{ try{ fn(snapshot); }catch(e){} }); }
+  function emit(){ const s = JSON.stringify({ RISK_OFF }); if (s === lastState) return; lastState = s; listeners.forEach(fn=>{ try{ fn({ RISK_OFF }); }catch(e){} }); }
 
-  async function fetchBTC(){
+  async function getFallbackBTC(){
     const market = 'KRW-BTC';
     const [sig, candles] = await Promise.all([
       jget('/ultra/signal?market=' + encodeURIComponent(market)).catch(()=>null),
       loadCandles(market).catch(()=>null)
     ]);
-    let price=null, ref24=null, change24=null, force=null, drop30m=null;
+    let price=null, change24=null, force=null, drop30m=null;
     if(sig){
       price = Number(sig.price ?? sig.last ?? sig.close ?? null);
-      force = (typeof sig.ForceIndex_AI==='number')? sig.ForceIndex_AI
-            : (typeof sig.forceIndex==='number')? sig.forceIndex : null;
+      force = Number(sig.ForceIndex_AI ?? sig.forceIndex ?? null);
       if(typeof sig.change_24h==='number') change24 = sig.change_24h;
-      if(typeof sig.changePct==='number')  change24 = change24 ?? sig.changePct;
-      if(typeof sig.refPrice==='number')   ref24    = sig.refPrice;
+      if(change24==null && typeof sig.changePct==='number') change24 = sig.changePct;
     }
-    if((change24==null || !isFinite(change24)) && ref24 && price) change24 = ((price/ref24)-1)*100;
     if(Array.isArray(candles) && candles.length>35){
       const last = candles[candles.length-1]?.close;
-      const idx = Math.max(0, candles.length-31);
-      const past = candles[idx]?.close;
+      const past = candles[Math.max(0, candles.length-31)]?.close;
       if(isFinite(last) && isFinite(past) && past>0) drop30m = ((last/past)-1)*100;
       if(price==null && isFinite(last)) price = last;
     }
     return { price, change24, force, drop30m };
   }
 
+  async function fetchBTCrisk(){
+    try {
+      const r = await jget('/risk/btc', {retries:0});
+      if (r?.ok) return r.data;
+    } catch{}
+    return getFallbackBTC();
+  }
+
   async function evaluate(){
     try{
-      const btc = await fetchBTC();
-      const chg = btc.change24;
-      const fi  = btc.force;
-      const d30 = btc.drop30m;
+      const btc = await fetchBTCrisk();
 
-      const condA = (typeof chg === 'number' && chg <= -1.5);
-      const condB = (typeof d30 === 'number' && d30 <= -0.8);
-      const condC = (typeof fi  === 'number' ? fi < 45 : true);
+      const chg24 = Number(btc.change24);
+      const force = Number(btc.force);
+      const d30   = Number(btc.drop30m);
+      const condA = (isFinite(chg24) && chg24 <= -1.5);
+      const condB = (isFinite(d30)   && d30   <= -0.8);
+      const condC = (isFinite(force) ? force < 45 : true);
 
-      const next = !!((condA || condB) && condC);
+      // 보조 트리거(심리)
+      let sentiBad = false;
+      try { if (window.__SENTI__?.score != null) sentiBad = window.__SENTI__.score <= 40; } catch {}
+
+      const next = !!((condA || condB || sentiBad) && condC);
+
       if (next !== RISK_OFF){
         RISK_OFF = next;
         setBanner(RISK_OFF);
@@ -971,11 +1005,33 @@ function toast(msg){
   setTimeout(()=>{ p.style.display='none'; }, 3000);
 }
 
+/* ===== Sentiment (옵셔널, 실패 허용) ===== */
+async function loadSentiment(){
+  if(!USE_SENTIMENT) return null;
+  try{
+    const r = await jget('/sentiment', {retries:0});
+    if(r?.ok){
+      window.__SENTI__ = r.data;
+      const s = r.data;
+      const chip = document.getElementById('chipSent');
+      if (chip) {
+        const txt = `Sentiment: ${Math.round(Number(s.score ?? 50))} (${s.flow ?? '중립'})`;
+        setTxt(chip, txt);
+      }
+      return r.data;
+    }
+  }catch(e){}
+  const chip = document.getElementById('chipSent');
+  if(chip) setTxt(chip, 'Sentiment: -');
+  return null;
+}
+
 /* ===== 부팅 ===== */
 (async function boot(){
   await ping().catch(()=>{});
   await loadGlobal().catch(()=>{});
   await loadMarkets().catch(()=>{});
+  await loadSentiment().catch(()=>{}); // v14: 심리 로드
 
   await loadPrecisionHistory('ALL').then(drawSparkline).catch(()=>{ drawSparkline(readPrecisionHistory()); });
 
