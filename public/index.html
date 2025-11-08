@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v14.0-beta — Learning Dashboard + BuyZone + SmartRisk + Z-Ment+</title>
+<title>사토시의지갑 v14.1 — Learning + BuyZone + SmartRisk + Z-Ment+ + PumpDetect</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -22,6 +22,7 @@
   .search input{flex:1;background:#11161d;border:1px solid #263246;color:var(--text);border-radius:10px;padding:12px 14px;outline:none;min-width:260px}
   .search button{background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:10px 14px;cursor:pointer}
   .search button:hover{filter:brightness(1.1)}
+  .toolbar{display:flex;gap:8px;align-items:center}
 
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
   @media (max-width:980px){.grid{grid-template-columns:1fr}}
@@ -68,6 +69,8 @@
   @media (max-width:980px){.sniperGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .snline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .btn{cursor:pointer;background:#1b2533;border:1px solid #2b3a52;color:#d7e6ff;border-radius:10px;padding:8px 10px}
+  .chip-sound,.chip-pro{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid #2b3a52;border-radius:12px;background:#1b2533;color:#cfeeff;font-weight:700;cursor:pointer;user-select:none}
+  .chip-sound.muted,.chip-pro.off{opacity:.6}
 
   /* BuyZone chips */
   .buyzones{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -75,6 +78,8 @@
   .bz .sub{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:4px}
   .bz.good{background:linear-gradient(90deg,#062b1f,#093430);border-color:#1ec996}
   .bz.warn{background:linear-gradient(90deg,#2b0a0a,#3a0f0f);border-color:#ff5b6b}
+  /* v14.1: Pump 강조 스타일 (금색) */
+  .bz.pump{background:linear-gradient(90deg,#3a2a00,#5a4300);border-color:#ffcc66;color:#ffe9ad}
 
   /* Learning Dashboard */
   .learn{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
@@ -83,16 +88,13 @@
   .gauge svg{width:64px;height:64px}
   .gauge .meta{display:flex;flex-direction:column}
   .gauge .meta .h{font-weight:800;font-size:13px}
-  .gauge .meta .s{font-size:11px;color:var(--muted)} /* FIX: was #muted */
+  .gauge .meta .s{font-size:11px;color:var(--muted)}
   .sparkline{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:8px}
   .sparkline svg{width:100%;height:70px}
 
   /* RISK_OFF & sound */
   .risk-banner{position:sticky; top:0; z-index:9999; background:#2a0b0b; color:#ffd7d7; border:1px solid #ff5b6b; border-left:0; border-right:0; font-weight:700; letter-spacing:.2px; padding:10px 14px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.25);}
   .chip-risk{display:inline-block; padding:4px 8px; margin-left:8px; background:#3a0f10; color:#ffb3b8; border:1px solid #ff5b6b; border-radius:12px; font-size:12px; font-weight:700;}
-  .chip-sound,.chip-pro{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;margin-left:8px;border:1px solid #2b3a52;border-radius:12px;background:#1b2533;color:#cfeeff;font-weight:700;cursor:pointer;user-select:none}
-  .chip-sound.muted,.chip-pro.off{opacity:.6}
-  .toolbar{display:flex;gap:8px;align-items:center}
 
   /* Pro targets wrap (show/hide) */
   .pro-wrap[hidden]{display:none !important}
@@ -116,6 +118,10 @@
       <span id="chipSound" class="chip-sound" title="M 키: 소리 토글">🔔 소리 ON</span>
       <span id="chipPro" class="chip-pro off" title="P 키: 고급 타점 ON/OFF">⚙️ 고급 타점 OFF</span>
       <span id="chipSent" class="pill badge" title="시장 심리/자금 흐름">Sentiment: -</span>
+      <!-- v14.1: 학습패턴 & 펌핑감지 칩 -->
+      <span id="chipLearn" class="pill badge" title="최근 학습 패턴">학습패턴: -</span>
+      <span id="chipPump" class="pill badge" title="급등형 패턴 감지" style="display:none;">🔥 펌핑감지</span>
+
       <button id="btnCopyLink" class="btn" title="현재 코인 딥링크 복사">딥링크 복사</button>
       <button id="btnApi" class="btn" title="API 엔드포인트 변경 (로컬 저장)">API 변경</button>
       <div class="api" id="apiHealth" title="API 헬스">
@@ -257,7 +263,7 @@
     </section>
   </div>
 
-  <footer>사토시의지갑 v14.0-beta · Z-Ment+ · SmartRiskGuard · ProTargets(TP3/TSL/Ladder) · Precision 서버저장</footer>
+  <footer>사토시의지갑 v14.1 · Z-Ment+ · SmartRiskGuard · PumpDetect · LearnChip · ProTargets(TP3/TSL/Ladder)</footer>
 </div>
 
 <div id="suggest"></div>
@@ -271,11 +277,10 @@ let API_BASE = localStorage.getItem(LS_API_KEY) || DEFAULT_API_BASE;
 document.getElementById('apiBaseTxt').textContent = API_BASE;
 
 /* v14: Sentiment & SmartRisk 설정 */
-const USE_SENTIMENT = true;                 // 워커에 /sentiment 없으면 자동 폴백
+const USE_SENTIMENT = true;
 const SENTI_URL     = () => API_BASE + '/sentiment';
-const BTC_RISK_URL  = () => API_BASE + '/risk/btc'; // 워커에 없으면 폴백
+const BTC_RISK_URL  = () => API_BASE + '/risk/btc';
 
-/* 지수 API 스위치 (콘솔 404 방지) */
 const USE_RENDER_INDICES = false;
 const INDICES_URL = () => API_BASE + '/indices';
 
@@ -371,7 +376,7 @@ async function ping(){
   else { badge.classList.add('fail'); badge.classList.remove('ok'); warn.style.display='block'; }
 }
 
-/* ===== API BASE 변경(신규) ===== */
+/* ===== API BASE 변경 ===== */
 function setApiBase(newBase){
   if(!newBase) return;
   API_BASE = newBase.replace(/\/$/,'')
@@ -483,6 +488,7 @@ function calcRVOL(candles, look=20){
   const vMean=vols.slice(0,-1).reduce((a,b)=>a+b,0)/(vols.length-1||1);
   return vMean? vLast/vMean : 0;
 }
+function pctChange(a,b){ if(!isFinite(a)||!isFinite(b)||b===0) return 0; return (a/b-1)*100; }
 
 /* ===== Z-Ment+ / MTF / Precision ===== */
 function makeZMsgPlus(s, mtf, ctx = {}) {
@@ -587,165 +593,207 @@ function setGauge(circleEl, textEl, pct){
 /* ===== 상태 ===== */
 let currentMarket=null, ultraTimer=null, ultraTicking=false;
 
+/* ===== PumpDetect & LearnChip ===== */
+function compute10mChange(candles){
+  try{
+    if(!Array.isArray(candles) || candles.length<12) return null;
+    const last = candles[candles.length-1]?.close;
+    const prev = candles[candles.length-11]?.close; // 10분 전
+    return pctChange(last, prev);
+  }catch{ return null; }
+}
+function decideLearnChip(s, heat){
+  const force = Number(s.forceIndex ?? s.force ?? 0);
+  const tbr   = Number(s.tbr ?? 0.5);
+  // 간단 합성 규칙(최근 패턴 추정)
+  if((heat>=70 && tbr>=0.60) || force>=78) return '📊 학습패턴: 급등형';
+  if((heat<50 && tbr<=0.46) || force<=40)  return '🧊 학습패턴: 급락형';
+  return '🔵 학습패턴: 정상범위';
+}
+
 /* ===== ULTRA ===== */
 async function openUltra(market, seed){
   if(!market) return;
   currentMarket = market;
-  if(ultraTicking) return; // 중복 호출 방지
+  if(ultraTicking) return;
   ultraTicking = true;
 
-  const [sig, candles] = await Promise.all([
-    jget('/ultra/signal?market='+encodeURIComponent(market))||{},
-    loadCandles(market)
-  ]);
-  const s=Object.assign({}, seed||{}, sig||{});
-  const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
-  setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
+  try{
+    const [sig, candles] = await Promise.all([
+      jget('/ultra/signal?market='+encodeURIComponent(market))||{},
+      loadCandles(market)
+    ]);
+    const s=Object.assign({}, seed||{}, sig||{});
+    const nameKor = s.korean_name || (MARKET_LIST.find(x=>x.market===market)?.korean_name) || s.name_kr || s.name || market;
+    setTxt($('#ultraTitle'), `ULTRA 시그널 — ${nameKor} (${market})`);
 
-  const lastCandleClose = candles?.[candles.length-1]?.close || 0;
-  const price = roundTick(Number(s.price||s.last||s.close|| lastCandleClose)||0);
-  const buy1 = s.buy1!=null?roundTick(Number(s.buy1)):roundTick(price*0.997);
-  const buy2 = s.buy2!=null?roundTick(Number(s.buy2)):roundTick(price*0.992);
+    const lastCandleClose = candles?.[candles.length-1]?.close || 0;
+    const price = roundTick(Number(s.price||s.last||s.close|| lastCandleClose)||0);
+    const buy1 = s.buy1!=null?roundTick(Number(s.buy1)):roundTick(price*0.997);
+    const buy2 = s.buy2!=null?roundTick(Number(s.buy2)):roundTick(price*0.992);
 
-  let atr=0, atrPct=0, hh=null, ll=null;
-  if(Array.isArray(candles)){ const a=calcATR(candles,14); atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll; }
-  if(s.recent_high) hh = s.recent_high;
-  if(s.recent_low)  ll = s.recent_low;
+    let atr=0, atrPct=0, hh=null, ll=null;
+    if(Array.isArray(candles)){ const a=calcATR(candles,14); atr=a.atr; atrPct=a.atrPct; hh=a.hh; ll=a.ll; }
+    if(s.recent_high) hh = s.recent_high;
+    if(s.recent_low)  ll = s.recent_low;
 
-  const rvol = Number(s.rvol ?? (Array.isArray(candles)?calcRVOL(candles,20):0));
-  const tbr  = Number(s.tbr ?? 0.5);
-  const bull = (rvol>=2&&tbr>=0.65) || rvol>=3;
-  const bear = tbr<=0.45 || rvol<=0.8;
-  const k = clamp(atrPct || 0, 0.004, 0.04); // 변동성 계수
+    const rvol = Number(s.rvol ?? (Array.isArray(candles)?calcRVOL(candles,20):0));
+    const tbr  = Number(s.tbr ?? 0.5);
+    const bull = (rvol>=2&&tbr>=0.65) || rvol>=3;
+    const bear = tbr<=0.45 || rvol<=0.8;
+    const k = clamp(atrPct || 0, 0.004, 0.04);
 
-  let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
-  if(tp1==null||tp2==null||sl==null){
-    if(bull){ tp1=roundTick(price + Math.max(price*0.012, price*k*1.6));
-              tp2=roundTick(price + Math.max(price*0.020, price*k*2.6));
-              sl =roundTick(price - Math.max(price*0.008, price*k*0.9)); }
-    else if(bear){ tp1=roundTick(price + Math.max(price*0.006, price*k*0.7));
-                   tp2=roundTick(price + Math.max(price*0.010, price*k*1.1));
-                   sl =roundTick(price - Math.max(price*0.013, price*k*1.4)); }
-    else{ tp1=roundTick(price + Math.max(price*0.010, price*k*1.2));
-          tp2=roundTick(price + Math.max(price*0.018, price*k*2.0));
-          sl =roundTick(price - Math.max(price*0.010, price*k*1.0)); }
+    let tp1=s.tp1, tp2=s.tp2, sl=s.sl;
+    if(tp1==null||tp2==null||sl==null){
+      if(bull){ tp1=roundTick(price + Math.max(price*0.012, price*k*1.6));
+                tp2=roundTick(price + Math.max(price*0.020, price*k*2.6));
+                sl =roundTick(price - Math.max(price*0.008, price*k*0.9)); }
+      else if(bear){ tp1=roundTick(price + Math.max(price*0.006, price*k*0.7));
+                     tp2=roundTick(price + Math.max(price*0.010, price*k*1.1));
+                     sl =roundTick(price - Math.max(price*0.013, price*k*1.4)); }
+      else{ tp1=roundTick(price + Math.max(price*0.010, price*k*1.2));
+            tp2=roundTick(price + Math.max(price*0.018, price*k*2.0));
+            sl =roundTick(price - Math.max(price*0.010, price*k*1.0)); }
+    }
+
+    const mtf = calcMTFAdjust(s);
+    const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
+    const tpAdjPct = sign * mtf.adj;
+    const slAdjPct = -sign * (mtf.adj*0.8);
+    let tp1_adj = pricePct(tp1, tpAdjPct);
+    let tp2_adj = pricePct(tp2, tpAdjPct);
+    let sl_adj  = pricePct(sl , slAdjPct);
+
+    const obi = Number(s.obi||s.order_imbalance||0);
+    const adjExtra = clamp(((tbr-0.5)*0.002) + (obi*0.0015), -0.003, 0.003);
+    tp1_adj=pricePct(tp1_adj, adjExtra);
+    tp2_adj=pricePct(tp2_adj, adjExtra);
+    sl_adj =pricePct(sl_adj , -adjExtra*0.6);
+
+    // === Pro Targets 계산 ===
+    let tp3_adj='-', tsl1='-', tsl2='-';
+    if(ADV_ON){
+      let tp3;
+      if(bull)      tp3 = roundTick(price + Math.max(price*0.028, price*k*3.6));
+      else if(bear) tp3 = roundTick(price + Math.max(price*0.015, price*k*1.6));
+      else          tp3 = roundTick(price + Math.max(price*0.022, price*k*2.8));
+      tp3 = pricePct(tp3, tpAdjPct + adjExtra);
+      tp3_adj = fmtKRW(tp3);
+
+      const atrAdd1 = Math.max(upbitTick(price), roundTick(atr*0.30));
+      const atrAdd2 = Math.max(upbitTick(price), roundTick(atr*0.60));
+      const breakeven = buy1 ? roundTick(buy1) : price;
+      tsl1 = fmtKRW(Math.max(breakeven, sl_adj + atrAdd1));
+      tsl2 = fmtKRW(Math.max(breakeven, sl_adj + atrAdd2));
+    }
+
+    // === 화면 반영 ===
+    setTxt($('#v_price'),fmtKRW(price));
+    setTxt($('#v_buy1'),fmtKRW(buy1));
+    setTxt($('#v_buy2'),fmtKRW(buy2));
+    setTxt($('#v_tp1'),fmtKRW(tp1_adj));
+    setTxt($('#v_tp2'),fmtKRW(tp2_adj));
+    setTxt($('#v_sl'), fmtKRW(sl_adj));
+    if(ADV_ON){
+      setTxt($('#v_tp3'), tp3_adj);
+      setTxt($('#v_tsl1'), tsl1);
+      setTxt($('#v_tsl2'), tsl2);
+    }
+
+    const hi1 = s.target_high1 ?? tp1_adj;
+    const hi2 = s.target_high2 ?? tp2_adj;
+    const lo1 = s.target_low1  ?? sl_adj;
+    const retrTo = s.retracement_to ?? buy1;
+    const rs1 = s.post_dip_sell1 ?? pricePct(retrTo, +0.012);
+    const rs2 = s.post_dip_sell2 ?? pricePct(retrTo, +0.020);
+    setTxt($('#v_hi1'), fmtKRW(hi1)); setTxt($('#v_hi2'), fmtKRW(hi2));
+    setTxt($('#v_lo1'), fmtKRW(lo1)); setTxt($('#v_retr'), fmtKRW(retrTo));
+    setTxt($('#v_rs1'), fmtKRW(rs1)); setTxt($('#v_rs2'), fmtKRW(rs2));
+
+    // v14.1: Sentiment + Z-Ment+ + LearnChip
+    const z = makeZMsgPlus(s, mtf, { sent: window.__SENTI__ });
+    setTxt($('#chip_heat'),z.heat);
+    setTxt($('#chip_prob'),`${z.prob}%`);
+    setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
+    setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
+    setTxt($('#z_msg'), z.msg);
+    setTxt($('#chipLearn'), decideLearnChip(s, z.heat));
+
+    // 되돌림 보조
+    let retr=null;
+    if(Array.isArray(s.candles)) retr=computeRetracementFromCandles(s.candles);
+    if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
+    if(!retr && Array.isArray(candles)) retr=computeRetracementFromCandles(candles);
+    const pullPrice = (s.retracement_to ?? s.pull_to ?? (retr?.pullTo ?? lo1));
+    const retrTxt = retr ? `${Number(retr.R).toFixed(0)}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)` : `(${fmtKRW(pullPrice)}까지)`;
+    setTxt($('#chip_pull'), retrTxt);
+
+    if(hh) setTxt($('#chip_DH'), fmtKRW(hh));
+    if(ll) setTxt($('#chip_DL'), fmtKRW(ll));
+
+    setTxt($('#chip_mtf_mode'), mtf.mode);
+    setTxt($('#chip_mtf_score'), mtf.mtfScore);
+    setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
+
+    // 정확도
+    const prec = calcPrecision(s, mtf, atrPct);
+    setTxt($('#chip_prec'), `${prec.toFixed(1)}%`);
+    const hist = pushPrecisionHistory(prec);
+    drawSparkline(hist);
+    setGauge($('#gPrec'), $('#tPrec'), prec);
+
+    if(!window.__precSyncTimer){
+      window.__precSyncTimer = setInterval(()=> {
+        const arr = readPrecisionHistory();
+        savePrecisionHistory(arr, 'ALL').catch(()=>{});
+      }, 30000);
+    }
+
+    // === 3단계 매수 타점 ===
+    const recent_high = hh || price, recent_low = ll || price;
+    const atrVal = atr || Math.max(1, Math.round(price*0.01));
+    const shortMul = ( (rvol>=2&&tbr>=0.65) || rvol>=3 ) ? 0.25 : (tbr<=0.45 || rvol<=0.8) ? 0.6 : 0.4;
+    const midMul   = ( (rvol>=2&&tbr>=0.65) || rvol>=3 ) ? 1.0  : (tbr<=0.45 || rvol<=0.8) ? 1.4 : 1.1;
+    const longPct  = 0.38;
+
+    let buy_short = roundTick(price - atrVal * shortMul);
+    let buy_mid   = roundTick(price - atrVal * midMul);
+    let buy_long  = roundTick(recent_low + (price - recent_low) * longPct);
+
+    if(buy_long > buy_mid) buy_long = buy_mid;
+    if(buy_mid > buy_short) buy_mid = buy_short;
+    if(buy_short > price) buy_short = roundTick(price * 0.997);
+
+    const tickGap = Math.max(1, upbitTick(price));
+    if(price - buy_short < tickGap) buy_short = roundTick(price - tickGap);
+    if(buy_short - buy_mid < tickGap) buy_mid = roundTick(buy_short - tickGap);
+    if(buy_mid - buy_long < tickGap) buy_long = roundTick(buy_mid - tickGap);
+
+    // === v14.1 PumpDetect ===
+    let pumpOn = false;
+    try{
+      const d10 = compute10mChange(candles);
+      const force = Number(s.forceIndex ?? s.force ?? 0);
+      pumpOn = ( (rvol>=3.0) && (force>=80 || tbr>=0.65) && (d10!=null && d10>=10) );
+      // SmartRisk가 매수금지면 비활성
+      if (window.RiskGuard?.RISK_OFF) pumpOn = false;
+    }catch{}
+
+    paintPumpChip(pumpOn);
+    if(pumpOn){
+      setTxt($('#z_msg'), '⚡ 급등형 패턴 감지 — 되돌림 매수권 주의 (장기 물타기 비권장)');
+      if(!SND_MUTED) beep(1200,120,'triangle',0.08);
+    }
+
+    renderBuyZones({short:buy_short,mid:buy_mid,long:buy_long,prec,mode:mtf.mode,heat:z.heat,prob:z.prob,pump:pumpOn});
+
+    await refreshSniper(false);
+
+    if(ultraTimer) clearInterval(ultraTimer);
+    ultraTimer = setInterval(()=>openUltra(currentMarket, null), REFRESH_ULTRA_MS);
+  } finally {
+    ultraTicking = false;
   }
-
-  const mtf = calcMTFAdjust(s);
-  const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
-  const tpAdjPct = sign * mtf.adj;
-  const slAdjPct = -sign * (mtf.adj*0.8);
-  let tp1_adj = pricePct(tp1, tpAdjPct);
-  let tp2_adj = pricePct(tp2, tpAdjPct);
-  let sl_adj  = pricePct(sl , slAdjPct);
-
-  const obi = Number(s.obi||s.order_imbalance||0);
-  const adjExtra = clamp(((tbr-0.5)*0.002) + (obi*0.0015), -0.003, 0.003);
-  tp1_adj=pricePct(tp1_adj, adjExtra);
-  tp2_adj=pricePct(tp2_adj, adjExtra);
-  sl_adj =pricePct(sl_adj , -adjExtra*0.6);
-
-  // === Pro Targets 계산 ===
-  let tp3_adj='-', tsl1='-', tsl2='-';
-  if(ADV_ON){
-    let tp3;
-    if(bull)      tp3 = roundTick(price + Math.max(price*0.028, price*k*3.6));
-    else if(bear) tp3 = roundTick(price + Math.max(price*0.015, price*k*1.6));
-    else          tp3 = roundTick(price + Math.max(price*0.022, price*k*2.8));
-    tp3 = pricePct(tp3, tpAdjPct + adjExtra);
-    tp3_adj = fmtKRW(tp3);
-
-    const atrAdd1 = Math.max(upbitTick(price), roundTick(atr*0.30));
-    const atrAdd2 = Math.max(upbitTick(price), roundTick(atr*0.60));
-    const breakeven = buy1 ? roundTick(buy1) : price;
-    tsl1 = fmtKRW(Math.max(breakeven, sl_adj + atrAdd1));
-    tsl2 = fmtKRW(Math.max(breakeven, sl_adj + atrAdd2));
-  }
-
-  // === 화면 반영 ===
-  setTxt($('#v_price'),fmtKRW(price));
-  setTxt($('#v_buy1'),fmtKRW(buy1));
-  setTxt($('#v_buy2'),fmtKRW(buy2));
-  setTxt($('#v_tp1'),fmtKRW(tp1_adj));
-  setTxt($('#v_tp2'),fmtKRW(tp2_adj));
-  setTxt($('#v_sl'), fmtKRW(sl_adj));
-  if(ADV_ON){
-    setTxt($('#v_tp3'), tp3_adj);
-    setTxt($('#v_tsl1'), tsl1);
-    setTxt($('#v_tsl2'), tsl2);
-  }
-
-  const hi1 = s.target_high1 ?? tp1_adj;
-  const hi2 = s.target_high2 ?? tp2_adj;
-  const lo1 = s.target_low1  ?? sl_adj;
-  const retrTo = s.retracement_to ?? buy1;
-  const rs1 = s.post_dip_sell1 ?? pricePct(retrTo, +0.012);
-  const rs2 = s.post_dip_sell2 ?? pricePct(retrTo, +0.020);
-  setTxt($('#v_hi1'), fmtKRW(hi1)); setTxt($('#v_hi2'), fmtKRW(hi2));
-  setTxt($('#v_lo1'), fmtKRW(lo1)); setTxt($('#v_retr'), fmtKRW(retrTo));
-  setTxt($('#v_rs1'), fmtKRW(rs1)); setTxt($('#v_rs2'), fmtKRW(rs2));
-
-  const z = makeZMsgPlus(s, mtf, { sent: window.__SENTI__ });
-  setTxt($('#chip_heat'),z.heat);
-  setTxt($('#chip_prob'),`${z.prob}%`);
-  setTxt($('#chip_gain'),`+${(+z.gain).toFixed(1)}%`);
-  setTxt($('#chip_risk'), s.risk_level!=null?String(s.risk_level):(z.mode==='불장'?'2':(z.mode==='하락장'?'4':'3')));
-  setTxt($('#z_msg'), z.msg);
-
-  let retr=null;
-  if(Array.isArray(s.candles)) retr=computeRetracementFromCandles(s.candles);
-  if(s.retracement_percent!=null) retr={R:Number(s.retracement_percent), band:s.retr_band||''};
-  if(!retr && Array.isArray(candles)) retr=computeRetracementFromCandles(candles);
-  const pullPrice = (s.retracement_to ?? s.pull_to ?? (retr?.pullTo ?? lo1));
-  const retrTxt = retr ? `${Number(retr.R).toFixed(0)}% ${retr.band||''} (${fmtKRW(pullPrice)}까지)` : `(${fmtKRW(pullPrice)}까지)`;
-  setTxt($('#chip_pull'), retrTxt);
-
-  if(hh) setTxt($('#chip_DH'), fmtKRW(hh));
-  if(ll) setTxt($('#chip_DL'), fmtKRW(ll));
-
-  setTxt($('#chip_mtf_mode'), mtf.mode);
-  setTxt($('#chip_mtf_score'), mtf.mtfScore);
-  setTxt($('#chip_adj'), `${(mtf.adj*100* (sign?1:0)).toFixed(2)}%`);
-
-  const prec = calcPrecision(s, mtf, atrPct);
-  setTxt($('#chip_prec'), `${prec.toFixed(1)}%`);
-  const hist = pushPrecisionHistory(prec);
-  drawSparkline(hist);
-  setGauge($('#gPrec'), $('#tPrec'), prec);
-
-  if(!window.__precSyncTimer){
-    window.__precSyncTimer = setInterval(()=> {
-      const arr = readPrecisionHistory();
-      savePrecisionHistory(arr, 'ALL').catch(()=>{});
-    }, 30000);
-  }
-
-  const recent_high = hh || price, recent_low = ll || price;
-  const atrVal = atr || Math.max(1, Math.round(price*0.01));
-  const shortMul = ( (rvol>=2&&tbr>=0.65) || rvol>=3 ) ? 0.25 : (tbr<=0.45 || rvol<=0.8) ? 0.6 : 0.4;
-  const midMul   = ( (rvol>=2&&tbr>=0.65) || rvol>=3 ) ? 1.0  : (tbr<=0.45 || rvol<=0.8) ? 1.4 : 1.1;
-  const longPct  = 0.38;
-
-  let buy_short = roundTick(price - atrVal * shortMul);
-  let buy_mid   = roundTick(price - atrVal * midMul);
-  let buy_long  = roundTick(recent_low + (price - recent_low) * longPct);
-
-  if(buy_long > buy_mid) buy_long = buy_mid;
-  if(buy_mid > buy_short) buy_mid = buy_short;
-  if(buy_short > price) buy_short = roundTick(price * 0.997);
-
-  const tickGap = Math.max(1, upbitTick(price));
-  if(price - buy_short < tickGap) buy_short = roundTick(price - tickGap);
-  if(buy_short - buy_mid < tickGap) buy_mid = roundTick(buy_short - tickGap);
-  if(buy_mid - buy_long < tickGap) buy_long = roundTick(buy_mid - tickGap);
-
-  renderBuyZones({short:buy_short,mid:buy_mid,long:buy_long,prec,mode:mtf.mode,heat:z.heat,prob:z.prob});
-
-  await refreshSniper(false);
-
-  if(ultraTimer) clearInterval(ultraTimer);
-  ultraTimer = setInterval(()=>openUltra(currentMarket, null), REFRESH_ULTRA_MS);
-  ultraTicking = false;
 }
 
 /* ===== buyzone 렌더 ===== */
@@ -753,7 +801,7 @@ function renderBuyZones(data){
   const el = $('#buyzones'); el.innerHTML='';
   const shortEl = document.createElement('div'); shortEl.className='bz good'; shortEl.innerHTML=`단기<br><span class="sub">${fmtKRW(data.short)}</span>`;
   const midEl   = document.createElement('div'); midEl.className='bz';       midEl.innerHTML  =`중기<br><span class="sub">${fmtKRW(data.mid)}</span>`;
-  const longEl  = document.createElement('div'); longEl.className='bz warn'; longEl.innerHTML =`장기<br><span class="sub">${fmtKRW(data.long)}</span>`;
+  const longEl  = document.createElement('div'); longEl.className='bz ' + (data.pump?'pump':'warn'); longEl.innerHTML =`장기<br><span class="sub">${fmtKRW(data.long)}</span>`;
   el.appendChild(shortEl); el.appendChild(midEl); el.appendChild(longEl);
 
   const popup = $('#bzPopup');
@@ -765,7 +813,14 @@ function renderBuyZones(data){
   }
   shortEl.onclick = ()=> showInfo('단기 매수 타점', `가격: ${fmtKRW(data.short)}\n정확도: ${data.prec.toFixed(1)}%\n권장: 스캘프·단타(빠른 반등 기대)`);
   midEl.onclick   = ()=> showInfo('중기 매수 타점', `가격: ${fmtKRW(data.mid)}\n정확도: ${data.prec.toFixed(1)}%\n권장: 분할진입(중기 추세 확인)`);
-  longEl.onclick  = ()=> showInfo('장기 매수 타점', `가격: ${fmtKRW(data.long)}\n정확도: ${data.prec.toFixed(1)}%\n권장: 눌림매수·홀딩(장기 관점)`);
+  longEl.onclick  = ()=> showInfo('장기 매수 타점', `가격: ${fmtKRW(data.long)}\n정확도: ${data.prec.toFixed(1)}%\n권장: 눌림매수·홀딩(장기 관점)` + (data.pump?`\n주의: 급등 직후 구간 — 과매수 리스크 높음`:''));
+}
+
+/* ===== Pump chip paint ===== */
+function paintPumpChip(on){
+  const chip = document.getElementById('chipPump');
+  if(!chip) return;
+  chip.style.display = on ? 'inline-block' : 'none';
 }
 
 /* ===== Sniper ===== */
@@ -1031,7 +1086,7 @@ function toast(msg){
   setTimeout(()=>{ p.style.display='none'; }, 3000);
 }
 
-/* ===== Sentiment (옵셔널, 실패 허용) ===== */
+/* ===== Sentiment (옵셔널) ===== */
 async function loadSentiment(){
   if(!USE_SENTIMENT) return null;
   try{
@@ -1054,7 +1109,6 @@ async function loadSentiment(){
 
 /* ===== 부팅 ===== */
 (async function boot(){
-  // 검색창 포커스
   try{ $('#q').focus(); }catch{}
   await ping().catch(()=>{});
   await loadGlobal().catch(()=>{});
