@@ -290,6 +290,14 @@ const debounce=(fn,ms=200)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeou
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 const avg   = a => a.length? a.reduce((x,y)=>x+y,0)/a.length : 0;
 
+/* *** 중요: 2번씩 검색(빈결과/실패 시 한 번 더 시도) *** */
+async function doubleTry(fn){
+  let r = await fn();
+  const empty = (val)=> val==null || (Array.isArray(val)&&val.length===0) || (typeof val==='object' && val.ok===false);
+  if (empty(r)){ await sleep(120); r = await fn(); }
+  return r;
+}
+
 /* ===== 알림음 ===== */
 let SND_MUTED = localStorage.getItem('SND_MUTED')==='1';
 const chipSound = $('#chipSound');
@@ -398,7 +406,7 @@ paintProToggle();
 let MARKET_LIST=[];
 async function loadMarkets(){
   if(MARKET_LIST.length) return MARKET_LIST;
-  const d=await jget('/upbit/tickers',{retries:2});
+  const d = await doubleTry(()=>jget('/upbit/tickers',{retries:2}));
   if(Array.isArray(d?.items)) MARKET_LIST=d.items;
   return MARKET_LIST;
 }
@@ -440,6 +448,12 @@ function _aliases(it){
   const spark= num(it.spark ?? it.score ?? it.heat);
   return { rvol,tbr,obi,m5,m10,force,conf,spark };
 }
+
+let sparkTimer=null;
+async function fetchSparkRaw(){
+  const d = await doubleTry(()=>jget('/spark/top?limit=50',{retries:1}));
+  return Array.isArray(d?.list)? d.list : [];
+}
 function clientFilterByMode(list){
   if(!Array.isArray(list)||!list.length) return [];
   let out=[];
@@ -470,14 +484,6 @@ function clientFilterByMode(list){
   out = out.sort((x,y)=>(_aliases(y).spark - _aliases(x).spark)).slice(0,10);
   if(out.length===0) out = [...list].sort((x,y)=>(_aliases(y).spark - _aliases(x).spark)).slice(0,10);
   return out;
-}
-
-/* SPARK 렌더 */
-let sparkTimer=null;
-async function fetchSparkRaw(){
-  // limit 넉넉히 가져와서 클라 필터
-  const d = await jget('/spark/top?limit=50',{retries:1});
-  return Array.isArray(d?.list)? d.list : [];
 }
 async function renderSpark(force=false){
   const listEl=$('#sparkList'), emptyEl=$('#sparkEmpty');
@@ -514,7 +520,7 @@ function startSparkAuto(){ if(sparkTimer) clearInterval(sparkTimer); sparkTimer=
 /* ===== Candles/ATR/RVOL ===== */
 async function loadCandles(market){
   if(!USE_CANDLES) return null;
-  const d=await jget(`/candles?market=${encodeURIComponent(market)}&tf=1m&limit=${CANDLE_LIMIT}`, {retries:1});
+  const d=await doubleTry(()=>jget(`/candles?market=${encodeURIComponent(market)}&tf=1m&limit=${CANDLE_LIMIT}`, {retries:1}));
   return Array.isArray(d?.items||d)?.length ? (d.items||d) : null;
 }
 function calcATR(candles, n=14){
@@ -674,7 +680,7 @@ async function openUltra(market, seed){
 
   try{
     const [sig, candles] = await Promise.all([
-      jget('/ultra/signal?market='+encodeURIComponent(market))||{},
+      doubleTry(()=>jget('/ultra/signal?market='+encodeURIComponent(market))||{}),
       loadCandles(market)
     ]);
     const s=Object.assign({}, seed||{}, sig||{});
@@ -713,7 +719,7 @@ async function openUltra(market, seed){
     const mtf = calcMTFAdjust(s);
     const sign = (mtf.mode==='불장') ? +1 : (mtf.mode==='하락장') ? -1 : 0;
     const tpAdjPct = sign * mtf.adj;
-    const slAdjPct = -sign * (mtf.adj*0.8);
+    let slAdjPct = -sign * (mtf.adj*0.8);
     let tp1_adj = pricePct(tp1, tpAdjPct);
     let tp2_adj = pricePct(tp2, tpAdjPct);
     let sl_adj  = pricePct(sl , slAdjPct);
@@ -876,7 +882,7 @@ function paintPumpChip(on){
 /* ===== Sniper ===== */
 async function refreshSniper(showToast=true){
   if(!currentMarket) return;
-  const d = await jget(`/sniper/point?market=${encodeURIComponent(currentMarket)}`, {retries:1});
+  const d = await doubleTry(()=>jget(`/sniper/point?market=${encodeURIComponent(currentMarket)}`, {retries:1}));
   if(!d?.ok){ if(showToast) console.warn('sniper_failed'); return; }
   const s = d.sniper || {};
   setTxt($('#sn_low'), fmtKRW(s.ai_low));
@@ -977,7 +983,7 @@ window.RiskGuard = (function(){
   async function getFallbackBTC(){
     const market = 'KRW-BTC';
     const [sig, candles] = await Promise.all([
-      jget('/ultra/signal?market=' + encodeURIComponent(market)).catch(()=>null),
+      doubleTry(()=>jget('/ultra/signal?market=' + encodeURIComponent(market)).catch(()=>null)),
       loadCandles(market).catch(()=>null)
     ]);
     let price=null, change24=null, force=null, drop30m=null;
