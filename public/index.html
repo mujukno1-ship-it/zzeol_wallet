@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사토시의지갑 v14.1 — Learning + BuyZone + SmartRisk + Z-Ment+ + PumpDetect</title>
+<title>사토시의지갑 v14.2 — Learning + BuyZone + SmartRisk + Z-Ment+ + PumpDetect</title>
 <link rel="icon" href="data:,">
 <style>
   :root{--bg:#0f1218;--panel:#151a21;--muted:#9aa4b2;--text:#e7eef8;--accent:#5ac8fa;--up:#1ec996;--down:#ff5b6b;--chip:#1f2630;--rail:#2a3340;--spark:#ffb020}
@@ -46,7 +46,7 @@
   .box{background:#11161d;border:1px solid #1d2633;border-radius:12px;padding:10px;min-height:58px}
   .k{color:var(--muted);font-size:12px}
   .v{font-weight:700;margin-top:2px}
-  .note{margin-top:10px;background:#10151c;border:1px dashed #2a3340;border-radius:12px;padding:10px;font-size:13px;color:#dbe8ff}
+  .note{margin-top:10px;background:#10151c;border:1px dashed #2a3340;border-radius:12px;padding:10px;font-size:13px;color:#dbe8ff;white-space:pre-line}
 
   footer{margin:18px 0 10px;color:#8fa0b5;font-size:12px;text-align:center}
   .reserve{min-height:320px;display:flex;align-items:center;justify-content:center;color:#6e7a8a}
@@ -118,9 +118,9 @@
       <span id="chipPump" class="pill badge" title="급등형 패턴 감지" style="display:none;">🔥 펌핑감지</span>
 
       <!-- 모드 버튼 -->
-      <button id="btnModePre" class="btn" title="예열 모드">예열</button>
-      <button id="btnModeConf" class="btn" title="CONF80 필터">CONF80</button>
-      <button id="btnModeEx" class="btn" title="극한(펌핑/리스크)">극한</button>
+      <button id="btnModePre" class="btn" title="예열 모드 — 급등 전 준비 단계 코인">예열</button>
+      <button id="btnModeConf" class="btn" title="CONF80 — 신뢰도 80% 이상 위주 필터">CONF80</button>
+      <button id="btnModeEx" class="btn" title="극한 — 펌핑/리스크 구간 집중(고위험)">극한</button>
 
       <button id="btnCopyLink" class="btn" title="현재 코인 딥링크 복사">딥링크 복사</button>
       <button id="btnApi" class="btn" title="API 엔드포인트 변경 (로컬 저장)">API 변경</button>
@@ -162,28 +162,35 @@
       <div class="title" id="ultraTitle">ULTRA 시그널 — 선택된 코인</div>
 
       <div class="ultra">
-        <div class="box"><div class="k">현재가</div><div class="v" id="v_price">-</div></div>
-        <div class="box"><div class="k">매수 (BUY1)</div><div class="v" id="v_buy1">-</div></div>
-        <div class="box"><div class="k">추가매수 (BUY2)</div><div class="v" id="v_buy2">-</div></div>
-        <div class="box"><div class="k">익절 1 (TP1)</div><div class="v" id="v_tp1">-</div></div>
-        <div class="box"><div class="k">익절 2 (TP2)</div><div class="v" id="v_tp2">-</div></div>
-        <div class="box"><div class="k">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
+        <div class="box"><div class="k" title="현재 실시간 가격 (업비트 1분 기준)">현재가</div><div class="v" id="v_price">-</div></div>
+        <div class="box"><div class="k" title="첫 진입 매수 가격 — 기본 진입구간(BUY1)">매수 (BUY1)</div><div class="v" id="v_buy1">-</div></div>
+        <div class="box"><div class="k" title="추가 물타기/평단 낮추기용 추가 매수(BUY2)">추가매수 (BUY2)</div><div class="v" id="v_buy2">-</div></div>
+        <div class="box"><div class="k" title="보수적 익절 목표 — 1차 분할 익절 구간">익절 1 (TP1)</div><div class="v" id="v_tp1">-</div></div>
+        <div class="box"><div class="k" title="공격적 익절 목표 — 2차 분할 익절 구간">익절 2 (TP2)</div><div class="v" id="v_tp2">-</div></div>
+        <div class="box"><div class="k" title="강제 손절 구간 — 이탈 시 포지션 정리 추천">손절 (SL)</div><div class="v" id="v_sl">-</div></div>
       </div>
 
       <div id="proWrap" class="ultra pro-wrap" hidden>
-        <div class="box"><div class="k">익절 3 (TP3)</div><div class="v" id="v_tp3">-</div></div>
-        <div class="box"><div class="k">트레일링 SL 1</div><div class="v" id="v_tsl1">-</div></div>
-        <div class="box"><div class="k">트레일링 SL 2</div><div class="v" id="v_tsl2">-</div></div>
-        <div class="box"><div class="k">분할 익절 레더</div><div class="v" id="v_ladder">TP1 33% · TP2 33% · TP3 34%</div></div>
+        <div class="box"><div class="k" title="강한 불장/펌핑시 최종 익절 목표 (TP3)">익절 3 (TP3)</div><div class="v" id="v_tp3">-</div></div>
+        <div class="box"><div class="k" title="TP1 이후 손실 제한용 트레일링 스탑 1단계">트레일링 SL 1</div><div class="v" id="v_tsl1">-</div></div>
+        <div class="box"><div class="k" title="TP2 이후 손실 제한용 트레일링 스탑 2단계">트레일링 SL 2</div><div class="v" id="v_tsl2">-</div></div>
+        <div class="box"><div class="k" title="TP1·TP2·TP3에서 나눠서 익절하는 기본 비율">분할 익절 레더</div><div class="v" id="v_ladder">TP1 33% · TP2 33% · TP3 34%</div></div>
       </div>
 
       <div class="ultra" style="margin-top:6px">
-        <div class="box"><div class="k">예상 고점 1</div><div class="v" id="v_hi1">-</div></div>
-        <div class="box"><div class="k">예상 고점 2</div><div class="v" id="v_hi2">-</div></div>
-        <div class="box"><div class="k">예상 저점 1</div><div class="v" id="v_lo1">-</div></div>
-        <div class="box"><div class="k">되돌림 목표</div><div class="v" id="v_retr">-</div></div>
-        <div class="box"><div class="k">되돌림 후 매도 1</div><div class="v" id="v_rs1">-</div></div>
-        <div class="box"><div class="k">되돌림 후 매도 2</div><div class="v" id="v_rs2">-</div></div>
+        <div class="box"><div class="k" title="단기적으로 도달 가능성이 높은 1차 예상 고점">예상 고점 1</div><div class="v" id="v_hi1">-</div></div>
+        <div class="box"><div class="k" title="강한 추세 시 도달 가능성이 있는 2차 예상 고점">예상 고점 2</div><div class="v" id="v_hi2">-</div></div>
+        <div class="box"><div class="k" title="최근 변동성을 반영한 단기 예상 저점">예상 저점 1</div><div class="v" id="v_lo1">-</div></div>
+        <div class="box"><div class="k" title="하락 시 되돌림(눌림목)으로 다시 올라오기 좋은 지점">되돌림 목표</div><div class="v" id="v_retr">-</div></div>
+        <div class="box"><div class="k" title="되돌림 이후 다시 올라왔을 때 1차 매도권">되돌림 후 매도 1</div><div class="v" id="v_rs1">-</div></div>
+        <div class="box"><div class="k" title="되돌림 이후 다시 올라왔을 때 2차 매도권">되돌림 후 매도 2</div><div class="v" id="v_rs2">-</div></div>
+      </div>
+
+      <!-- 간단 설명 노트 -->
+      <div class="note" id="legendNote">
+BUY1: 첫 진입 매수 / BUY2: 추가 물타기  
+TP1·TP2·TP3: 분할 익절 목표 / SL: 강제 손절선  
+TSL1·TSL2: 익절권 진입 후 수익 지키는 이동형 손절(트레일링)입니다.
       </div>
 
       <!-- Learning -->
@@ -230,40 +237,40 @@
       </div>
 
       <div class="pillrow" style="margin-top:10px">
-        <span class="pill badge">예열강도 <b id="chip_heat">0</b></span>
-        <span class="pill badge">상승확률 <b id="chip_prob">0%</b></span>
-        <span class="pill badge">예상상승률 <b id="chip_gain">+0%</b></span>
-        <span class="pill badge">정확도 <b id="chip_prec">-</b></span>
-        <span class="pill badge">위험도 <b id="chip_risk">-</b></span>
-        <span class="pill badge">되돌림 <b id="chip_pull">-</b></span>
-        <span class="pill badge">당일 고점 <b id="chip_DH">-</b></span>
-        <span class="pill badge">당일 저점 <b id="chip_DL">-</b></span>
+        <span class="pill badge" title="SPARK·체결·심리 종합 예열 정도">예열강도 <b id="chip_heat">0</b></span>
+        <span class="pill badge" title="현재 시점에서 단기 상승 성공 확률 추정">상승확률 <b id="chip_prob">0%</b></span>
+        <span class="pill badge" title="이번 시그널 기준 기대 가능한 목표 상승률">예상상승률 <b id="chip_gain">+0%</b></span>
+        <span class="pill badge" title="현재 시그널 신뢰도 (백테스트/MTF 반영)">정확도 <b id="chip_prec">-</b></span>
+        <span class="pill badge" title="1(저위험)~4(고위험) 수준 가이드">위험도 <b id="chip_risk">-</b></span>
+        <span class="pill badge" title="얼마나 눌림/되돌림이 진행됐는지">되돌림 <b id="chip_pull">-</b></span>
+        <span class="pill badge" title="최근 기준 당일 고점">당일 고점 <b id="chip_DH">-</b></span>
+        <span class="pill badge" title="최근 기준 당일 저점">당일 저점 <b id="chip_DL">-</b></span>
       </div>
 
       <div class="pillrow" style="margin-top:6px">
-        <span class="pill badge">MTF 모드 <b id="chip_mtf_mode">-</b></span>
-        <span class="pill badge">MTF 점수 <b id="chip_mtf_score">0</b></span>
-        <span class="pill badge">보정량 <b id="chip_adj">±0.0%</b></span>
+        <span class="pill badge" title="여러 시간봉(1분~주봉) 종합 모드">MTF 모드 <b id="chip_mtf_mode">-</b></span>
+        <span class="pill badge" title="-100(강한 하락) ~ +100(강한 상승)">MTF 점수 <b id="chip_mtf_score">0</b></span>
+        <span class="pill badge" title="MTF 결과를 반영해 TP/SL에 적용된 보정량">보정량 <b id="chip_adj">±0.0%</b></span>
       </div>
 
       <div class="note" id="z_msg">코인을 선택하면 쩔어한마디가 표시됩니다.</div>
 
       <div class="title" style="margin-top:12px">Sniper 바닥·천장 포착 (AI)</div>
       <div class="sniperGrid">
-        <div class="box"><div class="k">AI 예상 바닥 (ai_low)</div><div class="v" id="sn_low">-</div></div>
-        <div class="box"><div class="k">AI 예상 천장 (ai_high)</div><div class="v" id="sn_high">-</div></div>
-        <div class="box"><div class="k">신뢰도 (Confidence)</div><div class="v" id="sn_conf">-</div></div>
+        <div class="box"><div class="k" title="AI가 최근 패턴 기준으로 잡은 바닥 후보 가격">AI 예상 바닥 (ai_low)</div><div class="v" id="sn_low">-</div></div>
+        <div class="box"><div class="k" title="AI가 최근 패턴 기준으로 잡은 천장 후보 가격">AI 예상 천장 (ai_high)</div><div class="v" id="sn_high">-</div></div>
+        <div class="box"><div class="k" title="ai_low/ai_high 신뢰 수준">신뢰도 (Confidence)</div><div class="v" id="sn_conf">-</div></div>
       </div>
       <div class="snline" style="margin-top:8px">
-        <button class="btn" id="btnSniper">/sniper/point 갱신</button>
-        <button class="btn" id="btnCopyLevels">레벨 복사</button>
+        <button class="btn" id="btnSniper" title="Sniper 바닥·천장 수동 갱신">/sniper/point 갱신</button>
+        <button class="btn" id="btnCopyLevels" title="BUY/TP/SL/TSL/AI레벨 메모용 복사">레벨 복사</button>
         <span class="pill badge" id="sn_reason_low">-</span>
         <span class="pill badge" id="sn_reason_high">-</span>
       </div>
     </section>
   </div>
 
-  <footer>사토시의지갑 v14.1 · Z-Ment+ · SmartRiskGuard · PumpDetect · LearnChip · ProTargets(TP3/TSL/Ladder)</footer>
+  <footer>사토시의지갑 v14.2 · Z-Ment+ · SmartRiskGuard · PumpDetect · LearnChip · ProTargets(TP3/TSL/Ladder)</footer>
 </div>
 
 <div id="suggest"></div>
@@ -671,6 +678,16 @@ function decideLearnChip(s, heat){
   return '🔵 학습패턴: 정상범위';
 }
 
+/* ===== 레벨 체크(기본 sanity check) ===== */
+function validateLevels({price,buy1,buy2,tp1,tp2,sl,aiLow,aiHigh}){
+  const warns=[];
+  if(tp1 && price && tp1 <= price) warns.push('TP1이 현재가와 너무 가깝거나 낮음');
+  if(tp2 && tp1 && tp2 <= tp1) warns.push('TP2가 TP1보다 낮거나 비슷함');
+  if(sl && buy1 && sl >= buy1) warns.push('SL이 BUY1보다 위에 있음(손절 구간 이상)');
+  if(aiLow && aiHigh && aiLow >= aiHigh) warns.push('ai_low ≥ ai_high (Sniper 범위 재확인 필요)');
+  return warns;
+}
+
 /* ===== ULTRA ===== */
 async function openUltra(market, seed){
   if(!market) return;
@@ -803,7 +820,7 @@ async function openUltra(market, seed){
     setGauge($('#gPrec'), $('#tPrec'), prec);
 
     if(!window.__precSyncTimer){
-      window.__precSyncTimer = setInterval(()=> {
+      window.__precSyncTimer = setInterval(()=>{
         const arr = readPrecisionHistory();
         savePrecisionHistory(arr, 'ALL').catch(()=>{});
       }, 30000);
@@ -843,7 +860,26 @@ async function openUltra(market, seed){
 
     renderBuyZones({short:buy_short,mid:buy_mid,long:buy_long,prec,mode:mtf.mode,heat:z.heat,prob:z.prob,pump:pumpOn});
 
+    // Sniper 갱신
     await refreshSniper(false);
+
+    // 레벨 sanity 체크 후 경고 문구 추가
+    const sniperLow  = Number((($('#sn_low')||{}).textContent||'').replace(/[^\d.]/g,'')) || null;
+    const sniperHigh = Number((($('#sn_high')||{}).textContent||'').replace(/[^\d.]/g,'')) || null;
+    const warns = validateLevels({
+      price,
+      buy1,
+      buy2,
+      tp1: tp1_adj,
+      tp2: tp2_adj,
+      sl: sl_adj,
+      aiLow: sniperLow,
+      aiHigh: sniperHigh
+    });
+    if(warns.length){
+      const base = $('#z_msg').textContent || '';
+      setTxt($('#z_msg'), base + '\n⚠ 레벨체크: ' + warns.join(' · '));
+    }
 
     if(ultraTimer) clearInterval(ultraTimer);
     ultraTimer = setInterval(()=>openUltra(currentMarket, null), REFRESH_ULTRA_MS);
